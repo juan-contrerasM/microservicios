@@ -1,5 +1,8 @@
 package com.microservicios.Reto1.exception;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -11,6 +14,7 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.microservicios.Reto1.dto.ApiError;
+import com.microservicios.Reto1.dto.ApiValidationError;
 
 /**
  * Traduce las excepciones de la aplicación a respuestas JSON con el
@@ -36,11 +40,18 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex) {
-		String mensaje = ex.getBindingResult().getFieldErrors().stream()
-				.findFirst()
-				.map(error -> error.getDefaultMessage())
-				.orElse("Datos de entrada inválidos");
-		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiError(mensaje));
+		Map<String, String> errores = new LinkedHashMap<>();
+		ex.getBindingResult().getFieldErrors().forEach(error -> errores.putIfAbsent(
+				error.getField(),
+				error.getDefaultMessage() != null ? error.getDefaultMessage() : "Valor inválido"));
+
+		if (errores.isEmpty()) {
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(new ApiError("Datos de entrada inválidos"));
+		}
+
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+				.body(new ApiValidationError("La solicitud contiene campos inválidos", errores));
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)

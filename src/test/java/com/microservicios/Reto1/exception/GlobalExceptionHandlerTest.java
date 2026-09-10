@@ -1,6 +1,7 @@
 package com.microservicios.Reto1.exception;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 import java.lang.reflect.Method;
 
@@ -20,6 +21,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.microservicios.Reto1.controller.EmpleadoController;
 import com.microservicios.Reto1.dto.ApiError;
+import com.microservicios.Reto1.dto.ApiValidationError;
 import com.microservicios.Reto1.model.Empleado;
 
 class GlobalExceptionHandlerTest {
@@ -51,7 +53,7 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
-	void handleValidationDevuelve400ConElPrimerMensajeDeCampo() throws NoSuchMethodException {
+	void handleValidationDevuelve400ConElErrorAsociadoAlCampo() throws NoSuchMethodException {
 		BindingResult bindingResult = new BeanPropertyBindingResult(new Empleado(), "empleado");
 		bindingResult.addError(new FieldError("empleado", "nombre", "El nombre es obligatorio"));
 		Method registrar = EmpleadoController.class.getMethod("registrar", Empleado.class);
@@ -61,7 +63,32 @@ class GlobalExceptionHandlerTest {
 		var respuesta = handler.handleValidation(ex);
 
 		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-		assertThat(respuesta.getBody().getMensaje()).isEqualTo("El nombre es obligatorio");
+		assertThat(respuesta.getBody().getMensaje()).isEqualTo("La solicitud contiene campos inválidos");
+		assertThat(respuesta.getBody()).isInstanceOf(ApiValidationError.class);
+		ApiValidationError body = (ApiValidationError) respuesta.getBody();
+		assertThat(body.getErrores()).containsEntry("nombre", "El nombre es obligatorio");
+	}
+
+	@Test
+	void handleValidationDevuelveTodosLosMensajesDeCamposInvalidos() throws NoSuchMethodException {
+		BindingResult bindingResult = new BeanPropertyBindingResult(new Empleado(), "empleado");
+		bindingResult.addError(new FieldError("empleado", "id", "El id es obligatorio"));
+		bindingResult.addError(new FieldError("empleado", "nombre", "El nombre es obligatorio"));
+		bindingResult.addError(new FieldError("empleado", "email", "El email es obligatorio"));
+		Method registrar = EmpleadoController.class.getMethod("registrar", Empleado.class);
+		MethodArgumentNotValidException ex = new MethodArgumentNotValidException(
+				new MethodParameter(registrar, 0), bindingResult);
+
+		var respuesta = handler.handleValidation(ex);
+
+		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		assertThat(respuesta.getBody().getMensaje()).isEqualTo("La solicitud contiene campos inválidos");
+		assertThat(respuesta.getBody()).isInstanceOf(ApiValidationError.class);
+		ApiValidationError body = (ApiValidationError) respuesta.getBody();
+		assertThat(body.getErrores()).containsExactly(
+				entry("id", "El id es obligatorio"),
+				entry("nombre", "El nombre es obligatorio"),
+				entry("email", "El email es obligatorio"));
 	}
 
 	@Test
