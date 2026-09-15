@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hr_management
+      POSTGRES_USER: empleados
+      POSTGRES_PASSWORD: empleados
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U empleados -d hr_management"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    image: servidor-empleados
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: hr_management
+      DB_USER: empleados
+      DB_PASSWORD: empleados
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
