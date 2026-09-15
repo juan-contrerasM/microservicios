@@ -1,0 +1,33 @@
+# --- General ---
+*.log
+.env
+.env.*
+!.env.example
+data/
+
+# --- IDE ---
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+
+# --- Java / Maven (services/empleados-service) ---
+target/
+!**/src/main/**/target/
+!**/src/test/**/target/
+HELP.md
+*.class
+
+# --- Go (services/departamentos-service) ---
+services/departamentos-service/bin/
+services/departamentos-service/departamentos-service
+*.exe
+*.test
+vendor/
+
+# --- Docker / infra ---
+*.pid
