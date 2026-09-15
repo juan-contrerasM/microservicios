@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-Guía para cualquier instancia de Claude Code (o persona del equipo) que trabaje en este repositorio.
+Guía técnica de referencia para el equipo: estructura del repositorio, convenciones por servicio
+y flujo de trabajo entre varias personas.
 
 ## Qué es este repositorio
 

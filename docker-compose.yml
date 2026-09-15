@@ -1,0 +1,135 @@
+# Orquestación completa del sistema (Reto 2). Levantar todo desde cero:
+#   cp .env.example .env && docker compose up --build
+# Apagar conservando datos: docker compose down
+# Apagar borrando también los datos: docker compose down -v
+#
+# Patrón repetido en los 4 servicios: cada base de datos tiene un
+# healthcheck real (no solo "el contenedor arrancó"), y cada servicio de
+# negocio usa depends_on: condition: service_healthy contra lo que
+# necesita, para no intentar conectarse antes de que su dependencia esté
+# realmente lista (ver docs/reto2.pdf §2).
+services:
+  # Base de datos de empleados-service. Nadie más que empleados-service la
+  # toca (ningún acceso cruzado entre servicios).
+  database-empleados:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${EMPLEADOS_DB_NAME}
+      POSTGRES_USER: ${EMPLEADOS_DB_USER}
+      POSTGRES_PASSWORD: ${EMPLEADOS_DB_PASSWORD}
+    volumes:
+      - vol-empleados:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready solo devuelve 0 cuando Postgres ya acepta conexiones.
+      test: ["CMD-SHELL", "pg_isready -U ${EMPLEADOS_DB_USER} -d ${EMPLEADOS_DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s # margen inicial sin contar fallos como intentos
+    networks:
+      - microservices-network
+
+  # Base de datos de departamentos-service. Motor distinto a propósito
+  # (persistencia poliglota, ver README raíz).
+  database-departamentos:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${DEPARTAMENTOS_DB_NAME}
+      MYSQL_USER: ${DEPARTAMENTOS_DB_USER}
+      MYSQL_PASSWORD: ${DEPARTAMENTOS_DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DEPARTAMENTOS_DB_ROOT_PASSWORD}
+    volumes:
+      - vol-departamentos:/var/lib/mysql
+    healthcheck:
+      # "$$" escapa el "$" para que lo resuelva el shell dentro del
+      # contenedor, no la interpolación de variables de Compose.
+      #
+      # "-h localhost" se resuelve por socket Unix, no por TCP. Con un
+      # volumen vacío, la imagen oficial de MySQL arranca primero un
+      # mysqld temporal (solo por socket) para inicializar, y recién
+      # después el mysqld real que escucha en TCP 3306. Un ping por
+      # socket puede dar "healthy" contra ese servidor temporal, antes de
+      # que el puerto TCP que usan los demás contenedores esté listo.
+      # "--protocol=tcp -h 127.0.0.1" fuerza a probar el puerto real.
+      test: ["CMD-SHELL", "mysqladmin ping --protocol=tcp -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    networks:
+      - microservices-network
+
+  # Servicio de departamentos (Go). Ver services/departamentos-service/README.md.
+  departamentos-service:
+    build: ./services/departamentos-service
+    environment:
+      PORT: 8081
+      # Nombre del servicio Compose como host: dentro de la red interna de
+      # Docker no existe "localhost" entre contenedores distintos.
+      DB_HOST: database-departamentos
+      DB_PORT: 3306
+      DB_NAME: ${DEPARTAMENTOS_DB_NAME}
+      DB_USER: ${DEPARTAMENTOS_DB_USER}
+      DB_PASSWORD: ${DEPARTAMENTOS_DB_PASSWORD}
+    ports:
+      - "${DEPARTAMENTOS_PORT}:8081" # puerto publicado al host; internamente sigue siendo 8081
+    depends_on:
+      database-departamentos:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  # Servicio de empleados (Java, heredado del Reto 1). Ver
+  # services/empleados-service/README.md.
+  empleados-service:
+    build: ./services/empleados-service
+    environment:
+      DB_HOST: database-empleados
+      DB_PORT: 5432
+      DB_NAME: ${EMPLEADOS_DB_NAME}
+      DB_USER: ${EMPLEADOS_DB_USER}
+      DB_PASSWORD: ${EMPLEADOS_DB_PASSWORD}
+      # Usado por el cliente REST hacia departamentos-service (Etapa 3 del
+      # plan, docs/PLAN-RETO2.md) — nombre del servicio Compose + puerto
+      # interno, nunca localhost ni el puerto publicado al host.
+      DEPARTAMENTOS_SERVICE_URL: http://departamentos-service:8081
+    ports:
+      - "${EMPLEADOS_PORT}:8080"
+    depends_on:
+      database-empleados:
+        condition: service_healthy
+      # empleados-service valida el departamento contra este servicio al
+      # registrar un empleado, así que también debe esperar a que esté listo.
+      departamentos-service:
+        condition: service_healthy
+    healthcheck:
+      # Provisional: /health formal llega en la Etapa 3. Por ahora la app
+      # actual de Reto 1 no tiene GET /empleados (listado) ni /health, así
+      # que solo confirmamos que el servidor HTTP responde algo (incluido
+      # un 404), no que un endpoint concreto devuelva 200. Sin "-f": basta
+      # con que curl logre conectarse y recibir respuesta.
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://localhost:8080/empleados"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    networks:
+      - microservices-network
+
+networks:
+  # Red interna donde los servicios se resuelven entre sí por nombre de
+  # servicio (p. ej. http://departamentos-service:8081).
+  microservices-network:
+    driver: bridge
+
+volumes:
+  # Un volumen por base de datos: los datos sobreviven a `docker compose
+  # down`, y solo se pierden con `docker compose down -v`.
+  vol-empleados:
+  vol-departamentos:

@@ -71,6 +71,9 @@ Depende de Etapa 1 (necesita que `departamentos-service` exista y tenga Dockerfi
 
 ### Etapa 3 — Evolución de `empleados-service` — criterios 3 y 4 del PDF
 
+- Ajustar códigos de respuesta al contrato del PDF (§4): verificado en la práctica que hoy
+  `POST /empleados` responde `200` (debe ser `201 Created`) y los conflictos de unicidad
+  responden `409` (el PDF pide `400 Bad Request` para email/numeroEmpleado duplicados).
 - Migrar de `spring.jpa.hibernate.ddl-auto=update` a **Liquibase**: changelog inicial que
   reproduzca el esquema actual (incluida la columna `estado`, aunque en este reto siempre valga
   `ACTIVO`) + restricciones `UNIQUE` en `email` y `numeroEmpleado` a nivel de esquema (no solo
