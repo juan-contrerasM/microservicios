@@ -115,8 +115,9 @@ definidos (no hace falta esperar a que compose esté listo).
   antes que los servicios, sin errores de conexión en logs.
 - Evidencia de persistencia: contraste `docker compose down` (los datos sobreviven) vs.
   `docker compose down -v` (se pierden) — capturar ambas salidas.
-- Actualizar `Reto1.postman_collection.json` (renombrar/ampliar) con los endpoints de
-  `departamentos-service` y los casos de error.
+- Reemplazar `Reto1.postman_collection.json` (Java, obsoleto tras la Etapa 3) por
+  `Reto2.postman_collection.json` en la raíz del monorepo, cubriendo ambos servicios y el
+  escenario de resiliencia (503 con `departamentos-service` caído). Validado con `newman`.
 - README raíz: tabla servicio ↔ lenguaje ↔ motor de BD ↔ puerto, instrucciones de arranque desde
   cero, y las tres decisiones técnicas del enunciado con su justificación (ya resumidas arriba,
   pero deben quedar también en el README raíz porque así lo pide el PDF como entregable).

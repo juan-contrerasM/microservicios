@@ -34,6 +34,7 @@ Estados previstos: `ACTIVO`, `EN_VACACIONES`, `RETIRADO`. En este reto solo se m
 |--------|------|-------------|--------|
 | `POST` | `/empleados` | Registrar empleado y validar su departamento | `201` / `400` / `503` |
 | `GET` | `/empleados/{id}` | Consultar por id | `200` / `404` |
+| `GET` | `/empleados` | Listar todos los empleados registrados | `200` |
 | `GET` | `/health` | Verificar la conexión con PostgreSQL | `200` / `503` |
 | Otros | cualquier ruta o método no definido | Recurso no encontrado | `404` |
 
@@ -55,7 +56,8 @@ Sin incluir el valor del email en el mensaje.
 ## OpenAPI / Swagger (Etapa 4)
 
 Springdoc OpenAPI documenta los endpoints con el contrato de la Etapa 3: `POST /empleados`
-(`201` / `400` / `503`), `GET /empleados/{id}` (`200` / `404`) y `GET /health` (`200` / `503`).
+(`201` / `400` / `503`), `GET /empleados/{id}` (`200` / `404`), `GET /empleados` (`200`) y
+`GET /health` (`200` / `503`).
 
 | Recurso | URL (con Compose en la raíz) |
 |---|---|
@@ -449,7 +451,7 @@ El artefacto generado queda disponible en el directorio `target/`.
 
 ### Colección de Postman
 
-El archivo `Reto1.postman_collection.json`, ubicado en la raíz del proyecto, puede importarse directamente en Postman. La colección incluye solicitudes preparadas para registrar empleados y consultar los resultados de la API.
+El archivo [`Reto2.postman_collection.json`](../../Reto2.postman_collection.json), en la raíz del monorepo, cubre ambos servicios: `departamentos-service` y `empleados-service` (registro, consultas, las validaciones que responden `400`/`404`, y un escenario de resiliencia con `departamentos-service` caído que responde `503`). Ver la sección correspondiente en el [README raíz](../../README.md#colección-de-postman).
 
 ### Solución de problemas
 

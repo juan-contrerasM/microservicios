@@ -1,0 +1,286 @@
+{
+	"info": {
+		"name": "Reto 2 - Empleados + Departamentos",
+		"description": "Colección de todo el sistema (Reto 2): departamentos-service (Go/MySQL) y empleados-service (Java/PostgreSQL), orquestados con el docker-compose.yml de la raíz del monorepo. Ejecutar las carpetas en orden: primero '1. Departamentos' (crea el departamento IT que usan las pruebas de empleados), luego '2. Empleados'. La carpeta '3. Resiliencia' requiere detener manualmente departamentos-service antes de correrla (ver su descripción) y volver a iniciarlo después.\n\nArrancar todo con: docker compose up --build (desde la raíz del repo).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{ "key": "empleados_url", "value": "http://localhost:8080", "type": "string" },
+		{ "key": "departamentos_url", "value": "http://localhost:8081", "type": "string" }
+	],
+	"item": [
+		{
+			"name": "0. Health",
+			"item": [
+				{
+					"name": "Health departamentos-service (UP)",
+					"request": { "method": "GET", "header": [], "url": "{{departamentos_url}}/health" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('status UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+					] } }]
+				},
+				{
+					"name": "Health empleados-service (UP)",
+					"request": { "method": "GET", "header": [], "url": "{{empleados_url}}/health" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('status UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+					] } }]
+				}
+			]
+		},
+		{
+			"name": "1. Departamentos",
+			"item": [
+				{
+					"name": "Crear departamento IT - éxito (201)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{departamentos_url}}/departamentos",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"IT\",\n  \"nombre\": \"Tecnología\",\n  \"descripcion\": \"Departamento de TI\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 201', () => pm.response.to.have.status(201));",
+						"pm.test('Devuelve el departamento creado', () => pm.expect(pm.response.json().id).to.eql('IT'));"
+					] } }]
+				},
+				{
+					"name": "Consultar departamento IT (200)",
+					"request": { "method": "GET", "header": [], "url": "{{departamentos_url}}/departamentos/IT" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('nombre correcto', () => pm.expect(pm.response.json().nombre).to.eql('Tecnología'));"
+					] } }]
+				},
+				{
+					"name": "Listar departamentos (200)",
+					"request": { "method": "GET", "header": [], "url": "{{departamentos_url}}/departamentos" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('incluye IT', () => pm.expect(pm.response.json().map(d => d.id)).to.include('IT'));"
+					] } }]
+				},
+				{
+					"name": "Crear departamento IT duplicado (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{departamentos_url}}/departamentos",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"IT\",\n  \"nombre\": \"Otro nombre\",\n  \"descripcion\": \"x\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de duplicado', () => pm.expect(pm.response.json().mensaje).to.eql('ya existe un departamento registrado con ese id'));"
+					] } }]
+				},
+				{
+					"name": "Consultar departamento inexistente (404)",
+					"request": { "method": "GET", "header": [], "url": "{{departamentos_url}}/departamentos/NO-EXISTE" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 404', () => pm.response.to.have.status(404));",
+						"pm.test('Mensaje descriptivo', () => pm.expect(pm.response.json().mensaje).to.eql('el departamento con id NO-EXISTE no existe'));"
+					] } }]
+				}
+			]
+		},
+		{
+			"name": "2. Empleados",
+			"item": [
+				{
+					"name": "Registrar empleado E001 - éxito (201)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{empleados_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E001\",\n  \"nombre\": \"Juan\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"juan.perez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-001\",\n  \"cargo\": \"Desarrollador Senior\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 201', () => pm.response.to.have.status(201));",
+						"pm.test('estado ACTIVO', () => pm.expect(pm.response.json().estado).to.eql('ACTIVO'));"
+					] } }]
+				},
+				{
+					"name": "Consultar empleado E001 (200)",
+					"request": { "method": "GET", "header": [], "url": "{{empleados_url}}/empleados/E001" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('conserva los 10 campos', () => {",
+						"    const b = pm.response.json();",
+						"    ['id','nombre','apellido','email','numeroEmpleado','cargo','area','departamentoId','fechaIngreso','estado'].forEach(f => pm.expect(b).to.have.property(f));",
+						"});"
+					] } }]
+				},
+				{
+					"name": "Listar empleados (200)",
+					"request": { "method": "GET", "header": [], "url": "{{empleados_url}}/empleados" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('incluye E001', () => pm.expect(pm.response.json().map(e => e.id)).to.include('E001'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - id duplicado (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{empleados_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E001\",\n  \"nombre\": \"Otro\",\n  \"apellido\": \"Empleado\",\n  \"email\": \"otro.empleado@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-999\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de id duplicado', () => pm.expect(pm.response.json().mensaje).to.eql('Ya existe un empleado con ese id'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - email duplicado (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{empleados_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E002\",\n  \"nombre\": \"Otro\",\n  \"apellido\": \"Empleado\",\n  \"email\": \"juan.perez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-002\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de email duplicado', () => pm.expect(pm.response.json().mensaje).to.eql('Ya existe un empleado registrado con ese email'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - numeroEmpleado duplicado (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{empleados_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E003\",\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Gómez\",\n  \"email\": \"ana.gomez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-001\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-11\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de numeroEmpleado duplicado', () => pm.expect(pm.response.json().mensaje).to.eql('Ya existe un empleado registrado con ese numeroEmpleado'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - departamento inexistente (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{empleados_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E004\",\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Gómez\",\n  \"email\": \"ana2@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-004\",\n  \"cargo\": \"QA\",\n  \"area\": \"Ventas\",\n  \"departamentoId\": \"NO-EXISTE\",\n  \"fechaIngreso\": \"2026-02-11\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de departamento inexistente', () => pm.expect(pm.response.json().mensaje).to.eql('El departamento con id NO-EXISTE no existe'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - campo obligatorio faltante (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{empleados_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E006\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"otro.mas@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-006\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Errores de validación con nombre', () => pm.expect(pm.response.json().errores.nombre).to.eql('El nombre es obligatorio'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - email con formato inválido (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{empleados_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E007\",\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Gómez\",\n  \"email\": \"no-es-un-email\",\n  \"numeroEmpleado\": \"EMP-2026-007\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Errores de validación con email', () => pm.expect(pm.response.json().errores.email).to.eql('El email no tiene un formato válido'));"
+					] } }]
+				},
+				{
+					"name": "Consultar empleado inexistente (404)",
+					"request": { "method": "GET", "header": [], "url": "{{empleados_url}}/empleados/E999" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 404', () => pm.response.to.have.status(404));",
+						"pm.test('Mensaje de empleado no encontrado', () => pm.expect(pm.response.json().mensaje).to.eql('El empleado con id E999 no existe'));"
+					] } }]
+				},
+				{
+					"name": "Ruta no definida (404)",
+					"request": { "method": "GET", "header": [], "url": "{{empleados_url}}/no-existe" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 404', () => pm.response.to.have.status(404));",
+						"pm.test('Mensaje de recurso no encontrado', () => pm.expect(pm.response.json().mensaje).to.eql('Recurso no encontrado'));"
+					] } }]
+				}
+			]
+		},
+		{
+			"name": "3. Resiliencia (manual)",
+			"description": "Antes de correr el siguiente request: en una terminal, ejecuta `docker compose stop departamentos-service`. El request tarda unos segundos (timeout 3s x 4 intentos + backoff 1s→2s→4s) y debe responder 503, sin persistir el empleado. Al terminar, vuelve a levantar el servicio con `docker compose start departamentos-service` antes de seguir usando el resto de la colección.",
+			"item": [
+				{
+					"name": "Registrar empleado con departamentos-service caído (503)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{empleados_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E005\",\n  \"nombre\": \"Luis\",\n  \"apellido\": \"Ramírez\",\n  \"email\": \"luis@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-005\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-12\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 503 (requiere departamentos-service detenido)', () => pm.response.to.have.status(503));",
+						"pm.test('Mensaje de servicio no disponible', () => pm.expect(pm.response.json().mensaje).to.eql('El servicio de departamentos no está disponible para validar el departamento'));"
+					] } }]
+				},
+				{
+					"name": "Confirmar que E005 no quedó persistido (404)",
+					"request": { "method": "GET", "header": [], "url": "{{empleados_url}}/empleados/E005" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 404', () => pm.response.to.have.status(404));"
+					] } }]
+				}
+			]
+		}
+	]
+}

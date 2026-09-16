@@ -148,4 +148,21 @@ class EmpleadoServiceTest {
 				.isInstanceOf(EmpleadoNoEncontradoException.class)
 				.hasMessageContaining("E999");
 	}
+
+	@Test
+	void listarTodosDevuelveLosEmpleadosDelRepositorio() {
+		Empleado empleado = nuevoEmpleado();
+		when(empleadoRepository.findAll()).thenReturn(java.util.List.of(empleado));
+
+		java.util.List<Empleado> empleados = empleadoService.listarTodos();
+
+		assertThat(empleados).containsExactly(empleado);
+	}
+
+	@Test
+	void listarTodosDevuelveListaVaciaSinEmpleados() {
+		when(empleadoRepository.findAll()).thenReturn(java.util.List.of());
+
+		assertThat(empleadoService.listarTodos()).isEmpty();
+	}
 }

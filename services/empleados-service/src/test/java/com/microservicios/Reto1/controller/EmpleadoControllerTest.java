@@ -64,4 +64,15 @@ class EmpleadoControllerTest {
 		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(respuesta.getBody()).isEqualTo(empleado);
 	}
+
+	@Test
+	void listarDevuelve200ConTodosLosEmpleados() {
+		Empleado empleado = nuevoEmpleado();
+		when(empleadoService.listarTodos()).thenReturn(java.util.List.of(empleado));
+
+		ResponseEntity<java.util.List<Empleado>> respuesta = empleadoController.listar();
+
+		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(respuesta.getBody()).containsExactly(empleado);
+	}
 }

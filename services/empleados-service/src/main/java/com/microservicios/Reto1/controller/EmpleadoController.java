@@ -1,5 +1,7 @@
 package com.microservicios.Reto1.controller;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -122,5 +124,24 @@ public class EmpleadoController {
 			@PathVariable String id) {
 		Empleado empleado = empleadoService.consultarPorId(id);
 		return ResponseEntity.ok(empleado);
+	}
+
+	/**
+	 * Lista todos los empleados registrados.
+	 *
+	 * @return los empleados registrados con código 200 (arreglo vacío si no hay ninguno)
+	 */
+	@GetMapping
+	@Operation(summary = "Listar empleados", description = "Devuelve todos los empleados registrados.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Listado de empleados",
+					content = @Content(mediaType = JSON,
+							array = @io.swagger.v3.oas.annotations.media.ArraySchema(
+									schema = @Schema(implementation = Empleado.class)))),
+			@ApiResponse(responseCode = "500", description = "Error interno",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
+	})
+	public ResponseEntity<List<Empleado>> listar() {
+		return ResponseEntity.ok(empleadoService.listarTodos());
 	}
 }

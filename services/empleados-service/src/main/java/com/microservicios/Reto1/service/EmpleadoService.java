@@ -1,5 +1,6 @@
 package com.microservicios.Reto1.service;
 
+import java.util.List;
 import java.util.Locale;
 
 import org.slf4j.Logger;
@@ -95,5 +96,15 @@ public class EmpleadoService {
 					log.warn("Empleado no encontrado con id {}", id);
 					return new EmpleadoNoEncontradoException(id);
 				});
+	}
+
+	/**
+	 * Lista todos los empleados registrados.
+	 *
+	 * @return los empleados registrados, o una lista vacía si no hay ninguno
+	 */
+	public List<Empleado> listarTodos() {
+		log.debug("Listando todos los empleados");
+		return empleadoRepository.findAll();
 	}
 }
