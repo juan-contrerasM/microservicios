@@ -3,6 +3,7 @@ package com.microservicios.Reto1.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,7 +14,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
+import com.microservicios.Reto1.client.DepartamentoClient;
+import com.microservicios.Reto1.exception.BadRequestException;
 import com.microservicios.Reto1.exception.ConflictException;
 import com.microservicios.Reto1.exception.EmpleadoNoEncontradoException;
 import com.microservicios.Reto1.model.Empleado;
@@ -25,12 +29,14 @@ class EmpleadoServiceTest {
 
 	@Mock
 	private EmpleadoRepository empleadoRepository;
+	@Mock
+	private DepartamentoClient departamentoClient;
 
 	private EmpleadoService empleadoService;
 
 	@BeforeEach
 	void setUp() {
-		empleadoService = new EmpleadoService(empleadoRepository);
+		empleadoService = new EmpleadoService(empleadoRepository, departamentoClient);
 	}
 
 	private Empleado nuevoEmpleado() {
@@ -58,6 +64,7 @@ class EmpleadoServiceTest {
 		Empleado registrado = empleadoService.registrar(empleado);
 
 		assertThat(registrado.getEstado()).isEqualTo(EstadoEmpleado.ACTIVO);
+		verify(departamentoClient).validarExistencia("IT");
 		verify(empleadoRepository).save(empleado);
 	}
 
@@ -92,6 +99,35 @@ class EmpleadoServiceTest {
 		assertThatThrownBy(() -> empleadoService.registrar(empleado))
 				.isInstanceOf(ConflictException.class)
 				.hasMessageContaining("numeroEmpleado");
+	}
+
+	@Test
+	void registrarConDepartamentoInexistenteNoGuardaElEmpleado() {
+		Empleado empleado = nuevoEmpleado();
+		when(empleadoRepository.existsById(empleado.getId())).thenReturn(false);
+		when(empleadoRepository.existsByEmail(empleado.getEmail())).thenReturn(false);
+		when(empleadoRepository.existsByNumeroEmpleado(empleado.getNumeroEmpleado())).thenReturn(false);
+		org.mockito.Mockito.doThrow(new BadRequestException("El departamento con id IT no existe"))
+				.when(departamentoClient).validarExistencia("IT");
+
+		assertThatThrownBy(() -> empleadoService.registrar(empleado))
+				.isInstanceOf(BadRequestException.class)
+				.hasMessageContaining("IT");
+		verify(empleadoRepository, never()).save(any(Empleado.class));
+	}
+
+	@Test
+	void restriccionUnicaDeBaseDeDatosSeTraduceAErrorDescriptivo() {
+		Empleado empleado = nuevoEmpleado();
+		when(empleadoRepository.existsById(empleado.getId())).thenReturn(false);
+		when(empleadoRepository.existsByEmail(empleado.getEmail())).thenReturn(false);
+		when(empleadoRepository.existsByNumeroEmpleado(empleado.getNumeroEmpleado())).thenReturn(false);
+		when(empleadoRepository.save(empleado)).thenThrow(new DataIntegrityViolationException(
+				"duplicate", new RuntimeException("constraint uk_empleados_email")));
+
+		assertThatThrownBy(() -> empleadoService.registrar(empleado))
+				.isInstanceOf(ConflictException.class)
+				.hasMessage("Ya existe un empleado registrado con ese email");
 	}
 
 	@Test

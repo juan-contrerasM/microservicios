@@ -99,6 +99,9 @@ services:
       # plan, docs/PLAN-RETO2.md) — nombre del servicio Compose + puerto
       # interno, nunca localhost ni el puerto publicado al host.
       DEPARTAMENTOS_SERVICE_URL: http://departamentos-service:8081
+      DEPARTAMENTOS_SERVICE_TIMEOUT: ${DEPARTAMENTOS_SERVICE_TIMEOUT}
+      DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS: ${DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS}
+      DEPARTAMENTOS_SERVICE_INITIAL_BACKOFF: ${DEPARTAMENTOS_SERVICE_INITIAL_BACKOFF}
     ports:
       - "${EMPLEADOS_PORT}:8080"
     depends_on:
@@ -109,12 +112,8 @@ services:
       departamentos-service:
         condition: service_healthy
     healthcheck:
-      # Provisional: /health formal llega en la Etapa 3. Por ahora la app
-      # actual de Reto 1 no tiene GET /empleados (listado) ni /health, así
-      # que solo confirmamos que el servidor HTTP responde algo (incluido
-      # un 404), no que un endpoint concreto devuelva 200. Sin "-f": basta
-      # con que curl logre conectarse y recibir respuesta.
-      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://localhost:8080/empleados"]
+      # /health comprueba realmente la conexión del servicio con PostgreSQL.
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s
       timeout: 3s
       retries: 10

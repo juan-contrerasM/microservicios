@@ -32,14 +32,17 @@ Estados previstos: `ACTIVO`, `EN_VACACIONES`, `RETIRADO`. En este reto solo se m
 
 | Método | Ruta | Descripción | Código |
 |--------|------|-------------|--------|
-| `POST` | `/empleados` | Registrar empleado | `200` |
+| `POST` | `/empleados` | Registrar empleado y validar su departamento | `201` / `400` / `503` |
 | `GET` | `/empleados/{id}` | Consultar por id | `200` / `404` |
+| `GET` | `/health` | Verificar la conexión con PostgreSQL | `200` / `503` |
 | Otros | cualquier ruta o método no definido | Recurso no encontrado | `404` |
 
-Validaciones al registrar (`409 Conflict`):
+Validaciones al registrar (`400 Bad Request`):
 
+- ID ya registrado
 - Email ya registrado
 - `numeroEmpleado` ya registrado
+- `departamentoId` inexistente en `departamentos-service`
 
 Los errores se responden en JSON, por ejemplo:
 
@@ -73,6 +76,8 @@ docker run -p 8080:8080 -e DB_HOST=host.docker.internal -e DB_PORT=5433 -e DB_NA
 ```
 
 > Nota: con `docker run` necesitas PostgreSQL corriendo en tu máquina (por ejemplo con `docker compose up db`). Con `docker compose up --build` no hace falta nada extra.
+
+> Para probar el registro integrado con departamentos, utiliza el `docker-compose.yml` de la raíz del monorepo. El Compose local de esta carpeta solo levanta empleados y PostgreSQL, por lo que requiere que `departamentos-service` esté disponible externamente.
 
 ## Ejecutar en local
 
@@ -176,6 +181,8 @@ EmpleadoController       Recibe solicitudes y valida el cuerpo JSON
     ▼
 EmpleadoService          Aplica las reglas de negocio
     │
+    ├──────────► DepartamentoClient ──HTTP──► departamentos-service
+    │
     ▼
 EmpleadoRepository       Gestiona la persistencia mediante JPA
     │
@@ -187,6 +194,7 @@ PostgreSQL               Almacena la tabla empleados
 |------|-----------------|
 | `controller` | Expone los endpoints REST y delega las operaciones |
 | `service` | Verifica duplicados, asigna el estado y consulta empleados |
+| `client` | Valida el departamento por HTTP con timeout y reintentos |
 | `repository` | Proporciona las operaciones de persistencia con Spring Data JPA |
 | `model` | Define la entidad `Empleado` y sus estados posibles |
 | `exception` | Convierte excepciones en respuestas HTTP homogéneas |
@@ -216,16 +224,19 @@ Al registrar un empleado se aplican las siguientes reglas:
 3. No puede existir otro empleado con el mismo `id`.
 4. No puede existir otro empleado con el mismo `email`.
 5. No puede existir otro empleado con el mismo `numeroEmpleado`.
-6. El estado se establece siempre como `ACTIVO`, independientemente del valor recibido.
+6. El `departamentoId` debe existir en `departamentos-service`.
+7. Si departamentos no está disponible, se realizan hasta cuatro intentos con backoff de 1, 2 y 4 segundos.
+8. El estado se establece siempre como `ACTIVO`, independientemente del valor recibido.
 
 ### Códigos de respuesta
 
 | Código | Situación |
 |--------|-----------|
-| `200 OK` | El empleado fue registrado o consultado correctamente |
-| `400 Bad Request` | Faltan datos, un campo es inválido o el JSON está mal formado |
+| `200 OK` | El empleado fue consultado correctamente o el health check está `UP` |
+| `201 Created` | El empleado fue registrado correctamente |
+| `400 Bad Request` | Faltan datos, un campo es inválido, hay un duplicado o el departamento no existe |
 | `404 Not Found` | El empleado, la ruta o el método solicitado no existe |
-| `409 Conflict` | El `id`, `email` o `numeroEmpleado` ya está registrado |
+| `503 Service Unavailable` | PostgreSQL o `departamentos-service` no está disponible |
 
 Todas las respuestas de error utilizan el mismo formato:
 
@@ -359,12 +370,29 @@ La caché no se reutiliza si se ejecuta la construcción con `--no-cache`, se li
 | `DB_NAME` | `hr_management` | `hr_management` | Base de datos |
 | `DB_USER` | `empleados` | `empleados` | Usuario |
 | `DB_PASSWORD` | `empleados` | `empleados` | Contraseña |
+| `DEPARTAMENTOS_SERVICE_URL` | `http://localhost:8081` | `http://departamentos-service:8081` | URL base del servicio de departamentos |
+| `DEPARTAMENTOS_SERVICE_TIMEOUT` | `3s` | `3s` | Timeout por intento HTTP |
+| `DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS` | `4` | `4` | Intento inicial más tres reintentos |
+| `DEPARTAMENTOS_SERVICE_INITIAL_BACKOFF` | `1s` | `1s` | Espera inicial; se duplica en cada reintento |
 
 Las credenciales incluidas están pensadas exclusivamente para desarrollo local. En otros ambientes deben proporcionarse mediante variables protegidas o secretos.
 
 ### Persistencia y creación del esquema
 
-La propiedad `spring.jpa.hibernate.ddl-auto=update` permite que Hibernate cree o actualice automáticamente la tabla `empleados` cuando inicia la aplicación. No es necesario ejecutar un script SQL para comenzar a utilizar el servicio.
+El esquema se versiona con Liquibase. El changelog maestro se encuentra en `src/main/resources/db/changelog/db.changelog-master.xml` y cada cambio tiene rollback. Hibernate usa `spring.jpa.hibernate.ddl-auto=validate`: verifica que el esquema coincida con la entidad, pero nunca lo crea ni lo modifica.
+
+La migración inicial crea `empleados`, su clave primaria y restricciones `UNIQUE` para `email` y `numero_empleado`. Se mantienen también las consultas previas del servicio para devolver mensajes descriptivos; las restricciones de PostgreSQL son la garantía definitiva frente a condiciones de carrera.
+
+Al migrar desde una instalación anterior creada mediante `ddl-auto=update`, reinicia el volumen local para que Liquibase pueda establecer su historial desde cero:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+### Validación de departamentos y resiliencia
+
+Antes de guardar, el servicio consulta `GET /departamentos/{departamentoId}`. Un `404` se traduce inmediatamente a `400` sin reintentos. Los errores de red, timeouts y respuestas `5xx` se reintentan con backoff exponencial. Si se agotan los intentos, el registro se rechaza con `503`; no se guarda un empleado pendiente de validación porque ese estado no forma parte del modelo del Reto 2.
 
 ### Ejecutar las pruebas automatizadas
 
@@ -373,9 +401,12 @@ La suite cubre:
 - Registro y consulta desde el controlador.
 - Asignación automática del estado `ACTIVO`.
 - Conflictos por `id`, `email` y `numeroEmpleado` duplicados.
+- Validación del departamento y política de reintentos.
+- Health check real contra PostgreSQL.
+- Traducción de indisponibilidad a `503`.
 - Consulta de empleados inexistentes.
 - Validaciones de todos los campos del modelo.
-- Manejo global de respuestas `400`, `404` y `409`.
+- Manejo global de respuestas `400`, `404` y `503`.
 - Carga del contexto de Spring Boot.
 
 Como la prueba de contexto inicializa JPA, primero debe estar disponible PostgreSQL:

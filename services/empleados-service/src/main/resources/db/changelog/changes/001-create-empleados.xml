@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+			https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+	<changeSet id="001-create-empleados" author="SebasGalle07">
+		<createTable tableName="empleados">
+			<column name="id" type="VARCHAR(255)">
+				<constraints nullable="false" primaryKey="true" primaryKeyName="pk_empleados"/>
+			</column>
+			<column name="nombre" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="apellido" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="email" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="numero_empleado" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="cargo" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="area" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="departamento_id" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="fecha_ingreso" type="DATE">
+				<constraints nullable="false"/>
+			</column>
+			<column name="estado" type="VARCHAR(255)" defaultValue="ACTIVO">
+				<constraints nullable="false"/>
+			</column>
+		</createTable>
+
+		<addUniqueConstraint
+				tableName="empleados"
+				columnNames="email"
+				constraintName="uk_empleados_email"/>
+		<addUniqueConstraint
+				tableName="empleados"
+				columnNames="numero_empleado"
+				constraintName="uk_empleados_numero_empleado"/>
+
+		<rollback>
+			<dropTable tableName="empleados"/>
+		</rollback>
+	</changeSet>
+</databaseChangeLog>

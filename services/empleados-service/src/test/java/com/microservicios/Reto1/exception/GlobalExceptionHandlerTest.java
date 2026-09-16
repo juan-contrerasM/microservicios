@@ -37,11 +37,21 @@ class GlobalExceptionHandlerTest {
 	}
 
 	@Test
-	void handleConflictDevuelve409ConElMensaje() {
+	void handleConflictDevuelve400ConElMensaje() {
 		var respuesta = handler.handleConflict(new ConflictException("Ya existe un empleado con ese id"));
 
-		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 		assertThat(respuesta.getBody().getMensaje()).isEqualTo("Ya existe un empleado con ese id");
+	}
+
+	@Test
+	void handleServiceUnavailableDevuelve503ConElMensaje() {
+		var respuesta = handler.handleServiceUnavailable(
+				new ServiceUnavailableException("El servicio de departamentos no está disponible"));
+
+		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+		assertThat(respuesta.getBody().getMensaje())
+				.isEqualTo("El servicio de departamentos no está disponible");
 	}
 
 	@Test

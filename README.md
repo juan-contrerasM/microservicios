@@ -59,5 +59,6 @@ cada servicio afectado:
 Ver [`STATUS.md`](STATUS.md) para el detalle etapa por etapa. Al momento de este commit:
 reorganización a monorepo completa; `departamentos-service` (Go) scaffolded con sus endpoints,
 migraciones y Dockerfile; `docker-compose.yml` raíz conecta ambos servicios y sus bases de datos
-con health checks. La evolución de `empleados-service` (Liquibase, cliente HTTP con
-timeout/retry hacia departamentos, OpenAPI) sigue pendiente.
+con health checks. La evolución de `empleados-service` está completa: Liquibase, restricciones
+únicas, validación HTTP de departamentos con timeout/reintentos y health check real. Sigue
+pendiente la Etapa 4 (OpenAPI en ambos servicios) y el cierre documental de la Etapa 5.

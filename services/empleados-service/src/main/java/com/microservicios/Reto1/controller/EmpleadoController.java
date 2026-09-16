@@ -1,5 +1,6 @@
 package com.microservicios.Reto1.controller;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,13 +31,13 @@ public class EmpleadoController {
 	 * Registra un nuevo empleado en estado ACTIVO.
 	 *
 	 * @param empleado datos del empleado a registrar
-	 * @return el empleado registrado con código 200, o 409 si el id,
+	 * @return el empleado registrado con código 201, o 400 si el id,
 	 *         el email o el numeroEmpleado ya existen
 	 */
 	@PostMapping
 	public ResponseEntity<Empleado> registrar(@Valid @RequestBody Empleado empleado) {
 		Empleado registrado = empleadoService.registrar(empleado);
-		return ResponseEntity.ok(registrado);
+		return ResponseEntity.status(HttpStatus.CREATED).body(registrado);
 	}
 
 	/**

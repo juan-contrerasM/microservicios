@@ -44,13 +44,13 @@ class EmpleadoControllerTest {
 	}
 
 	@Test
-	void registrarDevuelve200ConElEmpleadoCreado() {
+	void registrarDevuelve201ConElEmpleadoCreado() {
 		Empleado empleado = nuevoEmpleado();
 		when(empleadoService.registrar(empleado)).thenReturn(empleado);
 
 		ResponseEntity<Empleado> respuesta = empleadoController.registrar(empleado);
 
-		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 		assertThat(respuesta.getBody()).isEqualTo(empleado);
 	}
 

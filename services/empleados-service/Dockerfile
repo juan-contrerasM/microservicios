@@ -12,7 +12,7 @@ RUN ./mvnw -q -DskipTests package
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-# curl: lo usa el healthcheck de docker-compose.yml raíz contra GET /empleados
+# curl: lo usa el healthcheck de docker-compose.yml raíz contra GET /health
 RUN apk add --no-cache curl
 
 COPY --from=build /app/target/*.jar app.jar

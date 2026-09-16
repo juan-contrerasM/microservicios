@@ -30,7 +30,12 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(ConflictException.class)
 	public ResponseEntity<ApiError> handleConflict(ConflictException ex) {
-		return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError(ex.getMessage()));
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiError(ex.getMessage()));
+	}
+
+	@ExceptionHandler(ServiceUnavailableException.class)
+	public ResponseEntity<ApiError> handleServiceUnavailable(ServiceUnavailableException ex) {
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ApiError(ex.getMessage()));
 	}
 
 	@ExceptionHandler(EmpleadoNoEncontradoException.class)
