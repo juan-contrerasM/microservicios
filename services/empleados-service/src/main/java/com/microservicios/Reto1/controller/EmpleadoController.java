@@ -9,9 +9,19 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.microservicios.Reto1.dto.ApiError;
+import com.microservicios.Reto1.dto.ApiValidationError;
 import com.microservicios.Reto1.model.Empleado;
 import com.microservicios.Reto1.service.EmpleadoService;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 /**
@@ -19,7 +29,10 @@ import jakarta.validation.Valid;
  */
 @RestController
 @RequestMapping("/empleados")
+@Tag(name = "Empleados", description = "Registro y consulta de empleados")
 public class EmpleadoController {
+
+	private static final String JSON = "application/json";
 
 	private final EmpleadoService empleadoService;
 
@@ -35,7 +48,54 @@ public class EmpleadoController {
 	 *         el email o el numeroEmpleado ya existen
 	 */
 	@PostMapping
-	public ResponseEntity<Empleado> registrar(@Valid @RequestBody Empleado empleado) {
+	@Operation(
+			summary = "Registrar empleado",
+			description = "Registra un empleado nuevo. El estado se fuerza a ACTIVO "
+					+ "aunque el cuerpo envíe otro valor. Antes de persistir valida que el "
+					+ "departamento exista en departamentos-service (timeout 3s, hasta 4 "
+					+ "intentos con backoff 1s→2s→4s).")
+	@ApiResponses({
+			@ApiResponse(responseCode = "201", description = "Empleado registrado",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
+			@ApiResponse(responseCode = "400",
+					description = "Campos inválidos, JSON mal formado, id/email/numeroEmpleado "
+							+ "duplicado, o departamento inexistente",
+					content = @Content(mediaType = JSON, schema = @Schema(oneOf = {
+							ApiError.class, ApiValidationError.class }),
+							examples = {
+									@ExampleObject(name = "duplicado",
+											value = "{\"mensaje\":\"Ya existe un empleado registrado con ese email\"}"),
+									@ExampleObject(name = "departamentoInexistente",
+											value = "{\"mensaje\":\"El departamento con id XX no existe\"}")
+							})),
+			@ApiResponse(responseCode = "503",
+					description = "departamentos-service no respondió tras agotar reintentos; no se persiste el empleado",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
+							examples = @ExampleObject(value = "{\"mensaje\":\"El servicio de departamentos no está disponible para validar el departamento\"}"))),
+			@ApiResponse(responseCode = "500", description = "Error interno",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
+	})
+	public ResponseEntity<Empleado> registrar(
+			@io.swagger.v3.oas.annotations.parameters.RequestBody(
+					required = true,
+					content = @Content(
+							mediaType = JSON,
+							schema = @Schema(implementation = Empleado.class),
+							examples = @ExampleObject(value = """
+									{
+									  "id": "E001",
+									  "nombre": "Juan",
+									  "apellido": "Pérez",
+									  "email": "juan.perez@empresa.com",
+									  "numeroEmpleado": "EMP-2026-001",
+									  "cargo": "Desarrollador Senior",
+									  "area": "Tecnología",
+									  "departamentoId": "IT",
+									  "fechaIngreso": "2026-02-10",
+									  "estado": "ACTIVO"
+									}
+									""")))
+			@Valid @RequestBody Empleado empleado) {
 		Empleado registrado = empleadoService.registrar(empleado);
 		return ResponseEntity.status(HttpStatus.CREATED).body(registrado);
 	}
@@ -47,7 +107,19 @@ public class EmpleadoController {
 	 * @return el empleado encontrado con código 200, o 404 si no existe
 	 */
 	@GetMapping("/{id}")
-	public ResponseEntity<Empleado> consultar(@PathVariable String id) {
+	@Operation(summary = "Consultar empleado por id")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Empleado encontrado",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
+			@ApiResponse(responseCode = "404", description = "No existe un empleado con ese id",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
+							examples = @ExampleObject(value = "{\"mensaje\":\"El empleado con id E999 no existe\"}"))),
+			@ApiResponse(responseCode = "500", description = "Error interno",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
+	})
+	public ResponseEntity<Empleado> consultar(
+			@Parameter(description = "Identificador del empleado", example = "E001", required = true)
+			@PathVariable String id) {
 		Empleado empleado = empleadoService.consultarPorId(id);
 		return ResponseEntity.ok(empleado);
 	}

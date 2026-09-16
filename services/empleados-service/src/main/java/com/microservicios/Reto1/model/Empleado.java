@@ -2,6 +2,7 @@ package com.microservicios.Reto1.model;
 
 import java.time.LocalDate;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -17,41 +18,52 @@ import jakarta.validation.constraints.NotNull;
  */
 @Entity
 @Table(name = "empleados")
+@Schema(description = "Empleado registrado en el sistema. El id lo envía el cliente; no se autogenera.")
 public class Empleado {
 
 	@Id
 	@NotBlank(message = "El id es obligatorio")
+	@Schema(description = "Identificador único", example = "E001")
 	private String id;
 
 	@NotBlank(message = "El nombre es obligatorio")
+	@Schema(description = "Nombre", example = "Juan")
 	private String nombre;
 
 	@NotBlank(message = "El apellido es obligatorio")
+	@Schema(description = "Apellido", example = "Pérez")
 	private String apellido;
 
 	@NotBlank(message = "El email es obligatorio")
 	@Email(message = "El email no tiene un formato válido")
 	@Column(unique = true, nullable = false)
+	@Schema(description = "Correo único", example = "juan.perez@empresa.com")
 	private String email;
 
 	@NotBlank(message = "El numeroEmpleado es obligatorio")
 	@Column(unique = true, nullable = false)
+	@Schema(description = "Código corporativo único", example = "EMP-2026-001")
 	private String numeroEmpleado;
 
 	@NotBlank(message = "El cargo es obligatorio")
+	@Schema(description = "Cargo actual", example = "Desarrollador Senior")
 	private String cargo;
 
 	@NotBlank(message = "El area es obligatoria")
+	@Schema(description = "Área a la que pertenece", example = "Tecnología")
 	private String area;
 
 	@NotBlank(message = "El departamentoId es obligatorio")
+	@Schema(description = "Identificador del departamento asociado", example = "IT")
 	private String departamentoId;
 
 	@NotNull(message = "La fechaIngreso es obligatoria")
+	@Schema(description = "Fecha de ingreso (ISO AAAA-MM-DD)", example = "2026-02-10")
 	private LocalDate fechaIngreso;
 
 	@NotNull(message = "El estado es obligatorio")
 	@Enumerated(EnumType.STRING)
+	@Schema(description = "En el registro el servicio lo fuerza a ACTIVO", example = "ACTIVO")
 	private EstadoEmpleado estado = EstadoEmpleado.ACTIVO;
 
 	public Empleado() {

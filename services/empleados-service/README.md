@@ -52,6 +52,18 @@ Los errores se responden en JSON, por ejemplo:
 
 Sin incluir el valor del email en el mensaje.
 
+## OpenAPI / Swagger (Etapa 4)
+
+Springdoc OpenAPI documenta los endpoints con el contrato de la Etapa 3: `POST /empleados`
+(`201` / `400` / `503`), `GET /empleados/{id}` (`200` / `404`) y `GET /health` (`200` / `503`).
+
+| Recurso | URL (con Compose en la raíz) |
+|---|---|
+| Swagger UI | http://localhost:8080/swagger-ui.html |
+| Spec JSON | http://localhost:8080/v3/api-docs |
+
+En el monorepo el arranque correcto es el `docker-compose.yml` de la **raíz**, no el de esta carpeta (ese quedó del Reto 1).
+
 ## Ejecutar con Docker Compose (recomendado)
 
 Levanta la API y PostgreSQL juntos:

@@ -1,0 +1,174 @@
+openapi: 3.0.3
+info:
+  title: departamentos-service
+  version: 1.0.0
+  description: |
+    API REST del servicio de departamentos (Go + chi + MySQL).
+    Cada departamento se identifica por un `id` enviado por el cliente
+    (PRIMARY KEY en el esquema; un duplicado responde 400).
+servers:
+  - url: http://localhost:8081
+    description: Docker Compose (puerto publicado al host)
+tags:
+  - name: Departamentos
+    description: Registro y consulta de departamentos
+  - name: Salud
+    description: Health check real contra MySQL
+paths:
+  /departamentos:
+    post:
+      tags: [Departamentos]
+      summary: Registrar departamento
+      description: Crea un departamento. `id` y `nombre` son obligatorios.
+      operationId: crearDepartamento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Departamento"
+            examples:
+              it:
+                value:
+                  id: IT
+                  nombre: Tecnología
+                  descripcion: Departamento de TI
+      responses:
+        "201":
+          description: Departamento creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Departamento"
+        "400":
+          description: Datos inválidos o id duplicado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                duplicado:
+                  value:
+                    mensaje: ya existe un departamento registrado con ese id
+                invalido:
+                  value:
+                    mensaje: el departamento requiere al menos 'id' y 'nombre'
+        "500":
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      tags: [Departamentos]
+      summary: Listar departamentos
+      description: Devuelve todos los departamentos registrados (arreglo vacío si no hay ninguno).
+      operationId: listarDepartamentos
+      responses:
+        "200":
+          description: Listado
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Departamento"
+        "500":
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /departamentos/{id}:
+    get:
+      tags: [Departamentos]
+      summary: Consultar departamento por id
+      operationId: obtenerDepartamento
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador del departamento
+          schema:
+            type: string
+          example: IT
+      responses:
+        "200":
+          description: Departamento encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Departamento"
+        "404":
+          description: No existe un departamento con ese id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                mensaje: el departamento con id XX no existe
+        "500":
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /health:
+    get:
+      tags: [Salud]
+      summary: Health check
+      description: Hace PING a MySQL. No basta con que el proceso HTTP responda.
+      operationId: health
+      responses:
+        "200":
+          description: El servicio y MySQL están disponibles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthUp"
+        "503":
+          description: No hay conexión a MySQL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthDown"
+components:
+  schemas:
+    Departamento:
+      type: object
+      required: [id, nombre]
+      properties:
+        id:
+          type: string
+          description: Identificador único (PRIMARY KEY)
+          example: IT
+        nombre:
+          type: string
+          description: Nombre del departamento
+          example: Tecnología
+        descripcion:
+          type: string
+          description: Descripción libre, opcional
+          example: Departamento de TI
+    Error:
+      type: object
+      required: [mensaje]
+      properties:
+        mensaje:
+          type: string
+          example: ya existe un departamento registrado con ese id
+    HealthUp:
+      type: object
+      properties:
+        status:
+          type: string
+          example: UP
+    HealthDown:
+      type: object
+      properties:
+        status:
+          type: string
+          example: DOWN
+        error:
+          type: string
+          example: no se pudo conectar a la base de datos

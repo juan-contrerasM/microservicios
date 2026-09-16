@@ -31,6 +31,29 @@ Modelo:
 
 Los errores siguen el mismo formato que `empleados-service`: `{"mensaje": "..."}`.
 
+## OpenAPI / Swagger
+
+La especificación es un `openapi.yaml` estático embebido en el binario (sin codegen de `swaggo`). Cada endpoint documenta descripción, códigos `200`/`201`/`400`/`404`/`500` y esquemas de entrada/salida.
+
+| Recurso | URL (con Compose en la raíz) |
+|---|---|
+| Swagger UI | http://localhost:8081/swagger/index.html |
+| Spec YAML | http://localhost:8081/openapi.yaml |
+
+`/swagger` y `/swagger/` redirigen a la UI.
+
+## Qué se implementó en la Etapa 1
+
+Scaffold del segundo microservicio, en un lenguaje distinto a Java:
+
+- Módulo Go con `cmd/api` + `internal/{httpapi,department,db,config}`.
+- Acceso a MySQL con `database/sql` (sin ORM).
+- Esquema versionado con `golang-migrate` (`db/migrations/0001_*.up.sql` / `.down.sql`), aplicado al arrancar.
+- Endpoints de negocio: `POST /departamentos` (201 / 400), `GET /departamentos/{id}` (200 / 404), `GET /departamentos` (200).
+- `GET /health` real: hace `PING` a MySQL (`200 UP` / `503 DOWN`).
+- Dockerfile multi-stage (build → imagen Alpine con el binario).
+- Unicidad de `id` garantizada por `PRIMARY KEY`; el error 1062 de MySQL se traduce a `400`.
+
 ## Variables de entorno
 
 | Variable | Default | Descripción |

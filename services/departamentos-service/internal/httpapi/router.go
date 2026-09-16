@@ -32,6 +32,12 @@ func NewRouter(db *sql.DB) http.Handler {
 	// hasta que la conexión a MySQL responde.
 	r.Get("/health", healthHandler.Check)
 
+	// OpenAPI / Swagger UI (Etapa 4): spec estática embebida, sin codegen.
+	r.Get("/openapi.yaml", serveOpenAPISpec)
+	r.Get("/swagger", redirectSwagger)
+	r.Get("/swagger/", redirectSwagger)
+	r.Get("/swagger/index.html", serveSwaggerUI)
+
 	// Endpoints de negocio del Reto 2 (§3 del enunciado).
 	r.Route("/departamentos", func(r chi.Router) {
 		r.Post("/", deptHandler.Create)     // POST   /departamentos      -> registrar
