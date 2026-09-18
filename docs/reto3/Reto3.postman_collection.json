@@ -1,0 +1,562 @@
+{
+	"info": {
+		"name": "Reto 3 - API Gateway + Circuit Breaker",
+		"description": "Colección del sistema (Reto 3). URL base única: http://localhost:8080 (api-gateway). Importar este archivo en Postman.\n\nCómo probar Etapas 1 y 2 (a mano, Docker Desktop + Postman):\n1. docker compose up --build  (o Start en Docker Desktop).\n2. Carpetas 0–3 con todos los contenedores UP: health, enrutamiento, contratos de departamentos y empleados.\n3. Carpeta 1: las peticiones 'acceso directo' DEBEN fallar (Could not get response / conexión rechazada). Eso es la evidencia del criterio 2.\n4. Carpeta 4: en Docker Desktop STOP departamentos-service, envía esas peticiones, luego START de nuevo. Después STOP empleados-service y las de empleados, luego START.\n\nCarpetas 5 y 6 son Etapa 3 (Circuit Breaker): NO correrlas todavía.\n\nNo uses localhost:8081 ni :8082 como URL de negocio.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{ "key": "gateway_url", "value": "http://localhost:8080", "type": "string" },
+		{ "key": "direct_empleados_url", "value": "http://localhost:8081", "type": "string" },
+		{ "key": "direct_departamentos_url", "value": "http://localhost:8082", "type": "string" }
+	],
+	"item": [
+		{
+			"name": "0. Health Gateway",
+			"item": [
+				{
+					"name": "Health del Gateway (UP)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/health" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('JSON, no HTML de framework', () => pm.response.to.have.header('Content-Type', /json/i));",
+						"pm.test('status UP', () => pm.expect(pm.response.json().status).to.eql('UP'));",
+						"pm.test('identifica al Gateway', () => pm.expect(pm.response.json().service).to.eql('api-gateway'));"
+					] } }]
+				}
+			]
+		},
+		{
+			"name": "1. Punto de entrada unico",
+			"description": "Criterio 2. Con el compose arriba: las dos primeras peticiones (por el Gateway) deben responder 200. Las dos de 'acceso directo' DEBEN fallar en Postman (Could not get response / ECONNREFUSED) porque :8081 y :8082 ya no se publican. Esa pantalla de error ES la evidencia; no es un bug de la colección.",
+			"item": [
+				{
+					"name": "Listar empleados por el Gateway (200)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('Cuerpo JSON array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+					] } }]
+				},
+				{
+					"name": "Listar departamentos por el Gateway (200)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/departamentos" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('Cuerpo JSON array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+					] } }]
+				},
+				{
+					"name": "Acceso directo empleados :8081 (debe fallar TCP)",
+					"request": { "method": "GET", "header": [], "url": "{{direct_empleados_url}}/empleados" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('No deberia haber respuesta HTTP (puerto no publicado)', function () {",
+						"    pm.expect.fail('Si este test corre, el puerto 8081 esta publicado. Los servicios de negocio deben usar expose:, no ports:.');",
+						"});"
+					] } }]
+				},
+				{
+					"name": "Acceso directo departamentos :8082 (debe fallar TCP)",
+					"request": { "method": "GET", "header": [], "url": "{{direct_departamentos_url}}/departamentos" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('No deberia haber respuesta HTTP (puerto no publicado)', function () {",
+						"    pm.expect.fail('Si este test corre, el puerto 8082 esta publicado. Los servicios de negocio deben usar expose:, no ports:.');",
+						"});"
+					] } }]
+				}
+			]
+		},
+		{
+			"name": "2. Departamentos via Gateway",
+			"description": "Mismos contratos del Reto 2, ahora por http://localhost:8080. El Gateway debe reenviar cuerpo, cabeceras y codigo de estado sin alterarlos (201, 200, 400, 404).",
+			"item": [
+				{
+					"name": "Crear departamento IT - exito (201)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/departamentos",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"IT\",\n  \"nombre\": \"Tecnología\",\n  \"descripcion\": \"Departamento de TI\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 201 (propagado, no reescrito por el Gateway)', () => pm.response.to.have.status(201));",
+						"pm.test('Devuelve el departamento creado', () => pm.expect(pm.response.json().id).to.eql('IT'));"
+					] } }]
+				},
+				{
+					"name": "Consultar departamento IT (200)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/departamentos/IT" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('nombre correcto', () => pm.expect(pm.response.json().nombre).to.eql('Tecnología'));"
+					] } }]
+				},
+				{
+					"name": "Listar departamentos (200)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/departamentos" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('incluye IT', () => pm.expect(pm.response.json().map(d => d.id)).to.include('IT'));"
+					] } }]
+				},
+				{
+					"name": "Crear departamento IT duplicado (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/departamentos",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"IT\",\n  \"nombre\": \"Otro nombre\",\n  \"descripcion\": \"x\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400 (propagado)', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de duplicado', () => pm.expect(pm.response.json().mensaje).to.eql('ya existe un departamento registrado con ese id'));"
+					] } }]
+				},
+				{
+					"name": "Consultar departamento inexistente (404)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/departamentos/NO-EXISTE" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 404 (propagado)', () => pm.response.to.have.status(404));",
+						"pm.test('Mensaje descriptivo', () => pm.expect(pm.response.json().mensaje).to.eql('el departamento con id NO-EXISTE no existe'));"
+					] } }]
+				}
+			]
+		},
+		{
+			"name": "3. Empleados via Gateway",
+			"description": "Contratos del Reto 2 por el Gateway. Corre la carpeta 2 antes (crea el departamento IT). Departamentos UP: las altas quedan ACTIVO. Si un POST /empleados da 503, departamentos-service está caído o aún no arrancó.",
+			"item": [
+				{
+					"name": "Registrar empleado E001 - exito (201 ACTIVO)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E001\",\n  \"nombre\": \"Juan\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"juan.perez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-001\",\n  \"cargo\": \"Desarrollador Senior\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 201', () => pm.response.to.have.status(201));",
+						"pm.test('estado ACTIVO (circuito CLOSED, depto existe)', () => pm.expect(pm.response.json().estado).to.eql('ACTIVO'));"
+					] } }]
+				},
+				{
+					"name": "Consultar empleado E001 (200, 10 campos)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados/E001" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('conserva los 10 campos', () => {",
+						"    const b = pm.response.json();",
+						"    ['id','nombre','apellido','email','numeroEmpleado','cargo','area','departamentoId','fechaIngreso','estado'].forEach(f => pm.expect(b).to.have.property(f));",
+						"});"
+					] } }]
+				},
+				{
+					"name": "Listar empleados (200)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('incluye E001', () => pm.expect(pm.response.json().map(e => e.id)).to.include('E001'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - id duplicado (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E001\",\n  \"nombre\": \"Otro\",\n  \"apellido\": \"Empleado\",\n  \"email\": \"otro.empleado@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-999\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de id duplicado', () => pm.expect(pm.response.json().mensaje).to.eql('Ya existe un empleado con ese id'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - email duplicado (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E002\",\n  \"nombre\": \"Otro\",\n  \"apellido\": \"Empleado\",\n  \"email\": \"juan.perez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-002\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de email duplicado', () => pm.expect(pm.response.json().mensaje).to.eql('Ya existe un empleado registrado con ese email'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - numeroEmpleado duplicado (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E003\",\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Gómez\",\n  \"email\": \"ana.gomez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-001\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-11\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de numeroEmpleado duplicado', () => pm.expect(pm.response.json().mensaje).to.eql('Ya existe un empleado registrado con ese numeroEmpleado'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - departamento inexistente (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E004\",\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Gómez\",\n  \"email\": \"ana2@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-004\",\n  \"cargo\": \"QA\",\n  \"area\": \"Ventas\",\n  \"departamentoId\": \"NO-EXISTE\",\n  \"fechaIngreso\": \"2026-02-11\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400 (consulta REAL a departamentos; circuito CLOSED)', () => pm.response.to.have.status(400));",
+						"pm.test('Mensaje de departamento inexistente', () => pm.expect(pm.response.json().mensaje).to.eql('El departamento con id NO-EXISTE no existe'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - campo obligatorio faltante (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E006\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"otro.mas@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-006\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Errores de validación con nombre', () => pm.expect(pm.response.json().errores.nombre).to.eql('El nombre es obligatorio'));"
+					] } }]
+				},
+				{
+					"name": "Registrar empleado - email con formato invalido (400)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E007\",\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Gómez\",\n  \"email\": \"no-es-un-email\",\n  \"numeroEmpleado\": \"EMP-2026-007\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400', () => pm.response.to.have.status(400));",
+						"pm.test('Errores de validación con email', () => pm.expect(pm.response.json().errores.email).to.eql('El email no tiene un formato válido'));"
+					] } }]
+				},
+				{
+					"name": "Consultar empleado inexistente (404)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados/E999" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 404', () => pm.response.to.have.status(404));",
+						"pm.test('Mensaje de empleado no encontrado', () => pm.expect(pm.response.json().mensaje).to.eql('El empleado con id E999 no existe'));"
+					] } }]
+				}
+			]
+		},
+		{
+			"name": "4. Gateway 503 (manual, Etapas 1-2)",
+			"description": "Criterio 1. En Docker Desktop (o `docker compose stop <servicio>`):\n\nA) STOP departamentos-service → envía las 3 peticiones de departamentos → START departamentos-service.\nB) STOP empleados-service → envía las 2 de empleados → START empleados-service.\n\nEl Gateway NO se apaga. GET /health debe seguir 200. El 503 es JSON del Gateway (mensaje + servicio), no HTML.",
+			"item": [
+				{
+					"name": "A1 STOP departamentos — GET /departamentos (503 Gateway)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/departamentos" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 503', () => pm.response.to.have.status(503));",
+						"pm.test('Content-Type JSON', () => pm.response.to.have.header('Content-Type', /json/i));",
+						"pm.test('mensaje descriptivo', () => {",
+						"    const b = pm.response.json();",
+						"    pm.expect(b.mensaje).to.be.a('string').and.to.not.eql('');",
+						"    pm.expect(b.mensaje.toLowerCase()).to.include('departamentos');",
+						"});",
+						"pm.test('identifica el servicio caido', () => pm.expect(pm.response.json().servicio).to.eql('departamentos-service'));",
+						"pm.test('no es HTML de framework', () => pm.expect(pm.response.text()).to.not.match(/<html/i));"
+					] } }]
+				},
+				{
+					"name": "A2 STOP departamentos — GET /empleados sigue (200)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200 (listar no necesita departamentos)', () => pm.response.to.have.status(200));"
+					] } }]
+				},
+				{
+					"name": "A3 STOP departamentos — Health Gateway sigue UP",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/health" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('Gateway UP aunque departamentos este caido', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+					] } }]
+				},
+				{
+					"name": "B1 STOP empleados — GET /empleados (503 Gateway)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 503', () => pm.response.to.have.status(503));",
+						"pm.test('Content-Type JSON', () => pm.response.to.have.header('Content-Type', /json/i));",
+						"pm.test('identifica el servicio caido', () => pm.expect(pm.response.json().servicio).to.eql('empleados-service'));",
+						"pm.test('mensaje descriptivo', () => pm.expect(pm.response.json().mensaje).to.eql('El servicio de empleados no está disponible'));",
+						"pm.test('no es HTML de framework', () => pm.expect(pm.response.text()).to.not.match(/<html/i));"
+					] } }]
+				},
+				{
+					"name": "B2 STOP empleados — GET /departamentos sigue (200)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/departamentos" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200 (departamentos no depende de empleados)', () => pm.response.to.have.status(200));"
+					] } }]
+				}
+			]
+		},
+		{
+			"name": "5. NO CORRER AUN — Circuit Breaker CLOSED a OPEN (Etapa 3)",
+			"description": "ETAPA 3. No implementar / no correr todavía. Cuando exista Resilience4j: STOP departamentos-service y observar el salto de latencia. Hoy POST /empleados con departamentos caído sigue siendo 503 lento del Reto 2 (reintentos), no PENDIENTE_VALIDACION.",
+			"item": [
+				{
+					"name": "CB-1 CLOSED lento (E0CB1)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E0CB1\",\n  \"nombre\": \"Test\",\n  \"apellido\": \"Breaker\",\n  \"email\": \"cb1@empresa.com\",\n  \"numeroEmpleado\": \"EMP-CB-001\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"console.log('CB-1 responseTime(ms)=', pm.response.responseTime);",
+						"pm.test('Status 201 fallback', () => pm.response.to.have.status(201));",
+						"pm.test('estado PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.eql('PENDIENTE_VALIDACION'));",
+						"pm.test('tarda por timeout+reintentos (CLOSED)', () => pm.expect(pm.response.responseTime).to.be.above(3000));"
+					] } }]
+				},
+				{
+					"name": "CB-2 CLOSED lento (E0CB2)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E0CB2\",\n  \"nombre\": \"Test\",\n  \"apellido\": \"Breaker\",\n  \"email\": \"cb2@empresa.com\",\n  \"numeroEmpleado\": \"EMP-CB-002\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"console.log('CB-2 responseTime(ms)=', pm.response.responseTime);",
+						"pm.test('Status 201 fallback', () => pm.response.to.have.status(201));",
+						"pm.test('estado PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.eql('PENDIENTE_VALIDACION'));",
+						"pm.test('tarda por timeout+reintentos (CLOSED)', () => pm.expect(pm.response.responseTime).to.be.above(3000));"
+					] } }]
+				},
+				{
+					"name": "CB-3 CLOSED lento — abre el circuito (E0CB3)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E0CB3\",\n  \"nombre\": \"Test\",\n  \"apellido\": \"Breaker\",\n  \"email\": \"cb3@empresa.com\",\n  \"numeroEmpleado\": \"EMP-CB-003\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"console.log('CB-3 responseTime(ms)=', pm.response.responseTime);",
+						"pm.test('Status 201 fallback', () => pm.response.to.have.status(201));",
+						"pm.test('estado PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.eql('PENDIENTE_VALIDACION'));",
+						"pm.test('tarda por timeout+reintentos (ultimo fallo en CLOSED)', () => pm.expect(pm.response.responseTime).to.be.above(3000));"
+					] } }]
+				},
+				{
+					"name": "CB-4 OPEN instantaneo (E0CB4)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E0CB4\",\n  \"nombre\": \"Test\",\n  \"apellido\": \"Breaker\",\n  \"email\": \"cb4@empresa.com\",\n  \"numeroEmpleado\": \"EMP-CB-004\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"console.log('CB-4 responseTime(ms)=', pm.response.responseTime);",
+						"pm.test('Status 201 fallback', () => pm.response.to.have.status(201));",
+						"pm.test('estado PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.eql('PENDIENTE_VALIDACION'));",
+						"pm.test('respuesta inmediata (OPEN, sin red)', () => pm.expect(pm.response.responseTime).to.be.below(500));"
+					] } }]
+				},
+				{
+					"name": "CB-5 OPEN instantaneo (E0CB5)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E0CB5\",\n  \"nombre\": \"Test\",\n  \"apellido\": \"Breaker\",\n  \"email\": \"cb5@empresa.com\",\n  \"numeroEmpleado\": \"EMP-CB-005\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"console.log('CB-5 responseTime(ms)=', pm.response.responseTime);",
+						"pm.test('Status 201 fallback', () => pm.response.to.have.status(201));",
+						"pm.test('estado PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.eql('PENDIENTE_VALIDACION'));",
+						"pm.test('respuesta inmediata (OPEN, sin red)', () => pm.expect(pm.response.responseTime).to.be.below(500));"
+					] } }]
+				},
+				{
+					"name": "CB-6 OPEN instantaneo (E0CB6)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E0CB6\",\n  \"nombre\": \"Test\",\n  \"apellido\": \"Breaker\",\n  \"email\": \"cb6@empresa.com\",\n  \"numeroEmpleado\": \"EMP-CB-006\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"console.log('CB-6 responseTime(ms)=', pm.response.responseTime);",
+						"pm.test('Status 201 fallback', () => pm.response.to.have.status(201));",
+						"pm.test('estado PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.eql('PENDIENTE_VALIDACION'));",
+						"pm.test('respuesta inmediata (OPEN, sin red)', () => pm.expect(pm.response.responseTime).to.be.below(500));"
+					] } }]
+				},
+				{
+					"name": "CB-7 OPEN instantaneo (E0CB7)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E0CB7\",\n  \"nombre\": \"Test\",\n  \"apellido\": \"Breaker\",\n  \"email\": \"cb7@empresa.com\",\n  \"numeroEmpleado\": \"EMP-CB-007\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"console.log('CB-7 responseTime(ms)=', pm.response.responseTime);",
+						"pm.test('Status 201 fallback', () => pm.response.to.have.status(201));",
+						"pm.test('estado PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.eql('PENDIENTE_VALIDACION'));",
+						"pm.test('respuesta inmediata (OPEN, sin red)', () => pm.expect(pm.response.responseTime).to.be.below(500));"
+					] } }]
+				},
+				{
+					"name": "CB-8 OPEN instantaneo (E0CB8)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E0CB8\",\n  \"nombre\": \"Test\",\n  \"apellido\": \"Breaker\",\n  \"email\": \"cb8@empresa.com\",\n  \"numeroEmpleado\": \"EMP-CB-008\",\n  \"cargo\": \"QA\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"console.log('CB-8 responseTime(ms)=', pm.response.responseTime);",
+						"pm.test('Status 201 fallback', () => pm.response.to.have.status(201));",
+						"pm.test('estado PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.eql('PENDIENTE_VALIDACION'));",
+						"pm.test('respuesta inmediata (OPEN, sin red)', () => pm.expect(pm.response.responseTime).to.be.below(500));"
+					] } }]
+				},
+				{
+					"name": "Circuito observable en OPEN",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados/circuit-breaker" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('estado OPEN', () => pm.expect(pm.response.json().state).to.eql('OPEN'));"
+					] } }]
+				},
+				{
+					"name": "Confirmar que E0CB4 quedo persistido pendiente (200)",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados/E0CB4" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200 (el fallback persistio)', () => pm.response.to.have.status(200));",
+						"pm.test('sigue PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.eql('PENDIENTE_VALIDACION'));"
+					] } }]
+				}
+			]
+		},
+		{
+			"name": "6. NO CORRER AUN — Circuit Breaker recuperacion (Etapa 3)",
+			"description": "ETAPA 3. No correr todavía. Cuando exista el Circuit Breaker: START departamentos-service, esperar 35 s, un alta con departamentoId NO-EXISTE debe dar 400 (consulta real), sin reiniciar empleados ni el Gateway.",
+			"item": [
+				{
+					"name": "Recuperado - departamento inexistente debe ser 400 (E100)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E100\",\n  \"nombre\": \"Recuperado\",\n  \"apellido\": \"Prueba\",\n  \"email\": \"recuperado@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-100\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"NO-EXISTE\",\n  \"fechaIngreso\": \"2026-03-02\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 400 (consulta real a departamentos; NO es fallback)', () => pm.response.to.have.status(400));",
+						"pm.test('no quedo PENDIENTE_VALIDACION', () => pm.expect(pm.response.json().estado).to.not.eql('PENDIENTE_VALIDACION'));",
+						"pm.test('Mensaje de departamento inexistente', () => pm.expect(pm.response.json().mensaje).to.eql('El departamento con id NO-EXISTE no existe'));"
+					] } }]
+				},
+				{
+					"name": "Alta sana tras recuperar (E101 ACTIVO)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "{{gateway_url}}/empleados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"id\": \"E101\",\n  \"nombre\": \"Recuperado\",\n  \"apellido\": \"Ok\",\n  \"email\": \"recuperado.ok@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-101\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-02\"\n}",
+							"options": { "raw": { "language": "json" } }
+						}
+					},
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 201', () => pm.response.to.have.status(201));",
+						"pm.test('estado ACTIVO (circuito cerrado de nuevo)', () => pm.expect(pm.response.json().estado).to.eql('ACTIVO'));"
+					] } }]
+				},
+				{
+					"name": "Circuito observable de nuevo CLOSED",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados/circuit-breaker" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('estado CLOSED tras recuperacion, sin reiniciar', () => pm.expect(pm.response.json().state).to.eql('CLOSED'));"
+					] } }]
+				}
+			]
+		}
+	]
+}

@@ -4,16 +4,23 @@ Monorepo de microservicios del curso. Un módulo por servicio bajo `services/`, 
 propio lenguaje, base de datos y Dockerfile, orquestados desde un único `docker-compose.yml` en
 la raíz.
 
-> Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo),
-> [`docs/PLAN-RETO2.md`](docs/PLAN-RETO2.md) (plan en etapas) y [`STATUS.md`](STATUS.md)
-> (qué está hecho y qué falta ahora mismo — este proyecto lo hacemos entre varias personas).
+> Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo).
+> Reto 3 (activo): [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md) y
+> [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md).
+> Reto 2 (cerrado): [`docs/reto2/PLAN-RETO2.md`](docs/reto2/PLAN-RETO2.md) y
+> [`docs/reto2/STATUS.md`](docs/reto2/STATUS.md).
 
 ## Servicios
 
 | Servicio | Lenguaje | Motor de BD | Puerto host | Carpeta |
 |---|---|---|---|---|
-| `empleados-service` | Java 21 / Spring Boot | PostgreSQL 16 | `8080` | [`services/empleados-service`](services/empleados-service) |
-| `departamentos-service` | Go | MySQL 8.4 | `8081` | [`services/departamentos-service`](services/departamentos-service) |
+| `api-gateway` | Node.js 22 / Express | *(ninguna)* | **`8080` (único)** | [`services/api-gateway`](services/api-gateway) |
+| `empleados-service` | Java 21 / Spring Boot | PostgreSQL 16 | *no publicado* (`expose: 8080`) | [`services/empleados-service`](services/empleados-service) |
+| `departamentos-service` | Go | MySQL 8.4 | *no publicado* (`expose: 8081`) | [`services/departamentos-service`](services/departamentos-service) |
+
+URL base del sistema: **`http://localhost:8080`**. Todo el tráfico público pasa por el Gateway
+(`/empleados`, `/departamentos`, `/health`). `localhost:8081` y `:8082` deben rechazar la
+conexión. `api-gateway` es el tercer lenguaje del monorepo (no Spring Cloud Gateway).
 
 ## Arranque desde cero
 
@@ -41,39 +48,63 @@ reproducir el esquema desde cero):
 docker compose down -v
 ```
 
-## Documentación OpenAPI / Swagger (Etapa 4)
+## Documentación OpenAPI / Swagger
 
-Con el compose arriba, cada servicio expone su propia UI:
+Tras la Etapa 2, Swagger de cada servicio **no** es alcanzable desde el host (ya no hay
+`ports:` en empleados/departamentos). El contrato público se prueba con Postman contra el
+Gateway. Las UIs internas siguen existiendo dentro de la red Docker (`/swagger-ui.html` en
+empleados, `/swagger/index.html` en departamentos).
 
-| Servicio | Swagger UI | Spec |
-|---|---|---|
-| `empleados-service` | http://localhost:8080/swagger-ui.html | http://localhost:8080/v3/api-docs |
-| `departamentos-service` | http://localhost:8081/swagger/index.html | http://localhost:8081/openapi.yaml |
+## Colección de Postman (Reto 3)
 
-Java usa **Springdoc** (anotaciones sobre los controllers). Go sirve un **`openapi.yaml` estático** embebido en el binario, sin codegen.
+Importar [`docs/reto3/Reto3.postman_collection.json`](docs/reto3/Reto3.postman_collection.json).
+Variable `gateway_url` = `http://localhost:8080`.
 
-## Colección de Postman
+Con el compose arriba, en Postman:
 
-[`Reto2.postman_collection.json`](Reto2.postman_collection.json), en la raíz, cubre los dos
-servicios. Con el sistema levantado (`docker compose up --build`):
+1. Carpetas **0–3** (sistema sano): health del Gateway, enrutamiento, departamentos, empleados.
+2. Carpeta **1**: las peticiones de acceso directo a `:8081`/`:8082` **deben fallar** (conexión
+   rechazada). Esa pantalla de error es la evidencia del punto de entrada único.
+3. Carpeta **4**: en Docker Desktop, **Stop** `departamentos-service` o `empleados-service` y
+   envía las peticiones A o B. El Gateway sigue UP y responde `503` JSON. Luego **Start** otra
+   vez.
 
-```bash
-npx newman run Reto2.postman_collection.json --folder "0. Health" --folder "1. Departamentos" --folder "2. Empleados"
-```
+Las carpetas 5 y 6 son Circuit Breaker (Etapa 3): no correrlas todavía.
 
-La carpeta **"3. Resiliencia (manual)"** necesita un paso manual antes de correrla (`docker compose
-stop departamentos-service`), porque prueba justamente qué pasa cuando esa dependencia no
-responde — no tiene sentido automatizarla junto con el resto sin apagar el servicio primero:
+La colección de Reto 2 (`docs/reto2/Reto2.postman_collection.json`) apunta a dos puertos y
+quedó obsoleta para el tráfico público.
 
-```bash
-docker compose stop departamentos-service
-npx newman run Reto2.postman_collection.json --folder "3. Resiliencia (manual)"
-docker compose start departamentos-service
-```
+## Reto 3 — avance
 
-## Qué se implementó en las etapas 1 y 2
+Plan: [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md). Avance:
+[`docs/reto3/STATUS.md`](docs/reto3/STATUS.md). Colección:
+[`docs/reto3/Reto3.postman_collection.json`](docs/reto3/Reto3.postman_collection.json).
 
-Detalle del plan: [`docs/PLAN-RETO2.md`](docs/PLAN-RETO2.md). Avance real: [`STATUS.md`](STATUS.md).
+### Etapa 1 — `api-gateway` (Node.js)
+
+Tercer microservicio, en un lenguaje distinto a Java y Go:
+
+- Express + `http-proxy-middleware`. Enruta `/empleados/*` y `/departamentos/*` **sin** strip
+  de path; propaga cuerpo, query, cabeceras y código de estado.
+- `GET /health` propio (`200` `{ "status": "UP", "service": "api-gateway" }`), independiente
+  de los backends.
+- Si el destino no responde: `503` JSON descriptivo (`mensaje` + `servicio`), no HTML de
+  Express.
+- Dockerfile `node:22-alpine`. Tests: `cd services/api-gateway && npm test` (10/10).
+
+README del servicio: [`services/api-gateway/README.md`](services/api-gateway/README.md).
+
+### Etapa 2 — borde único en Compose
+
+- `api-gateway` es el único servicio con `ports:` (`8080:8080`).
+- `empleados-service` y `departamentos-service` usan `expose:` (8080 y 8081 internos).
+- En Docker Desktop, Stop de un backend + petición por Postman a esa ruta = `503` JSON del
+  Gateway; `/health` del borde sigue `UP`.
+
+## Qué se implementó en el Reto 2 (etapas 1 y 2 de ese plan)
+
+Detalle del plan: [`docs/reto2/PLAN-RETO2.md`](docs/reto2/PLAN-RETO2.md). Avance histórico:
+[`docs/reto2/STATUS.md`](docs/reto2/STATUS.md).
 
 ### Etapa 1 — `departamentos-service` (Go)
 
@@ -168,8 +199,8 @@ cada servicio afectado:
 
 ## Estado del proyecto
 
-Ver [`STATUS.md`](STATUS.md) para el detalle etapa por etapa. Todas las etapas del plan de
-Reto 2 (0-5) están implementadas y verificadas end-to-end: monorepo, `departamentos-service`,
-compose con healthchecks, evolución de `empleados-service` (Liquibase, cliente HTTP con
-retry/backoff, `/health`), OpenAPI/Swagger en ambos servicios, y la colección Postman +
-evidencia final de esta sección.
+Reto 2: ver [`docs/reto2/STATUS.md`](docs/reto2/STATUS.md). Todas las etapas de ese plan (0-5)
+están implementadas y verificadas end-to-end.
+
+Reto 3: ver [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md). Etapas 1–2 hechas (Gateway +
+borde único). Faltan Circuit Breaker y evidencias finales (etapas 3–4).

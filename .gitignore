@@ -29,5 +29,9 @@ services/departamentos-service/departamentos-service
 *.test
 vendor/
 
+# --- Node.js (services/api-gateway) ---
+node_modules/
+coverage/
+
 # --- Docker / infra ---
 *.pid

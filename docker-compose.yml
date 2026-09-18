@@ -1,16 +1,12 @@
-# Orquestación completa del sistema (Reto 2). Levantar todo desde cero:
-#   cp .env.example .env && docker compose up --build
-# Apagar conservando datos: docker compose down
-# Apagar borrando también los datos: docker compose down -v
+# docker-compose.yml — orquestación (Reto 3, Etapa 2)
+# Levantar: cp .env.example .env && docker compose up --build
+# Apagar: docker compose down   |   borrar datos: docker compose down -v
 #
-# Patrón repetido en los 4 servicios: cada base de datos tiene un
-# healthcheck real (no solo "el contenedor arrancó"), y cada servicio de
-# negocio usa depends_on: condition: service_healthy contra lo que
-# necesita, para no intentar conectarse antes de que su dependencia esté
-# realmente lista (ver docs/reto2.pdf §2).
+# Un solo puerto al host: api-gateway :8080. empleados y departamentos usan
+# expose: (visibles solo dentro de microservices-network).
+
 services:
-  # Base de datos de empleados-service. Nadie más que empleados-service la
-  # toca (ningún acceso cruzado entre servicios).
+  # --- PostgreSQL de empleados-service (nadie más la usa) ---
   database-empleados:
     image: postgres:16-alpine
     environment:
@@ -20,17 +16,15 @@ services:
     volumes:
       - vol-empleados:/var/lib/postgresql/data
     healthcheck:
-      # pg_isready solo devuelve 0 cuando Postgres ya acepta conexiones.
       test: ["CMD-SHELL", "pg_isready -U ${EMPLEADOS_DB_USER} -d ${EMPLEADOS_DB_NAME}"]
       interval: 5s
       timeout: 3s
       retries: 10
-      start_period: 10s # margen inicial sin contar fallos como intentos
+      start_period: 10s
     networks:
       - microservices-network
 
-  # Base de datos de departamentos-service. Motor distinto a propósito
-  # (persistencia poliglota, ver README raíz).
+  # --- MySQL de departamentos-service (motor distinto a propósito) ---
   database-departamentos:
     image: mysql:8.4
     environment:
@@ -41,16 +35,6 @@ services:
     volumes:
       - vol-departamentos:/var/lib/mysql
     healthcheck:
-      # "$$" escapa el "$" para que lo resuelva el shell dentro del
-      # contenedor, no la interpolación de variables de Compose.
-      #
-      # "-h localhost" se resuelve por socket Unix, no por TCP. Con un
-      # volumen vacío, la imagen oficial de MySQL arranca primero un
-      # mysqld temporal (solo por socket) para inicializar, y recién
-      # después el mysqld real que escucha en TCP 3306. Un ping por
-      # socket puede dar "healthy" contra ese servidor temporal, antes de
-      # que el puerto TCP que usan los demás contenedores esté listo.
-      # "--protocol=tcp -h 127.0.0.1" fuerza a probar el puerto real.
       test: ["CMD-SHELL", "mysqladmin ping --protocol=tcp -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
       timeout: 3s
@@ -59,20 +43,18 @@ services:
     networks:
       - microservices-network
 
-  # Servicio de departamentos (Go). Ver services/departamentos-service/README.md.
+  # --- API Go. Visible solo dentro de la red (expose, no ports) ---
   departamentos-service:
     build: ./services/departamentos-service
     environment:
       PORT: 8081
-      # Nombre del servicio Compose como host: dentro de la red interna de
-      # Docker no existe "localhost" entre contenedores distintos.
       DB_HOST: database-departamentos
       DB_PORT: 3306
       DB_NAME: ${DEPARTAMENTOS_DB_NAME}
       DB_USER: ${DEPARTAMENTOS_DB_USER}
       DB_PASSWORD: ${DEPARTAMENTOS_DB_PASSWORD}
-    ports:
-      - "${DEPARTAMENTOS_PORT}:8081" # puerto publicado al host; internamente sigue siendo 8081
+    expose:
+      - "8081"
     depends_on:
       database-departamentos:
         condition: service_healthy
@@ -85,8 +67,8 @@ services:
     networks:
       - microservices-network
 
-  # Servicio de empleados (Java, heredado del Reto 1). Ver
-  # services/empleados-service/README.md.
+  # --- API Java. Visible solo dentro de la red. Ya no espera a departamentos:
+  #     el Circuit Breaker (Etapa 3) cubre esa dependencia en runtime. ---
   empleados-service:
     build: ./services/empleados-service
     environment:
@@ -95,24 +77,16 @@ services:
       DB_NAME: ${EMPLEADOS_DB_NAME}
       DB_USER: ${EMPLEADOS_DB_USER}
       DB_PASSWORD: ${EMPLEADOS_DB_PASSWORD}
-      # Usado por el cliente REST hacia departamentos-service (Etapa 3 del
-      # plan, docs/PLAN-RETO2.md) — nombre del servicio Compose + puerto
-      # interno, nunca localhost ni el puerto publicado al host.
       DEPARTAMENTOS_SERVICE_URL: http://departamentos-service:8081
       DEPARTAMENTOS_SERVICE_TIMEOUT: ${DEPARTAMENTOS_SERVICE_TIMEOUT}
       DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS: ${DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS}
       DEPARTAMENTOS_SERVICE_INITIAL_BACKOFF: ${DEPARTAMENTOS_SERVICE_INITIAL_BACKOFF}
-    ports:
-      - "${EMPLEADOS_PORT}:8080"
+    expose:
+      - "8080"
     depends_on:
       database-empleados:
         condition: service_healthy
-      # empleados-service valida el departamento contra este servicio al
-      # registrar un empleado, así que también debe esperar a que esté listo.
-      departamentos-service:
-        condition: service_healthy
     healthcheck:
-      # /health comprueba realmente la conexión del servicio con PostgreSQL.
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s
       timeout: 3s
@@ -121,14 +95,33 @@ services:
     networks:
       - microservices-network
 
+  # --- Único puerto publicado al host ---
+  api-gateway:
+    build: ./services/api-gateway
+    environment:
+      PORT: 8080
+      EMPLEADOS_URL: http://empleados-service:8080
+      DEPARTAMENTOS_URL: http://departamentos-service:8081
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      empleados-service:
+        condition: service_healthy
+      departamentos-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
 networks:
-  # Red interna donde los servicios se resuelven entre sí por nombre de
-  # servicio (p. ej. http://departamentos-service:8081).
   microservices-network:
     driver: bridge
 
 volumes:
-  # Un volumen por base de datos: los datos sobreviven a `docker compose
-  # down`, y solo se pierden con `docker compose down -v`.
   vol-empleados:
   vol-departamentos:
