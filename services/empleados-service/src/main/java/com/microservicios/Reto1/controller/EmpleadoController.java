@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.microservicios.Reto1.dto.ApiError;
 import com.microservicios.Reto1.dto.ApiValidationError;
+import com.microservicios.Reto1.dto.CircuitBreakerStatus;
+import com.microservicios.Reto1.dto.ReconciliacionResultado;
 import com.microservicios.Reto1.model.Empleado;
 import com.microservicios.Reto1.service.EmpleadoService;
 
@@ -143,5 +145,45 @@ public class EmpleadoController {
 	})
 	public ResponseEntity<List<Empleado>> listar() {
 		return ResponseEntity.ok(empleadoService.listarTodos());
+	}
+
+	/**
+	 * Consulta el estado observable del Circuit Breaker que protege la
+	 * llamada a departamentos (Reto 3, criterio 3).
+	 *
+	 * @return el nombre y estado (CLOSED/OPEN/HALF_OPEN) del circuito
+	 */
+	@GetMapping("/circuit-breaker")
+	@Operation(summary = "Estado del Circuit Breaker de departamentos",
+			description = "Expone el estado (CLOSED/OPEN/HALF_OPEN) del circuito que protege "
+					+ "la llamada a departamentos-service, sin depender solo de logs.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Estado del circuito",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = CircuitBreakerStatus.class),
+							examples = @ExampleObject(value = "{\"name\":\"departamentos\",\"state\":\"CLOSED\"}")))
+	})
+	public ResponseEntity<CircuitBreakerStatus> estadoCircuitBreaker() {
+		return ResponseEntity.ok(empleadoService.estadoCircuitBreaker());
+	}
+
+	/**
+	 * Revalida contra departamentos a cada empleado PENDIENTE_VALIDACION.
+	 * Mecanismo mínimo de reconciliación exigido por el criterio 4 (disparado
+	 * a mano; no hace falta un worker asíncrono en este reto).
+	 *
+	 * @return cuántos pendientes se evaluaron y cuántos pasaron a ACTIVO
+	 */
+	@PostMapping("/reconciliar")
+	@Operation(summary = "Reconciliar empleados PENDIENTE_VALIDACION",
+			description = "Vuelve a consultar departamentos para cada empleado pendiente. Si el "
+					+ "departamento existe, el empleado pasa a ACTIVO. Si no, o si departamentos "
+					+ "sigue sin disponibilidad, se deja PENDIENTE_VALIDACION: nunca se le asigna "
+					+ "un departamento por defecto ni se borra en silencio.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Resultado del barrido de reconciliación",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ReconciliacionResultado.class)))
+	})
+	public ResponseEntity<ReconciliacionResultado> reconciliar() {
+		return ResponseEntity.ok(empleadoService.reconciliarPendientes());
 	}
 }

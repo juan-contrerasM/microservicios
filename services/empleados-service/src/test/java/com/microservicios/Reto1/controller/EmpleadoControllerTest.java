@@ -13,6 +13,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import com.microservicios.Reto1.dto.CircuitBreakerStatus;
+import com.microservicios.Reto1.dto.ReconciliacionResultado;
 import com.microservicios.Reto1.model.Empleado;
 import com.microservicios.Reto1.service.EmpleadoService;
 
@@ -74,5 +76,27 @@ class EmpleadoControllerTest {
 
 		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(respuesta.getBody()).containsExactly(empleado);
+	}
+
+	@Test
+	void estadoCircuitBreakerDevuelve200ConElEstadoDelServicio() {
+		CircuitBreakerStatus estado = new CircuitBreakerStatus("departamentos", "CLOSED");
+		when(empleadoService.estadoCircuitBreaker()).thenReturn(estado);
+
+		ResponseEntity<CircuitBreakerStatus> respuesta = empleadoController.estadoCircuitBreaker();
+
+		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(respuesta.getBody()).isEqualTo(estado);
+	}
+
+	@Test
+	void reconciliarDevuelve200ConElResultadoDelBarrido() {
+		ReconciliacionResultado resultado = new ReconciliacionResultado(2, 1);
+		when(empleadoService.reconciliarPendientes()).thenReturn(resultado);
+
+		ResponseEntity<ReconciliacionResultado> respuesta = empleadoController.reconciliar();
+
+		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.OK);
+		assertThat(respuesta.getBody()).isEqualTo(resultado);
 	}
 }

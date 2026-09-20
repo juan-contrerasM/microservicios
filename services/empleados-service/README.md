@@ -26,17 +26,24 @@ API REST en Spring Boot para registrar y consultar empleados. Usa **PostgreSQL**
 }
 ```
 
-Estados previstos: `ACTIVO`, `EN_VACACIONES`, `RETIRADO`. En este reto solo se maneja `ACTIVO`.
+Estados: `ACTIVO`, `PENDIENTE_VALIDACION` (fallback del Circuit Breaker, Reto 3), `EN_VACACIONES`,
+`RETIRADO`. `EN_VACACIONES` y `RETIRADO` siguen sin usarse (Reto 4/5).
 
 ## Endpoints
 
 | Método | Ruta | Descripción | Código |
 |--------|------|-------------|--------|
-| `POST` | `/empleados` | Registrar empleado y validar su departamento | `201` / `400` / `503` |
+| `POST` | `/empleados` | Registrar empleado y validar su departamento (vía Circuit Breaker) | `201` / `400` |
 | `GET` | `/empleados/{id}` | Consultar por id | `200` / `404` |
 | `GET` | `/empleados` | Listar todos los empleados registrados | `200` |
+| `GET` | `/empleados/circuit-breaker` | Estado del Circuit Breaker (`CLOSED`/`OPEN`/`HALF_OPEN`) | `200` |
+| `POST` | `/empleados/reconciliar` | Revalida contra departamentos a los `PENDIENTE_VALIDACION` | `200` |
 | `GET` | `/health` | Verificar la conexión con PostgreSQL | `200` / `503` |
 | Otros | cualquier ruta o método no definido | Recurso no encontrado | `404` |
+
+Nota: antes del Circuit Breaker, el registro respondía `503` si departamentos no estaba
+disponible tras agotar reintentos. Desde la Etapa 3, ese caso ya no rechaza el alta: persiste el
+empleado como `PENDIENTE_VALIDACION` y responde `201` (ver más abajo).
 
 Validaciones al registrar (`400 Bad Request`):
 
@@ -238,19 +245,22 @@ Al registrar un empleado se aplican las siguientes reglas:
 3. No puede existir otro empleado con el mismo `id`.
 4. No puede existir otro empleado con el mismo `email`.
 5. No puede existir otro empleado con el mismo `numeroEmpleado`.
-6. El `departamentoId` debe existir en `departamentos-service`.
-7. Si departamentos no está disponible, se realizan hasta cuatro intentos con backoff de 1, 2 y 4 segundos.
-8. El estado se establece siempre como `ACTIVO`, independientemente del valor recibido.
+6. El `departamentoId` debe existir en `departamentos-service` (validado a través del Circuit
+   Breaker; un `404` de departamentos rechaza el alta con `400`).
+7. Si departamentos no está disponible, se realizan hasta cuatro intentos con backoff de 1, 2 y
+   4 segundos (mientras el circuito esté `CLOSED`).
+8. El estado queda `ACTIVO` si departamentos confirmó el departamento; `PENDIENTE_VALIDACION` si
+   el circuito está `OPEN` o la llamada agotó los reintentos (Reto 3, ver más abajo).
 
 ### Códigos de respuesta
 
 | Código | Situación |
 |--------|-----------|
-| `200 OK` | El empleado fue consultado correctamente o el health check está `UP` |
-| `201 Created` | El empleado fue registrado correctamente |
+| `200 OK` | El empleado fue consultado correctamente, el health check está `UP`, o se consultó el circuito/reconciliación |
+| `201 Created` | El empleado fue registrado, en `ACTIVO` o en `PENDIENTE_VALIDACION` si departamentos no respondió |
 | `400 Bad Request` | Faltan datos, un campo es inválido, hay un duplicado o el departamento no existe |
 | `404 Not Found` | El empleado, la ruta o el método solicitado no existe |
-| `503 Service Unavailable` | PostgreSQL o `departamentos-service` no está disponible |
+| `503 Service Unavailable` | PostgreSQL no está disponible (`departamentos-service` caído ya no produce `503`: ver Circuit Breaker) |
 
 Todas las respuestas de error utilizan el mismo formato:
 
@@ -385,9 +395,14 @@ La caché no se reutiliza si se ejecuta la construcción con `--no-cache`, se li
 | `DB_USER` | `empleados` | `empleados` | Usuario |
 | `DB_PASSWORD` | `empleados` | `empleados` | Contraseña |
 | `DEPARTAMENTOS_SERVICE_URL` | `http://localhost:8081` | `http://departamentos-service:8081` | URL base del servicio de departamentos |
-| `DEPARTAMENTOS_SERVICE_TIMEOUT` | `3s` | `3s` | Timeout por intento HTTP |
+| `DEPARTAMENTOS_SERVICE_TIMEOUT` | `5s` | `5s` | Timeout por intento HTTP |
 | `DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS` | `4` | `4` | Intento inicial más tres reintentos |
 | `DEPARTAMENTOS_SERVICE_INITIAL_BACKOFF` | `1s` | `1s` | Espera inicial; se duplica en cada reintento |
+| `CB_SLIDING_WINDOW_SIZE` | `3` | `3` | Llamadas en la ventana del Circuit Breaker |
+| `CB_MINIMUM_NUMBER_OF_CALLS` | `3` | `3` | Llamadas mínimas antes de evaluar el umbral |
+| `CB_FAILURE_RATE_THRESHOLD` | `100` | `100` | % de fallos en la ventana que abre el circuito |
+| `CB_WAIT_DURATION_OPEN` | `30s` | `30s` | Tiempo en `OPEN` antes de pasar a `HALF_OPEN` |
+| `CB_PERMITTED_CALLS_HALF_OPEN` | `1` | `1` | Llamadas de prueba permitidas en `HALF_OPEN` |
 
 Las credenciales incluidas están pensadas exclusivamente para desarrollo local. En otros ambientes deben proporcionarse mediante variables protegidas o secretos.
 
@@ -406,7 +421,64 @@ docker compose up --build
 
 ### Validación de departamentos y resiliencia
 
-Antes de guardar, el servicio consulta `GET /departamentos/{departamentoId}`. Un `404` se traduce inmediatamente a `400` sin reintentos. Los errores de red, timeouts y respuestas `5xx` se reintentan con backoff exponencial. Si se agotan los intentos, el registro se rechaza con `503`; no se guarda un empleado pendiente de validación porque ese estado no forma parte del modelo del Reto 2.
+Antes de guardar, el servicio consulta `GET /departamentos/{departamentoId}` a través de un
+**Circuit Breaker (Resilience4j)**. Un `404` se traduce inmediatamente a `400` sin reintentos y
+**no** cuenta como fallo del circuito (departamentos respondió; es un error de negocio, no de
+infraestructura). Los errores de red, timeouts y respuestas `5xx` sí se reintentan con backoff
+exponencial (política del Reto 2, sin cambios) y, si se agotan, cuentan como **un** fallo lógico
+del circuito.
+
+#### Por qué Circuit Breaker (Reto 3, Etapa 3)
+
+El backoff del Reto 2 protege un fallo corto, pero si `departamentos-service` lleva minutos
+caído, cada alta de empleado se queda esperando reintentos condenados: el fallo se propaga en
+cascada. El Circuit Breaker corta esa espera: tras unos pocos fallos deja de tocar la red y
+responde de inmediato con el fallback, hasta que el proveedor se recupera.
+
+| Parámetro | Valor | Por qué |
+|---|---|---|
+| Instancia | `departamentos` (única, protege la llamada `empleados → departamentos`) | El PDF exige que el CB viva en el consumidor, no en el proveedor |
+| `slidingWindowType` | `COUNT_BASED` | Umbral por número de llamadas, no por tiempo |
+| `slidingWindowSize` / `minimumNumberOfCalls` | `3` (`CB_SLIDING_WINDOW_SIZE` / `CB_MINIMUM_NUMBER_OF_CALLS`) | Tres fallos lógicos consecutivos abren el circuito (rango 3–5 del PDF) |
+| `failureRateThreshold` | `100` (`CB_FAILURE_RATE_THRESHOLD`) | Con ventana de 3, equivale a exigir que los 3 fallen |
+| `waitDurationInOpenState` | `30s` (`CB_WAIT_DURATION_OPEN`) | Tiempo en `OPEN` antes de probar de nuevo |
+| `permittedNumberOfCallsInHalfOpenState` | `1` (`CB_PERMITTED_CALLS_HALF_OPEN`) | Una llamada de prueba en `HALF_OPEN`: éxito → `CLOSED`, fallo → `OPEN` |
+| `automaticTransitionFromOpenToHalfOpenEnabled` | `true` | Recuperación sin reiniciar el contenedor |
+| Timeout de la llamada HTTP | `5s` (`DEPARTAMENTOS_SERVICE_TIMEOUT`) | Subido de 3s a 5s para alinear con el enunciado |
+| `recordExceptions` | `ServiceUnavailableException` | Timeout, 5xx, conexión rechazada, reintentos agotados |
+| `ignoreExceptions` | `BadRequestException` | Un `404` es éxito del circuito: departamento inexistente, no infraestructura caída |
+
+#### Fallback: disponibilidad sobre consistencia
+
+Cuando el circuito está `OPEN`, o cuando la llamada falla y el circuito pasa a `OPEN`, el
+empleado **sí se persiste** con `estado: PENDIENTE_VALIDACION` y la API responde `201` (no
+`503`). Se elige disponibilidad — el alta de RRHH no se bloquea porque departamentos esté
+caído — sobre consistencia inmediata. **Nunca** se asigna un departamento por defecto.
+
+```json
+{
+  "id": "E010",
+  "estado": "PENDIENTE_VALIDACION",
+  "...": "resto de campos canónicos del empleado"
+}
+```
+
+#### Reconciliación de pendientes
+
+Los `PENDIENTE_VALIDACION` quedan persistidos y son consultables (`GET /empleados/{id}`,
+`GET /empleados`). `POST /empleados/reconciliar` es el mecanismo mínimo exigido por el criterio
+4: vuelve a llamar a `GET /departamentos/{id}` (a través del mismo Circuit Breaker) para cada
+pendiente. Si el departamento existe, el empleado pasa a `ACTIVO`. Si no existe, o si
+departamentos sigue sin disponibilidad, se deja `PENDIENTE_VALIDACION` para revisión de RRHH: no
+se borra en silencio ni se asigna un departamento por defecto. No hay worker asíncrono (eso es
+Reto 4); el barrido se dispara a mano.
+
+#### Consultar el estado del circuito
+
+```bash
+curl http://localhost:8080/empleados/circuit-breaker
+# { "name": "departamentos", "state": "CLOSED" }
+```
 
 ### Ejecutar las pruebas automatizadas
 

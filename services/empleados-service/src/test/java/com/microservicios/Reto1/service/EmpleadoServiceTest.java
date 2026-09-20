@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
 import java.time.LocalDate;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -20,9 +22,15 @@ import com.microservicios.Reto1.client.DepartamentoClient;
 import com.microservicios.Reto1.exception.BadRequestException;
 import com.microservicios.Reto1.exception.ConflictException;
 import com.microservicios.Reto1.exception.EmpleadoNoEncontradoException;
+import com.microservicios.Reto1.exception.ServiceUnavailableException;
 import com.microservicios.Reto1.model.Empleado;
 import com.microservicios.Reto1.model.EstadoEmpleado;
 import com.microservicios.Reto1.repository.EmpleadoRepository;
+
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker.State;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 
 @ExtendWith(MockitoExtension.class)
 class EmpleadoServiceTest {
@@ -32,11 +40,27 @@ class EmpleadoServiceTest {
 	@Mock
 	private DepartamentoClient departamentoClient;
 
+	private CircuitBreaker circuitBreaker;
 	private EmpleadoService empleadoService;
 
 	@BeforeEach
 	void setUp() {
-		empleadoService = new EmpleadoService(empleadoRepository, departamentoClient);
+		CircuitBreakerConfig config = CircuitBreakerConfig.custom()
+				.slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
+				.slidingWindowSize(3)
+				.minimumNumberOfCalls(3)
+				.failureRateThreshold(100)
+				.waitDurationInOpenState(Duration.ofSeconds(30))
+				.permittedNumberOfCallsInHalfOpenState(1)
+				.automaticTransitionFromOpenToHalfOpenEnabled(true)
+				.recordExceptions(ServiceUnavailableException.class)
+				.ignoreExceptions(BadRequestException.class)
+				.build();
+		CircuitBreakerRegistry circuitBreakerRegistry = CircuitBreakerRegistry.of(config);
+		circuitBreaker = circuitBreakerRegistry.circuitBreaker(EmpleadoService.CIRCUIT_BREAKER_NAME);
+		empleadoService = new EmpleadoService(empleadoRepository, departamentoClient, circuitBreakerRegistry);
+		org.mockito.Mockito.lenient().when(empleadoRepository.save(any(Empleado.class)))
+				.thenAnswer(invocation -> invocation.getArgument(0));
 	}
 
 	private Empleado nuevoEmpleado() {
@@ -114,6 +138,7 @@ class EmpleadoServiceTest {
 				.isInstanceOf(BadRequestException.class)
 				.hasMessageContaining("IT");
 		verify(empleadoRepository, never()).save(any(Empleado.class));
+		assertThat(circuitBreaker.getState()).isEqualTo(State.CLOSED);
 	}
 
 	@Test
@@ -164,5 +189,96 @@ class EmpleadoServiceTest {
 		when(empleadoRepository.findAll()).thenReturn(java.util.List.of());
 
 		assertThat(empleadoService.listarTodos()).isEmpty();
+	}
+
+	@Test
+	void registrarConCircuitoOpenNoLlamaARedYQuedaPendienteDeValidacion() {
+		circuitBreaker.transitionToOpenState();
+		Empleado empleado = nuevoEmpleado();
+
+		Empleado registrado = empleadoService.registrar(empleado);
+
+		assertThat(registrado.getEstado()).isEqualTo(EstadoEmpleado.PENDIENTE_VALIDACION);
+		verify(departamentoClient, never()).validarExistencia(any());
+		verify(empleadoRepository).save(empleado);
+	}
+
+	@Test
+	void tresFallosDeRedAbrenElCircuitoYElSiguienteRegistroNoTocaLaRed() {
+		org.mockito.Mockito.doThrow(new ServiceUnavailableException("departamentos no disponible"))
+				.when(departamentoClient).validarExistencia("IT");
+		when(empleadoRepository.existsById(any())).thenReturn(false);
+		when(empleadoRepository.existsByEmail(any())).thenReturn(false);
+		when(empleadoRepository.existsByNumeroEmpleado(any())).thenReturn(false);
+
+		for (int i = 0; i < 3; i++) {
+			Empleado registrado = empleadoService.registrar(nuevoEmpleado());
+			assertThat(registrado.getEstado()).isEqualTo(EstadoEmpleado.PENDIENTE_VALIDACION);
+		}
+		assertThat(circuitBreaker.getState()).isEqualTo(State.OPEN);
+		verify(departamentoClient, times(3)).validarExistencia("IT");
+
+		Empleado registradoConCircuitoAbierto = empleadoService.registrar(nuevoEmpleado());
+
+		assertThat(registradoConCircuitoAbierto.getEstado()).isEqualTo(EstadoEmpleado.PENDIENTE_VALIDACION);
+		verify(departamentoClient, times(3)).validarExistencia("IT");
+	}
+
+	@Test
+	void enHalfOpenUnaLlamadaExitosaCierraElCircuitoYActivaAlEmpleado() {
+		circuitBreaker.transitionToOpenState();
+		circuitBreaker.transitionToHalfOpenState();
+		Empleado empleado = nuevoEmpleado();
+
+		Empleado registrado = empleadoService.registrar(empleado);
+
+		assertThat(registrado.getEstado()).isEqualTo(EstadoEmpleado.ACTIVO);
+		assertThat(circuitBreaker.getState()).isEqualTo(State.CLOSED);
+		verify(departamentoClient).validarExistencia("IT");
+	}
+
+	@Test
+	void estadoCircuitBreakerReflejaElNombreYEstadoActual() {
+		var estado = empleadoService.estadoCircuitBreaker();
+
+		assertThat(estado.getName()).isEqualTo("departamentos");
+		assertThat(estado.getState()).isEqualTo("CLOSED");
+	}
+
+	@Test
+	void reconciliarPendientesActivaSoloLosQueYaTienenDepartamentoValido() {
+		Empleado pendienteConDepartamentoValido = nuevoEmpleado();
+		pendienteConDepartamentoValido.setId("E010");
+		pendienteConDepartamentoValido.setEstado(EstadoEmpleado.PENDIENTE_VALIDACION);
+		Empleado pendienteSinDepartamento = nuevoEmpleado();
+		pendienteSinDepartamento.setId("E011");
+		pendienteSinDepartamento.setDepartamentoId("NO-EXISTE");
+		pendienteSinDepartamento.setEstado(EstadoEmpleado.PENDIENTE_VALIDACION);
+		when(empleadoRepository.findByEstado(EstadoEmpleado.PENDIENTE_VALIDACION))
+				.thenReturn(java.util.List.of(pendienteConDepartamentoValido, pendienteSinDepartamento));
+		org.mockito.Mockito.doNothing().when(departamentoClient).validarExistencia("IT");
+		org.mockito.Mockito.doThrow(new BadRequestException("El departamento con id NO-EXISTE no existe"))
+				.when(departamentoClient).validarExistencia("NO-EXISTE");
+
+		var resultado = empleadoService.reconciliarPendientes();
+
+		assertThat(resultado.getPendientesEvaluados()).isEqualTo(2);
+		assertThat(resultado.getReconciliados()).isEqualTo(1);
+		assertThat(pendienteConDepartamentoValido.getEstado()).isEqualTo(EstadoEmpleado.ACTIVO);
+		assertThat(pendienteSinDepartamento.getEstado()).isEqualTo(EstadoEmpleado.PENDIENTE_VALIDACION);
+		verify(empleadoRepository).save(pendienteConDepartamentoValido);
+		verify(empleadoRepository, never()).save(pendienteSinDepartamento);
+	}
+
+	@Test
+	void reconciliarPendientesSinPendientesNoLlamaARed() {
+		when(empleadoRepository.findByEstado(EstadoEmpleado.PENDIENTE_VALIDACION))
+				.thenReturn(java.util.List.of());
+
+		var resultado = empleadoService.reconciliarPendientes();
+
+		assertThat(resultado.getPendientesEvaluados()).isZero();
+		assertThat(resultado.getReconciliados()).isZero();
+		verify(departamentoClient, never()).validarExistencia(any());
 	}
 }
