@@ -45,7 +45,8 @@ public class EmpleadoController {
 	}
 
 	/**
-	 * Registra un nuevo empleado en estado ACTIVO.
+	 * Registra un nuevo empleado en estado ACTIVO cuando el departamento se
+	 * valida, o PENDIENTE_VALIDACION cuando la dependencia no está disponible.
 	 *
 	 * @param empleado datos del empleado a registrar
 	 * @return el empleado registrado con código 201, o 400 si el id,
@@ -54,10 +55,10 @@ public class EmpleadoController {
 	@PostMapping
 	@Operation(
 			summary = "Registrar empleado",
-			description = "Registra un empleado nuevo. El estado se fuerza a ACTIVO "
-					+ "aunque el cuerpo envíe otro valor. Antes de persistir valida que el "
-					+ "departamento exista en departamentos-service (timeout 3s, hasta 4 "
-					+ "intentos con backoff 1s→2s→4s).")
+			description = "Registra un empleado nuevo. El estado enviado en el cuerpo se ignora: "
+					+ "queda ACTIVO si departamentos-service confirma el departamento, o "
+					+ "PENDIENTE_VALIDACION si la dependencia no está disponible. La validación "
+					+ "usa timeout de 5s, hasta 4 intentos con backoff 1s→2s→4s y Circuit Breaker.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Empleado registrado",
 					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
@@ -72,10 +73,6 @@ public class EmpleadoController {
 									@ExampleObject(name = "departamentoInexistente",
 											value = "{\"mensaje\":\"El departamento con id XX no existe\"}")
 							})),
-			@ApiResponse(responseCode = "503",
-					description = "departamentos-service no respondió tras agotar reintentos; no se persiste el empleado",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
-							examples = @ExampleObject(value = "{\"mensaje\":\"El servicio de departamentos no está disponible para validar el departamento\"}"))),
 			@ApiResponse(responseCode = "500", description = "Error interno",
 					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
 	})

@@ -36,7 +36,7 @@ que lo discuta con el equipo antes de tocar el compose raíz.
 | Parámetros del circuito | 3 fallos consecutivos · 30 s en OPEN · timeout de llamada 5 s | Rango del §2.3 (3–5 fallos, 30–60 s). Con 3 fallos y `sleep 35` del §3.3 se ve el salto CLOSED→OPEN y la recuperación sin reiniciar. Hoy el timeout del cliente es 3 s; hay que subirlo a 5 s para alinearlo al enunciado. |
 | Reintentos del Reto 2 | Se **conservan dentro de CLOSED** | El §3.3 espera que las primeras 3–5 peticiones tarden *segundos* (timeout + reintentos) y que a partir del umbral respondan casi instantáneas. Un fallo “lógico” (se agotaron los reintentos) cuenta **una** vez para abrir el circuito, no cada intento HTTP. |
 | Estrategia de fallback | Registrar con `estado: PENDIENTE_VALIDACION` (disponibilidad) | El PDF (§2.6) ofrece rechazar 503 o aceptar pendiente. Rechazar deja a RRHH parado — es lo que ya hace el Reto 2 y no demuestra una decisión nueva. Aceptar pendiente mantiene el onboarding en marcha y obliga a explicar la reconciliación (criterio 4). **Nunca** asignar un departamento por defecto. |
-| `depends_on` empleados → departamentos | Quitar el `service_healthy` entre APIs | Con Circuit Breaker, empleados debe poder arrancar (y responder degradado) aunque departamentos esté caído. Sigue esperando a su propia BD. El Gateway sí espera a ambos para el arranque “feliz”, pero su `/health` propio **no** depende de que los backends estén arriba — si lo hiciera, el escenario del §3.2 dejaría el borde DOWN. |
+| Dependencias de arranque entre APIs | Empleados no espera a departamentos; Gateway usa `service_started`, no `service_healthy` | Empleados debe responder degradado aunque departamentos esté caído. El Gateway también debe arrancar y servir `/health`/`503` aunque un backend nunca llegue a saludable. Cada API sí espera a su propia BD. |
 
 ## Arquitectura objetivo
 
@@ -135,8 +135,8 @@ Depende de Etapa 0 solo como contrato. Puede avanzar en paralelo con la Etapa 3.
   - `ports: ["${GATEWAY_PORT:-8080}:8080"]` — **el único `ports:` de todo el compose**
   - `environment`: `EMPLEADOS_URL=http://empleados-service:8080`,
     `DEPARTAMENTOS_URL=http://departamentos-service:8081`
-  - `depends_on` con `condition: service_healthy` hacia `empleados-service` y
-    `departamentos-service` (arranque ordenado del borde).
+  - `depends_on` con `condition: service_started` hacia `empleados-service` y
+    `departamentos-service`: ordena el inicio sin acoplar la salud del borde a sus destinos.
   - `healthcheck` contra `GET http://localhost:8080/health`.
 - En `empleados-service` y `departamentos-service`: sustituir `ports:` por `expose:`
   (`"8080"` y `"8081"` respectivamente). Las BDs **siguen sin publicar puertos** (ya era así).
@@ -163,7 +163,7 @@ negocio ya existen.
 Solo se toca `services/empleados-service/` (y, si hace falta, variables nuevas en `.env.example`
 / compose). El Circuit Breaker **no** va en el Gateway ni en departamentos.
 
-- Dependencia **Resilience4j** (`resilience4j-spring-boot3` / `resilience4j-circuitbreaker`).
+- Dependencia **Resilience4j** (`resilience4j-spring-boot4` 2.4.0, compatible con Spring Boot 4.1).
   Envolver la llamada existente de `DepartamentoClient.validarExistencia`.
 - Estados demostrables y observables (`CLOSED` / `OPEN` / `HALF_OPEN`). Exponer el estado con
   un endpoint de lectura, p. ej. `GET /empleados/circuit-breaker`, para no depender solo de

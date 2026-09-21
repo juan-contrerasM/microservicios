@@ -16,6 +16,9 @@ MySQL, sin ORM (acceso a datos con `database/sql` directo).
 
 ## Endpoints
 
+Con el Compose del monorepo, todas las rutas públicas se consumen mediante el Gateway en
+`http://localhost:8080`; el puerto propio del servicio solo existe dentro de la red Docker.
+
 | Método | Ruta | Descripción | Respuestas |
 |---|---|---|---|
 | `POST` | `/departamentos` | Registra un departamento | `201` creado · `400` datos inválidos o id duplicado |
@@ -35,12 +38,18 @@ Los errores siguen el mismo formato que `empleados-service`: `{"mensaje": "..."}
 
 La especificación es un `openapi.yaml` estático embebido en el binario (sin codegen de `swaggo`). Cada endpoint documenta descripción, códigos `200`/`201`/`400`/`404`/`500` y esquemas de entrada/salida.
 
-| Recurso | URL (con Compose en la raíz) |
+| Recurso | URL interna del contenedor |
 |---|---|
-| Swagger UI | http://localhost:8081/swagger/index.html |
-| Spec YAML | http://localhost:8081/openapi.yaml |
+| Swagger UI | `http://departamentos-service:8081/swagger/index.html` |
+| Spec YAML | `http://departamentos-service:8081/openapi.yaml` |
 
 `/swagger` y `/swagger/` redirigen a la UI.
+
+Estas URLs no son públicas cuando se usa el Compose raíz: el contrato público se valida por
+`http://localhost:8080/departamentos` y con la colección de
+[`docs/reto3/Reto3.postman_collection.json`](../../docs/reto3/Reto3.postman_collection.json).
+Si se ejecuta este servicio de forma aislada y se publica manualmente su puerto, Swagger puede
+consultarse en `http://localhost:8081/swagger/index.html`; ese acceso es solo de desarrollo.
 
 ## Qué se implementó en la Etapa 1
 
@@ -108,12 +117,27 @@ solo en aplicación.
 
 ## Correr en local (sin Docker)
 
+Requiere Go 1.25 o superior; versiones antiguas del toolchain no reconocen la versión declarada
+en `go.mod`.
+
 ```bash
 go run ./cmd/api
 ```
 
 Necesitas MySQL corriendo y accesible con las variables de entorno de arriba (por defecto
 apunta a `localhost:3306`).
+
+## Ejecutar el sistema integrado
+
+Desde la raíz del monorepo:
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
+
+La API pública queda disponible en `http://localhost:8080/departamentos`. Para detener los
+servicios sin borrar los datos: `docker compose down`.
 
 ## Build de la imagen
 

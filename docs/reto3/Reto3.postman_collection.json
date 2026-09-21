@@ -1,13 +1,13 @@
 {
 	"info": {
 		"name": "Reto 3 - API Gateway + Circuit Breaker",
-		"description": "Colección del sistema (Reto 3). URL base única: http://localhost:8080 (api-gateway). Importar este archivo en Postman.\n\nCómo probar Etapas 1 y 2 (a mano, Docker Desktop + Postman):\n1. docker compose up --build  (o Start en Docker Desktop).\n2. Carpetas 0–3 con todos los contenedores UP: health, enrutamiento, contratos de departamentos y empleados.\n3. Carpeta 1: las peticiones 'acceso directo' DEBEN fallar (Could not get response / conexión rechazada). Eso es la evidencia del criterio 2.\n4. Carpeta 4: en Docker Desktop STOP departamentos-service, envía esas peticiones, luego START de nuevo. Después STOP empleados-service y las de empleados, luego START.\n\nCarpetas 5 y 6 son Etapa 3 (Circuit Breaker): NO correrlas todavía.\n\nNo uses localhost:8081 ni :8082 como URL de negocio.",
+		"description": "Colección completa del Reto 3. URL base única: http://localhost:8080 (api-gateway). Importar este archivo en Postman.\n\nEjecución recomendada desde datos limpios:\n1. docker compose up --build.\n2. Carpetas 0–3 con todos los contenedores UP.\n3. Carpeta 1: las peticiones de acceso directo DEBEN fallar; esa es la evidencia del criterio 2.\n4. Carpeta 4: detener el backend indicado y comprobar el 503 JSON del Gateway.\n5. Carpeta 5: detener departamentos-service y observar tres respuestas lentas seguidas de respuestas inmediatas con PENDIENTE_VALIDACION.\n6. Iniciar departamentos-service, esperar 35 segundos y ejecutar la carpeta 6 para probar HALF_OPEN → CLOSED y reconciliación.\n\nNo uses localhost:8081 ni :8082 como URL de negocio.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
 		{ "key": "gateway_url", "value": "http://localhost:8080", "type": "string" },
-		{ "key": "direct_empleados_url", "value": "http://localhost:8081", "type": "string" },
-		{ "key": "direct_departamentos_url", "value": "http://localhost:8082", "type": "string" }
+		{ "key": "direct_departamentos_url", "value": "http://localhost:8081", "type": "string" },
+		{ "key": "direct_empleados_url", "value": "http://localhost:8082", "type": "string" }
 	],
 	"item": [
 		{
@@ -18,7 +18,7 @@
 					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/health" },
 					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
 						"pm.test('Status 200', () => pm.response.to.have.status(200));",
-						"pm.test('JSON, no HTML de framework', () => pm.response.to.have.header('Content-Type', /json/i));",
+						"pm.test('JSON, no HTML de framework', () => pm.expect(pm.response.headers.get('Content-Type')).to.match(/json/i));",
 						"pm.test('status UP', () => pm.expect(pm.response.json().status).to.eql('UP'));",
 						"pm.test('identifica al Gateway', () => pm.expect(pm.response.json().service).to.eql('api-gateway'));"
 					] } }]
@@ -46,7 +46,7 @@
 					] } }]
 				},
 				{
-					"name": "Acceso directo empleados :8081 (debe fallar TCP)",
+					"name": "Acceso directo empleados :8082 (debe fallar TCP)",
 					"request": { "method": "GET", "header": [], "url": "{{direct_empleados_url}}/empleados" },
 					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
 						"pm.test('No deberia haber respuesta HTTP (puerto no publicado)', function () {",
@@ -55,7 +55,7 @@
 					] } }]
 				},
 				{
-					"name": "Acceso directo departamentos :8082 (debe fallar TCP)",
+					"name": "Acceso directo departamentos :8081 (debe fallar TCP)",
 					"request": { "method": "GET", "header": [], "url": "{{direct_departamentos_url}}/departamentos" },
 					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
 						"pm.test('No deberia haber respuesta HTTP (puerto no publicado)', function () {",
@@ -131,7 +131,7 @@
 		},
 		{
 			"name": "3. Empleados via Gateway",
-			"description": "Contratos del Reto 2 por el Gateway. Corre la carpeta 2 antes (crea el departamento IT). Departamentos UP: las altas quedan ACTIVO. Si un POST /empleados da 503, departamentos-service está caído o aún no arrancó.",
+			"description": "Contratos de empleados por el Gateway. Corre la carpeta 2 antes (crea el departamento IT). Con departamentos UP, las altas quedan ACTIVO; si la dependencia cae, el Circuit Breaker permite registrar con PENDIENTE_VALIDACION y 201.",
 			"item": [
 				{
 					"name": "Registrar empleado E001 - exito (201 ACTIVO)",
@@ -290,7 +290,7 @@
 					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/departamentos" },
 					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
 						"pm.test('Status 503', () => pm.response.to.have.status(503));",
-						"pm.test('Content-Type JSON', () => pm.response.to.have.header('Content-Type', /json/i));",
+						"pm.test('Content-Type JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.match(/json/i));",
 						"pm.test('mensaje descriptivo', () => {",
 						"    const b = pm.response.json();",
 						"    pm.expect(b.mensaje).to.be.a('string').and.to.not.eql('');",
@@ -320,7 +320,7 @@
 					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados" },
 					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
 						"pm.test('Status 503', () => pm.response.to.have.status(503));",
-						"pm.test('Content-Type JSON', () => pm.response.to.have.header('Content-Type', /json/i));",
+						"pm.test('Content-Type JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.match(/json/i));",
 						"pm.test('identifica el servicio caido', () => pm.expect(pm.response.json().servicio).to.eql('empleados-service'));",
 						"pm.test('mensaje descriptivo', () => pm.expect(pm.response.json().mensaje).to.eql('El servicio de empleados no está disponible'));",
 						"pm.test('no es HTML de framework', () => pm.expect(pm.response.text()).to.not.match(/<html/i));"
@@ -336,8 +336,8 @@
 			]
 		},
 		{
-			"name": "5. NO CORRER AUN — Circuit Breaker CLOSED a OPEN (Etapa 3)",
-			"description": "ETAPA 3. No implementar / no correr todavía. Cuando exista Resilience4j: STOP departamentos-service y observar el salto de latencia. Hoy POST /empleados con departamentos caído sigue siendo 503 lento del Reto 2 (reintentos), no PENDIENTE_VALIDACION.",
+			"name": "5. Circuit Breaker CLOSED a OPEN",
+			"description": "Detén departamentos-service antes de ejecutar esta carpeta. Las primeras tres altas deben tardar por los reintentos; las siguientes deben responder casi inmediatamente con PENDIENTE_VALIDACION. No reinicies empleados ni el Gateway.",
 			"item": [
 				{
 					"name": "CB-1 CLOSED lento (E0CB1)",
@@ -510,8 +510,8 @@
 			]
 		},
 		{
-			"name": "6. NO CORRER AUN — Circuit Breaker recuperacion (Etapa 3)",
-			"description": "ETAPA 3. No correr todavía. Cuando exista el Circuit Breaker: START departamentos-service, esperar 35 s, un alta con departamentoId NO-EXISTE debe dar 400 (consulta real), sin reiniciar empleados ni el Gateway.",
+			"name": "6. Circuit Breaker recuperacion y reconciliacion",
+			"description": "Inicia departamentos-service, espera 35 s y ejecuta esta carpeta sin reiniciar empleados ni el Gateway. El 400 de NO-EXISTE demuestra una consulta real, el circuito vuelve a CLOSED y los pendientes con departamento IT se reconcilian a ACTIVO.",
 			"item": [
 				{
 					"name": "Recuperado - departamento inexistente debe ser 400 (E100)",
@@ -554,6 +554,23 @@
 					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
 						"pm.test('Status 200', () => pm.response.to.have.status(200));",
 						"pm.test('estado CLOSED tras recuperacion, sin reiniciar', () => pm.expect(pm.response.json().state).to.eql('CLOSED'));"
+					] } }]
+				},
+				{
+					"name": "Reconciliar empleados pendientes",
+					"request": { "method": "POST", "header": [], "url": "{{gateway_url}}/empleados/reconciliar" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('evaluo los pendientes del Circuit Breaker', () => pm.expect(pm.response.json().pendientesEvaluados).to.be.at.least(8));",
+						"pm.test('reconcilio los departamentos validos', () => pm.expect(pm.response.json().reconciliados).to.be.at.least(8));"
+					] } }]
+				},
+				{
+					"name": "Confirmar E0CB4 reconciliado como ACTIVO",
+					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados/E0CB4" },
+					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+						"pm.test('Status 200', () => pm.response.to.have.status(200));",
+						"pm.test('estado ACTIVO tras reconciliar', () => pm.expect(pm.response.json().estado).to.eql('ACTIVO'));"
 					] } }]
 				}
 			]

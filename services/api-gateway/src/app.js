@@ -1,7 +1,7 @@
 import express from 'express';
 import { backendProxy } from './proxy.js';
 
-export function createApp({ empleadosUrl, departamentosUrl, proxyTimeoutMs = 10_000 }) {
+export function createApp({ empleadosUrl, departamentosUrl, proxyTimeoutMs = 35_000 }) {
 	const app = express();
 	app.disable('x-powered-by');
 

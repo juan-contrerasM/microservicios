@@ -68,8 +68,10 @@ Con el compose arriba, en Postman:
 3. Carpeta **4**: en Docker Desktop, **Stop** `departamentos-service` o `empleados-service` y
    envía las peticiones A o B. El Gateway sigue UP y responde `503` JSON. Luego **Start** otra
    vez.
-
-Las carpetas 5 y 6 son Circuit Breaker (Etapa 3): no correrlas todavía.
+4. Carpeta **5**: detén `departamentos-service` y ejecútala completa. Las tres primeras altas
+   deben tardar segundos y las siguientes milisegundos, todas con `PENDIENTE_VALIDACION`.
+5. Inicia `departamentos-service`, espera 35 segundos y ejecuta la carpeta **6**. Comprueba
+   `HALF_OPEN → CLOSED` y la reconciliación de pendientes.
 
 La colección de Reto 2 (`docs/reto2/Reto2.postman_collection.json`) apunta a dos puertos y
 quedó obsoleta para el tráfico público.
@@ -92,6 +94,17 @@ Tercer microservicio, en un lenguaje distinto a Java y Go:
   Express.
 - Dockerfile `node:22-alpine`. Tests: `cd services/api-gateway && npm test` (10/10).
 
+Se eligió Node.js + Express porque el Gateway es código de aplicación: en retos posteriores debe
+validar JWT/JWKS, propagar identidad y permitir composición de respuestas. Además introduce un
+tercer lenguaje sin repetir Java ni Go. Traefik/Nginx quedan para balanceo, no sustituyen este
+borde de aplicación.
+
+| Ruta pública | Destino interno |
+|---|---|
+| `GET /health` | El propio Gateway; no consulta backends |
+| `/empleados` y `/empleados/*` | `http://empleados-service:8080` conservando path, query, cuerpo, cabeceras y status |
+| `/departamentos` y `/departamentos/*` | `http://departamentos-service:8081` conservando path, query, cuerpo, cabeceras y status |
+
 README del servicio: [`services/api-gateway/README.md`](services/api-gateway/README.md).
 
 ### Etapa 2 — borde único en Compose
@@ -100,6 +113,46 @@ README del servicio: [`services/api-gateway/README.md`](services/api-gateway/REA
 - `empleados-service` y `departamentos-service` usan `expose:` (8080 y 8081 internos).
 - En Docker Desktop, Stop de un backend + petición por Postman a esa ruta = `503` JSON del
   Gateway; `/health` del borde sigue `UP`.
+- El Gateway solo usa `depends_on: service_started`: arranca aunque un backend no llegue a
+  saludable y puede responder su propio `/health` y el `503` descriptivo.
+
+### Etapa 3 — Circuit Breaker y fallback
+
+La llamada `empleados → departamentos` está protegida por Resilience4j para Spring Boot 4.
+Los reintentos del Reto 2 se conservan dentro de `CLOSED`; cada agotamiento completo cuenta como
+un solo fallo lógico del circuito.
+
+| Parámetro | Valor | Motivo |
+|---|---|---|
+| Instancia | `departamentos` | Protege exactamente la dependencia síncrona del consumidor |
+| Ventana / mínimo de llamadas | `3` / `3`, `COUNT_BASED` | Tres fallos lógicos seguidos abren el circuito |
+| Umbral | `100 %` | Con ventana de tres, exige que fallen las tres |
+| Tiempo en `OPEN` | `30s` | Después permite comprobar recuperación sin reiniciar |
+| Llamadas en `HALF_OPEN` | `1` | Un éxito cierra; un fallo vuelve a abrir |
+| Timeout HTTP | `5s` | Límite de cada intento hacia departamentos |
+| Backoff | `1s → 2s → 4s` | Conserva tolerancia a fallos transitorios |
+| Timeout del Gateway | `35s` | Supera el peor caso de 4×5s + 7s de backoff |
+
+Si la dependencia no responde, se prioriza disponibilidad: el alta devuelve `201` y se persiste
+como `PENDIENTE_VALIDACION`, nunca con un departamento inventado. Cuando departamentos vuelve,
+`POST /empleados/reconciliar` revalida cada pendiente; solo los departamentos existentes pasan a
+`ACTIVO`. `GET /empleados/circuit-breaker` expone `CLOSED`, `OPEN` o `HALF_OPEN`.
+
+### Etapa 4 — pruebas y evidencias
+
+La ejecución real del 21 de septiembre de 2026 quedó documentada en
+[`docs/reto3/EVIDENCIAS.md`](docs/reto3/EVIDENCIAS.md). Resultado central:
+
+| Solicitud con departamentos detenido | Tiempo | Estado persistido |
+|---|---:|---|
+| 1 | 11.155s | `PENDIENTE_VALIDACION` |
+| 2 | 9.645s | `PENDIENTE_VALIDACION` |
+| 3 | 9.704s | `PENDIENTE_VALIDACION`; circuito abre |
+| 4–8 | 33–39ms | `PENDIENTE_VALIDACION`; sin llamada de red |
+
+Al restaurar departamentos, el circuito pasó automáticamente a `HALF_OPEN`. Un alta con
+`departamentoId: NO-EXISTE` respondió `400` en 180ms y lo llevó a `CLOSED`, sin reiniciar
+empleados ni el Gateway. La reconciliación posterior evaluó 16 pendientes y activó los 16.
 
 ## Qué se implementó en el Reto 2 (etapas 1 y 2 de ese plan)
 
@@ -202,5 +255,6 @@ cada servicio afectado:
 Reto 2: ver [`docs/reto2/STATUS.md`](docs/reto2/STATUS.md). Todas las etapas de ese plan (0-5)
 están implementadas y verificadas end-to-end.
 
-Reto 3: ver [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md). Etapas 1–2 hechas (Gateway +
-borde único). Faltan Circuit Breaker y evidencias finales (etapas 3–4).
+Reto 3: ver [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md). Todas las etapas 0–4 están
+implementadas y verificadas: Gateway, borde único, Circuit Breaker, fallback, recuperación,
+reconciliación, colección Postman y evidencias reproducibles.

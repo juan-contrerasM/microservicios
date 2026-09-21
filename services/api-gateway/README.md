@@ -44,7 +44,7 @@ Nunca se hardcodean hosts. En Compose las inyecta el `docker-compose.yml` raíz 
 | `PORT` | `8080` | Puerto HTTP del Gateway |
 | `EMPLEADOS_URL` | *(obligatoria)* | Origen interno, p. ej. `http://empleados-service:8080` |
 | `DEPARTAMENTOS_URL` | *(obligatoria)* | Origen interno, p. ej. `http://departamentos-service:8081` |
-| `PROXY_TIMEOUT_MS` | `10000` | Timeout del proxy hacia cada backend, en milisegundos |
+| `PROXY_TIMEOUT_MS` | `35000` | Timeout del proxy hacia cada backend. Supera el peor caso de empleados (4×5s + backoff 1s→2s→4s ≈ 27s) para no cortar el fallback antes de tiempo. |
 
 ## Cómo correrlo
 

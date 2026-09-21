@@ -13,33 +13,24 @@ Leyenda: ✅ hecho · 🔄 en progreso · ⬜ pendiente
 |---|---|---|---|
 | 0 | Plan, este STATUS y colección Postman en `docs/reto3/` (URL base única `http://localhost:8080`) | ✅ | Contrato listo. |
 | 1 | Scaffold `api-gateway` (Node.js 22 + Express + `http-proxy-middleware`): rutas `/empleados/*` y `/departamentos/*`, propagación fiel, 503 JSON, `GET /health` propio, Dockerfile | ✅ | Criterio 1 (código). Carpeta `services/api-gateway/`. |
-| 2 | `docker-compose.yml`: Gateway con `ports: 8080`; `empleados-service` y `departamentos-service` pasan a `expose:`. Verificar acceso directo rechazado | ✅ | Criterio 2. Único `ports:` = `api-gateway`. Se quitó el `depends_on` empleados→departamentos para poder apagar un backend desde Docker Desktop sin tumbar el arranque del otro. Colección Postman lista para prueba manual (carpetas 0–4). Las 5–6 son Etapa 3: no correrlas aún. |
-| 3 | Circuit Breaker Resilience4j en `empleados-service` (llamada a departamentos). Tres estados observables. Fallback `PENDIENTE_VALIDACION` + reconciliación mínima | 🔄 | Criterios 3 y 4. Código y tests unitarios listos (`resilience4j-spring-boot3`, instancia `departamentos`, `GET /empleados/circuit-breaker`, `POST /empleados/reconciliar`). Timeout de llamada subido a 5 s. Falta evidencia real con el compose levantado (salto de latencia CLOSED→OPEN y recuperación sin reinicio) — eso cierra en la Etapa 4, no antes. |
-| 4 | README raíz (tabla de rutas, parámetros CB, fallback, URL base), evidencias de las 3 pruebas del PDF, Newman contra la colección de este directorio | ⬜ | Criterio 5. README ya apunta a la URL del Gateway; faltan capturas del Circuit Breaker. |
+| 2 | `docker-compose.yml`: Gateway con `ports: 8080`; `empleados-service` y `departamentos-service` pasan a `expose:`. Verificar acceso directo rechazado | ✅ | Criterio 2. Único `ports:` = `api-gateway`. El Gateway espera que los backends se inicien, no que permanezcan saludables, por lo que puede arrancar y seguir disponible ante la caída de uno de ellos. |
+| 3 | Circuit Breaker Resilience4j en `empleados-service` (llamada a departamentos). Tres estados observables. Fallback `PENDIENTE_VALIDACION` + reconciliación mínima | ✅ | Criterios 3 y 4. Resilience4j para Spring Boot 4, instancia `departamentos`, timeout HTTP de 5 s, tres fallos para abrir, transición automática tras 30 s y una llamada permitida en `HALF_OPEN`. El comportamiento `CLOSED → OPEN → HALF_OPEN → CLOSED` fue comprobado sin reiniciar empleados. |
+| 4 | README raíz (tabla de rutas, parámetros CB, fallback, URL base), evidencias de las 3 pruebas del PDF, Newman contra la colección de este directorio | ✅ | Criterio 5. Documentación completada y evidencia reproducible en [`EVIDENCIAS.md`](EVIDENCIAS.md). Newman: flujo sano 16/16 peticiones y 34/34 aserciones; apertura 10/10 y 28/28; recuperación 5/5 y 12/12. |
 
-## Siguiente para el equipo (no reabrir 0–2)
+## Estado de entrega
 
-Las etapas **0, 1 y 2 están cerradas**. El tráfico público ya entra solo por `http://localhost:8080`
-(`api-gateway`). `empleados-service` y `departamentos-service` usan `expose:`: un `GET` a
-`:8081`/`:8082` debe dar `ECONNREFUSED`. Si el backend está caído **pero** la petición va al
-Gateway, el 503 es JSON (`mensaje` + `servicio`) — carpeta 4 de Postman.
+Las etapas **0 a 4 están cerradas**. El tráfico público entra únicamente por
+`http://localhost:8080` (`api-gateway`); los puertos de empleados y departamentos no se publican
+en el host. Ante la caída de un backend, el Gateway permanece disponible y devuelve un `503`
+JSON controlado. En empleados, la indisponibilidad de departamentos activa el fallback, conserva
+el alta como `PENDIENTE_VALIDACION` y permite reconciliarla cuando el proveedor se recupera.
 
-**Etapa 3 en progreso** (código y tests listos; falta evidencia), solo en
-`services/empleados-service/`. No se tocó el Gateway ni Go. Contrato y parámetros:
-[`PLAN-RETO3.md`](PLAN-RETO3.md) §Etapa 3. Las carpetas 5 y 6 de
-[`Reto3.postman_collection.json`](Reto3.postman_collection.json) ya se pueden correr manualmente
-contra el sistema levantado (`docker compose up --build`), ahora que existe el fallback
-`PENDIENTE_VALIDACION`; las capturas de esa corrida son insumo de la **Etapa 4**.
-
-**Qué toca ahora:** levantar el sistema completo y capturar las 3 evidencias del §3.3 del PDF
-(punto de entrada único, salto de latencia CLOSED→OPEN, recuperación automática sin reinicio) y
-avanzar el README raíz — eso es la Etapa 4.
-
-Prueba de las etapas 1–2 (sistema ya levantado con `docker compose up --build`):
-
-1. Importar la colección; carpetas 0–3 con todos los contenedores UP.
-2. Carpeta 1, acceso directo: `Could not send request` / `ECONNREFUSED` es correcto.
-3. Carpeta 4: Stop de un backend en Docker Desktop, petición al Gateway → 503 JSON; `/health` sigue UP.
+La secuencia completa y sus resultados reales se encuentran en
+[`EVIDENCIAS.md`](EVIDENCIAS.md). Para repetirla, importa
+[`Reto3.postman_collection.json`](Reto3.postman_collection.json) y ejecuta las carpetas en el
+orden documentado. La carpeta 1 comprueba manualmente que `:8081` y `:8082` no son accesibles;
+la 4 comprueba el `503` controlado; las carpetas 5 y 6 demuestran apertura, recuperación y
+reconciliación.
 
 ## Decisiones técnicas del enunciado
 
@@ -52,7 +43,7 @@ queda como "propuesta".
 | Tipo de Gateway | Tomada (la impone el PDF §1.2) | Gateway de aplicación, no Traefik/Nginx |
 | Lenguaje / stack del Gateway | Tomada en Etapa 1 | **Node.js 22 + Express + `http-proxy-middleware`**. Queda prohibido Spring Cloud Gateway (repetiría Java/Spring Boot) y el reverse proxy en Go (ya es departamentos). |
 | Puerto publicado | Tomada en Etapa 2 | Solo `8080` (`api-gateway`). Internos: empleados `8080`, departamentos `8081` (`expose:`). |
-| Librería del Circuit Breaker | Tomada en Etapa 3 | Resilience4j (`resilience4j-spring-boot3` 2.4.0) en `empleados-service` (quien llama), instancia `departamentos`, invocación programática (`CircuitBreakerRegistry`), no anotaciones |
+| Librería del Circuit Breaker | Tomada en Etapa 3 | Resilience4j (`resilience4j-spring-boot4` 2.4.0, compatible con Spring Boot 4.1) en `empleados-service` (quien llama), instancia `departamentos`, invocación programática (`CircuitBreakerRegistry`), no anotaciones |
 | Parámetros del circuito | Tomada en Etapa 3 | 3 fallos lógicos (`slidingWindowSize`/`minimumNumberOfCalls`), 100% failureRate, 30 s en OPEN, 1 llamada en HALF_OPEN, timeout HTTP 5 s. Todos sobreescribibles por env (`CB_*`) |
 | Fallback | Tomada en Etapa 3 | Persistir con `PENDIENTE_VALIDACION` (disponibilidad) y responder 201. Reconciliación: `POST /empleados/reconciliar` reconsulta departamentos por cada pendiente; nunca departamento por defecto |
 

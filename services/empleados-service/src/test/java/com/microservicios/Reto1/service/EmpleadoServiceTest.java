@@ -54,7 +54,6 @@ class EmpleadoServiceTest {
 				.permittedNumberOfCallsInHalfOpenState(1)
 				.automaticTransitionFromOpenToHalfOpenEnabled(true)
 				.recordExceptions(ServiceUnavailableException.class)
-				.ignoreExceptions(BadRequestException.class)
 				.build();
 		CircuitBreakerRegistry circuitBreakerRegistry = CircuitBreakerRegistry.of(config);
 		circuitBreaker = circuitBreakerRegistry.circuitBreaker(EmpleadoService.CIRCUIT_BREAKER_NAME);
@@ -235,6 +234,22 @@ class EmpleadoServiceTest {
 		assertThat(registrado.getEstado()).isEqualTo(EstadoEmpleado.ACTIVO);
 		assertThat(circuitBreaker.getState()).isEqualTo(State.CLOSED);
 		verify(departamentoClient).validarExistencia("IT");
+	}
+
+	@Test
+	void enHalfOpenUnDepartamentoInexistenteCuentaComoRespuestaYTambienCierraElCircuito() {
+		circuitBreaker.transitionToOpenState();
+		circuitBreaker.transitionToHalfOpenState();
+		Empleado empleado = nuevoEmpleado();
+		org.mockito.Mockito.doThrow(new BadRequestException("El departamento con id IT no existe"))
+				.when(departamentoClient).validarExistencia("IT");
+
+		assertThatThrownBy(() -> empleadoService.registrar(empleado))
+				.isInstanceOf(BadRequestException.class)
+				.hasMessageContaining("IT");
+
+		assertThat(circuitBreaker.getState()).isEqualTo(State.CLOSED);
+		verify(empleadoRepository, never()).save(any(Empleado.class));
 	}
 
 	@Test

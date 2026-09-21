@@ -107,13 +107,17 @@ services:
       PORT: 8080
       EMPLEADOS_URL: http://empleados-service:8080
       DEPARTAMENTOS_URL: http://departamentos-service:8081
+      PROXY_TIMEOUT_MS: ${PROXY_TIMEOUT_MS}
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
+    # El borde debe arrancar incluso si un backend falla. Solo exige que Compose
+    # haya iniciado sus contenedores; la disponibilidad se resuelve en runtime
+    # con el 503 JSON del proxy y el /health del Gateway permanece independiente.
     depends_on:
       empleados-service:
-        condition: service_healthy
+        condition: service_started
       departamentos-service:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s

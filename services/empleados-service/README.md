@@ -62,26 +62,30 @@ Sin incluir el valor del email en el mensaje.
 
 ## OpenAPI / Swagger (Etapa 4)
 
-Springdoc OpenAPI documenta los endpoints con el contrato de la Etapa 3: `POST /empleados`
-(`201` / `400` / `503`), `GET /empleados/{id}` (`200` / `404`), `GET /empleados` (`200`) y
+Springdoc OpenAPI documenta los endpoints con el contrato vigente: `POST /empleados`
+(`201` / `400`), `GET /empleados/{id}` (`200` / `404`), `GET /empleados` (`200`) y
 `GET /health` (`200` / `503`).
 
 | Recurso | URL (con Compose en la raíz) |
 |---|---|
-| Swagger UI | http://localhost:8080/swagger-ui.html |
-| Spec JSON | http://localhost:8080/v3/api-docs |
+| Swagger UI | `/swagger-ui.html` dentro de `empleados-service:8080` |
+| Spec JSON | `/v3/api-docs` dentro de `empleados-service:8080` |
 
-En el monorepo el arranque correcto es el `docker-compose.yml` de la **raíz**, no el de esta carpeta (ese quedó del Reto 1).
+En el monorepo el arranque correcto es el `docker-compose.yml` de la **raíz**. Swagger queda
+interno porque el único puerto público es el Gateway; el contrato público se prueba con la
+colección del Reto 3.
 
 ## Ejecutar con Docker Compose (recomendado)
 
-Levanta la API y PostgreSQL juntos:
+Desde la raíz del monorepo levanta el Gateway, ambas APIs y ambas bases:
 
 ```bash
-docker compose up --build
+cd ../..
+cp .env.example .env
+docker compose up --build -d
 ```
 
-La API queda en: `http://localhost:8080`
+La API se consume a través del Gateway: `http://localhost:8080/empleados`.
 
 Detener:
 
@@ -96,19 +100,25 @@ docker build -t servidor-empleados .
 docker run -p 8080:8080 -e DB_HOST=host.docker.internal -e DB_PORT=5433 -e DB_NAME=hr_management -e DB_USER=empleados -e DB_PASSWORD=empleados servidor-empleados
 ```
 
-> Nota: con `docker run` necesitas PostgreSQL corriendo en tu máquina (por ejemplo con `docker compose up db`). Con `docker compose up --build` no hace falta nada extra.
+> Nota: con `docker run` necesitas PostgreSQL en `localhost:5433` y departamentos en
+> `localhost:8081`. Con el Compose raíz no hace falta preparar dependencias manualmente.
 
-> Para probar el registro integrado con departamentos, utiliza el `docker-compose.yml` de la raíz del monorepo. El Compose local de esta carpeta solo levanta empleados y PostgreSQL, por lo que requiere que `departamentos-service` esté disponible externamente.
+> Para probar el registro integrado utiliza siempre el `docker-compose.yml` de la raíz. Este
+> servicio ya no mantiene un Compose aislado porque el contrato del Reto 3 exige un único puerto
+> público en el Gateway.
 
 ## Ejecutar en local
 
-1. Arranca solo la base de datos:
+1. Arranca una base de datos de desarrollo en el puerto esperado:
 
 ```bash
-docker compose up db -d
+docker run --rm --name empleados-dev-db -d -p 5433:5432 \
+  -e POSTGRES_DB=hr_management \
+  -e POSTGRES_USER=empleados \
+  -e POSTGRES_PASSWORD=empleados postgres:16-alpine
 ```
 
-2. Ejecuta la aplicación:
+2. Asegúrate de tener departamentos disponible en `http://localhost:8081` y ejecuta la aplicación:
 
 ```bash
 ./mvnw spring-boot:run
@@ -120,10 +130,10 @@ En Windows:
 .\mvnw.cmd spring-boot:run
 ```
 
-En contenedor:
+Al terminar:
 
 ```bash
-docker compose up --build
+docker stop empleados-dev-db
 ```
 
 Configuración por defecto:
@@ -446,7 +456,7 @@ responde de inmediato con el fallback, hasta que el proveedor se recupera.
 | `automaticTransitionFromOpenToHalfOpenEnabled` | `true` | Recuperación sin reiniciar el contenedor |
 | Timeout de la llamada HTTP | `5s` (`DEPARTAMENTOS_SERVICE_TIMEOUT`) | Subido de 3s a 5s para alinear con el enunciado |
 | `recordExceptions` | `ServiceUnavailableException` | Timeout, 5xx, conexión rechazada, reintentos agotados |
-| `ignoreExceptions` | `BadRequestException` | Un `404` es éxito del circuito: departamento inexistente, no infraestructura caída |
+| Excepciones no registradas como fallo | `BadRequestException` | Un `404` cuenta como éxito del circuito: el proveedor respondió y el error es de negocio, no de infraestructura |
 
 #### Fallback: disponibilidad sobre consistencia
 
@@ -485,26 +495,31 @@ curl http://localhost:8080/empleados/circuit-breaker
 La suite cubre:
 
 - Registro y consulta desde el controlador.
-- Asignación automática del estado `ACTIVO`.
+- Asignación de `ACTIVO` o `PENDIENTE_VALIDACION` según la disponibilidad del departamento.
 - Conflictos por `id`, `email` y `numeroEmpleado` duplicados.
 - Validación del departamento y política de reintentos.
 - Health check real contra PostgreSQL.
-- Traducción de indisponibilidad a `503`.
+- Estados `CLOSED`, `OPEN`, `HALF_OPEN`, fallback y reconciliación.
 - Consulta de empleados inexistentes.
 - Validaciones de todos los campos del modelo.
 - Manejo global de respuestas `400`, `404` y `503`.
 - Carga del contexto de Spring Boot.
 
-Como la prueba de contexto inicializa JPA, primero debe estar disponible PostgreSQL:
+Como la prueba de contexto inicializa JPA, debe estar disponible PostgreSQL en el puerto local
+por defecto de pruebas (`5433`). Una forma aislada es:
 
 ```bash
-docker compose up db -d
+docker run --rm --name empleados-test-db -d -p 5433:5432 \
+  -e POSTGRES_DB=hr_management \
+  -e POSTGRES_USER=empleados \
+  -e POSTGRES_PASSWORD=empleados postgres:16-alpine
 ```
 
 En Windows:
 
 ```bash
 .\mvnw.cmd test
+docker stop empleados-test-db
 ```
 
 En Linux o macOS:
@@ -523,7 +538,11 @@ El artefacto generado queda disponible en el directorio `target/`.
 
 ### Colección de Postman
 
-El archivo [`Reto2.postman_collection.json`](../../Reto2.postman_collection.json), en la raíz del monorepo, cubre ambos servicios: `departamentos-service` y `empleados-service` (registro, consultas, las validaciones que responden `400`/`404`, y un escenario de resiliencia con `departamentos-service` caído que responde `503`). Ver la sección correspondiente en el [README raíz](../../README.md#colección-de-postman).
+La colección vigente es
+[`docs/reto3/Reto3.postman_collection.json`](../../docs/reto3/Reto3.postman_collection.json).
+Usa exclusivamente `http://localhost:8080` y cubre flujo sano, Gateway `503`, Circuit Breaker,
+recuperación y reconciliación. Ver también las
+[`evidencias del Reto 3`](../../docs/reto3/EVIDENCIAS.md).
 
 ### Solución de problemas
 

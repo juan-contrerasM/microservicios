@@ -11,6 +11,6 @@ export function loadConfig(env = process.env) {
 		port: Number(env.PORT || 8080),
 		empleadosUrl: requiredUrl(env, 'EMPLEADOS_URL'),
 		departamentosUrl: requiredUrl(env, 'DEPARTAMENTOS_URL'),
-		proxyTimeoutMs: Number(env.PROXY_TIMEOUT_MS || 10_000),
+		proxyTimeoutMs: Number(env.PROXY_TIMEOUT_MS || 35_000),
 	};
 }

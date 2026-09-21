@@ -49,6 +49,7 @@ describe('loadConfig', () => {
 		assert.equal(config.empleadosUrl, 'http://empleados-service:8080');
 		assert.equal(config.departamentosUrl, 'http://departamentos-service:8081');
 		assert.equal(config.port, 9090);
+		assert.equal(config.proxyTimeoutMs, 35_000);
 	});
 });
 
@@ -61,7 +62,12 @@ describe('api-gateway', () => {
 		empleados = await listen(async (req, res) => {
 			const body = await collectBody(req);
 			if (req.method === 'POST' && req.url.startsWith('/empleados')) {
-				json(res, 201, { id: 'E001', estado: 'ACTIVO', echo: body }, { 'X-Backend': 'empleados' });
+				json(res, 201, {
+					id: 'E001',
+					estado: 'ACTIVO',
+					echo: body,
+					requestId: req.headers['x-request-id'],
+				}, { 'X-Backend': 'empleados' });
 				return;
 			}
 			if (req.method === 'GET' && req.url === '/empleados/E001') {
@@ -114,6 +120,7 @@ describe('api-gateway', () => {
 		assert.equal(res.body.estado, 'ACTIVO');
 		assert.equal(res.headers['x-backend'], 'empleados');
 		assert.equal(JSON.parse(res.body.echo).id, 'E001');
+		assert.equal(res.body.requestId, 'req-1');
 	});
 
 	it('propaga 400 de departamentos sin reescribir el payload', async () => {
