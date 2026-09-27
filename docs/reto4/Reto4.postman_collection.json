@@ -1,0 +1,1201 @@
+{
+  "info": {
+    "name": "Reto 4 - Comunicación asincrónica y eventos",
+    "description": "Colección del Reto 4. URL de negocio única: http://localhost:8080 (api-gateway). Importar este archivo en Postman.\n\nEjecución desde datos limpios (`docker compose down -v` y `docker compose up --build`):\n1. Carpetas 0 a 7, en orden, con todos los contenedores UP. Newman:\n   newman run docs/reto4/Reto4.postman_collection.json --folder \"0. Salud y departamento\" --folder \"1. Alta y fan-out\" --folder \"2. Actualizar empleado\" --folder \"3. Perfil por REST\" --folder \"4. Programar vacaciones\" --folder \"5. Validaciones de vacaciones\" --folder \"6. Consultar y cancelar\" --folder \"7. Retiro y auditoria\" --timeout-script 30000\n2. Carpeta 8, a mano: publicar dos veces el mismo envelope desde la UI de RabbitMQ (http://localhost:15672) y después correr las peticiones.\n3. Carpeta 9, a mano: cada petición debe fallar por conexión rechazada. Ese error es la evidencia.\n\nLas fechas de vacaciones son de 2027. Las de junio 2026 del PDF ya caen en el pasado y la validación de fecha las rechazaría.\nLos GET de perfil y de notificaciones reintentan hasta 15 s dentro del test: la respuesta que muestra Postman puede ser la primera (aún vacía o 404) aunque el test pase.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "gateway_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "vacacion_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "direct_perfiles_url",
+      "value": "http://localhost:8083",
+      "type": "string"
+    },
+    {
+      "key": "direct_notificaciones_url",
+      "value": "http://localhost:8084",
+      "type": "string"
+    },
+    {
+      "key": "direct_vacaciones_url",
+      "value": "http://localhost:8085",
+      "type": "string"
+    },
+    {
+      "key": "direct_departamentos_url",
+      "value": "http://localhost:8081",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Salud y departamento",
+      "description": "Sistema sano. Crea el departamento IT que el alta de E001 va a validar.",
+      "item": [
+        {
+          "name": "Health del Gateway (UP)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status UP', () => pm.expect(pm.response.json().status).to.eql('UP'));",
+                  "pm.test('identifica al Gateway', () => pm.expect(pm.response.json().service).to.eql('api-gateway'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Crear departamento IT (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/departamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"IT\",\n  \"nombre\": \"Tecnología\",\n  \"descripcion\": \"Departamento de TI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('id IT', () => pm.expect(pm.response.json().id).to.eql('IT'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Alta y fan-out",
+      "description": "POST /empleados persiste y publica empleado.creado. Perfil y notificación BIENVENIDA aparecen solos.",
+      "item": [
+        {
+          "name": "Registrar empleado E001 (201 ACTIVO)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"E001\",\n  \"nombre\": \"Juan\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"juan.perez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-001\",\n  \"cargo\": \"Desarrollador Senior\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('estado ACTIVO', () => pm.expect(pm.response.json().estado).to.eql('ACTIVO'));",
+                  "pm.test('id E001', () => pm.expect(pm.response.json().id).to.eql('E001'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Perfil creado por el evento (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/perfiles/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get(\"gateway_url\") + \"/perfiles/E001\";",
+                  "let found = null;",
+                  "let last = null;",
+                  "for (let i = 0; i < 15; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest(target, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && body && body.empleadoId === \"E001\") { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('Perfil creado por empleado.creado', () => {",
+                  "    pm.expect(found, 'sin perfil tras 15s').to.be.an('object');",
+                  "    pm.expect(found.empleadoId).to.eql('E001');",
+                  "    pm.expect(found.nombre).to.eql('Juan');",
+                  "    pm.expect(found.email).to.eql('juan.perez@empresa.com');",
+                  "    pm.expect(found.telefono).to.eql('');",
+                  "    pm.expect(found.archivado).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "La primera respuesta puede ser 404. El test vuelve a consultar hasta 15 s."
+        },
+        {
+          "name": "Notificación BIENVENIDA (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get(\"gateway_url\") + \"/notificaciones/E001\";",
+                  "let found = null;",
+                  "let last = null;",
+                  "for (let i = 0; i < 15; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest(target, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.some((n) => n.tipo === \"BIENVENIDA\")) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('Una bienvenida para E001', () => {",
+                  "    pm.expect(found, 'sin notificación tras 15s').to.be.an('array');",
+                  "    const bienvenidas = found.filter((n) => n.tipo === 'BIENVENIDA');",
+                  "    pm.expect(bienvenidas).to.have.lengthOf(1);",
+                  "    pm.expect(bienvenidas[0].destinatario).to.eql('juan.perez@empresa.com');",
+                  "    pm.expect(bienvenidas[0].empleadoId).to.eql('E001');",
+                  "    pm.expect(bienvenidas[0].mensaje).to.eql('Bienvenido Juan Pérez');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Actualizar empleado",
+      "description": "PUT parcial publica empleado.actualizado. El perfil copia nombre y email, y no pisa el teléfono.",
+      "item": [
+        {
+          "name": "PUT empleado E001 cambia el nombre (200)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados/E001",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Juan Carlos\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('nombre actualizado', () => pm.expect(pm.response.json().nombre).to.eql('Juan Carlos'));",
+                  "pm.test('sigue ACTIVO', () => pm.expect(pm.response.json().estado).to.eql('ACTIVO'));",
+                  "pm.test('el email no se borró', () => pm.expect(pm.response.json().email).to.eql('juan.perez@empresa.com'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Perfil sincronizó el nombre (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/perfiles/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get(\"gateway_url\") + \"/perfiles/E001\";",
+                  "let found = null;",
+                  "let last = null;",
+                  "for (let i = 0; i < 15; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest(target, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && body && body.nombre === \"Juan Carlos\") { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('nombre replicado y teléfono intacto', () => {",
+                  "    pm.expect(found, 'el perfil no sincronizó en 15s').to.be.an('object');",
+                  "    pm.expect(found.nombre).to.eql('Juan Carlos');",
+                  "    pm.expect(found.email).to.eql('juan.perez@empresa.com');",
+                  "    pm.expect(found.telefono).to.eql('');",
+                  "    pm.expect(found.archivado).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Perfil por REST",
+      "description": "PUT /perfiles edita teléfono, ciudad y biografía. No publica eventos y no revierte el nombre.",
+      "item": [
+        {
+          "name": "PUT perfil E001 (200)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/perfiles/E001",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"3001234567\",\n  \"ciudad\": \"Armenia\",\n  \"biografia\": \"Ingeniero de sistemas\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const perfil = pm.response.json();",
+                  "pm.test('telefono', () => pm.expect(perfil.telefono).to.eql('3001234567'));",
+                  "pm.test('ciudad', () => pm.expect(perfil.ciudad).to.eql('Armenia'));",
+                  "pm.test('biografia', () => pm.expect(perfil.biografia).to.eql('Ingeniero de sistemas'));",
+                  "pm.test('el nombre replicado se conserva', () => pm.expect(perfil.nombre).to.eql('Juan Carlos'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar perfiles incluye E001 (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/perfiles"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('incluye E001', () => pm.expect(pm.response.json().map((p) => p.empleadoId)).to.include('E001'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Perfil inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/perfiles/NO-EXISTE"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('El perfil del empleado NO-EXISTE no existe'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Programar vacaciones",
+      "description": "POST /vacaciones responde 201 PROGRAMADA y notificaciones registra VACACIONES sin otro llamado.",
+      "item": [
+        {
+          "name": "Programar período de E001 (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"E001\",\n  \"fechaInicio\": \"2027-03-15\",\n  \"fechaFin\": \"2027-03-30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const periodo = pm.response.json();",
+                  "pm.test('PROGRAMADA', () => pm.expect(periodo.estado).to.eql('PROGRAMADA'));",
+                  "pm.test('empleado E001', () => pm.expect(periodo.empleadoId).to.eql('E001'));",
+                  "pm.test('fechas', () => {",
+                  "    pm.expect(periodo.fechaInicio).to.eql('2027-03-15');",
+                  "    pm.expect(periodo.fechaFin).to.eql('2027-03-30');",
+                  "});",
+                  "pm.test('guarda el id', () => {",
+                  "    pm.expect(periodo.id).to.be.a('string').and.not.empty;",
+                  "    pm.collectionVariables.set('vacacion_id', periodo.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notificación VACACIONES (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get(\"gateway_url\") + \"/notificaciones/E001\";",
+                  "let found = null;",
+                  "let last = null;",
+                  "for (let i = 0; i < 15; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest(target, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.some((n) => n.tipo === \"VACACIONES\")) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('Confirmación de vacaciones', () => {",
+                  "    pm.expect(found, 'sin notificación VACACIONES tras 15s').to.be.an('array');",
+                  "    const avisos = found.filter((n) => n.tipo === 'VACACIONES');",
+                  "    pm.expect(avisos.length).to.be.at.least(1);",
+                  "    pm.expect(avisos[0].destinatario).to.eql('juan.perez@empresa.com');",
+                  "    pm.expect(avisos[0].mensaje).to.eql('Sus vacaciones del 2027-03-15 al 2027-03-30 han sido programadas');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Validaciones de vacaciones",
+      "description": "Las cuatro deben responder 400. El solapamiento incluye periodoEnConflicto. Correr después de la carpeta 4.",
+      "item": [
+        {
+          "name": "Fechas incoherentes (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"E001\",\n  \"fechaInicio\": \"2027-06-30\",\n  \"fechaFin\": \"2027-06-15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('La fechaFin debe ser posterior a la fechaInicio'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fecha en el pasado (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"E001\",\n  \"fechaInicio\": \"2026-01-10\",\n  \"fechaFin\": \"2026-01-20\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('La fechaInicio no puede ser anterior a la fecha actual'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Solapamiento (400 con el período en conflicto)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"E001\",\n  \"fechaInicio\": \"2027-03-20\",\n  \"fechaFin\": \"2027-04-05\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('mensaje', () => pm.expect(body.mensaje).to.eql('El empleado ya tiene un período que se solapa con las fechas solicitadas'));",
+                  "pm.test('trae el período en conflicto', () => {",
+                  "    pm.expect(body.periodoEnConflicto).to.be.an('object');",
+                  "    pm.expect(body.periodoEnConflicto.id).to.eql(pm.collectionVariables.get('vacacion_id'));",
+                  "    pm.expect(body.periodoEnConflicto.estado).to.eql('PROGRAMADA');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Empleado inexistente (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"NO-EXISTE\",\n  \"fechaInicio\": \"2027-08-01\",\n  \"fechaFin\": \"2027-08-10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('El empleado con id NO-EXISTE no existe'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Consultar y cancelar",
+      "description": "DELETE pasa el período a CANCELADA y la fila se queda. Un CANCELADA no bloquea un rango nuevo.",
+      "item": [
+        {
+          "name": "Consultar período por id (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/vacaciones/{{vacacion_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('PROGRAMADA', () => pm.expect(pm.response.json().estado).to.eql('PROGRAMADA'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar períodos de E001 (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/vacaciones?empleadoId=E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('incluye el período', () => pm.expect(pm.response.json().map((v) => v.id)).to.include(pm.collectionVariables.get('vacacion_id')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar todos los períodos (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/vacaciones"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('es un arreglo', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancelar período futuro (200 CANCELADA)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gateway_url}}/vacaciones/{{vacacion_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('CANCELADA', () => pm.expect(pm.response.json().estado).to.eql('CANCELADA'));",
+                  "pm.test('mismo id', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('vacacion_id')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "El período cancelado sigue consultable (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/vacaciones/{{vacacion_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('sigue CANCELADA', () => pm.expect(pm.response.json().estado).to.eql('CANCELADA'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mismas fechas tras cancelar (201, ya no hay solapamiento)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"E001\",\n  \"fechaInicio\": \"2027-03-15\",\n  \"fechaFin\": \"2027-03-30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('nuevo período PROGRAMADA', () => {",
+                  "    const periodo = pm.response.json();",
+                  "    pm.expect(periodo.estado).to.eql('PROGRAMADA');",
+                  "    pm.expect(periodo.id).to.not.eql(pm.collectionVariables.get('vacacion_id'));",
+                  "    pm.collectionVariables.set('vacacion_id', periodo.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Período inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/vacaciones/V-NO-EXISTE"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('El período de vacaciones con id V-NO-EXISTE no existe'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Retiro y auditoria",
+      "description": "DELETE no borra al empleado. Publica empleado.retirado: notificación DESVINCULACION y perfil archivado.",
+      "item": [
+        {
+          "name": "Retirar E001 (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gateway_url}}/empleados/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const empleado = pm.response.json();",
+                  "pm.test('RETIRADO', () => pm.expect(empleado.estado).to.eql('RETIRADO'));",
+                  "pm.test('tiene fechaRetiro', () => pm.expect(empleado.fechaRetiro).to.be.a('string').and.not.empty);",
+                  "pm.test('el id sigue', () => pm.expect(empleado.id).to.eql('E001'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET del retirado sigue existiendo (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/empleados/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('RETIRADO', () => pm.expect(pm.response.json().estado).to.eql('RETIRADO'));",
+                  "pm.test('fechaRetiro', () => pm.expect(pm.response.json().fechaRetiro).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auditoría por estado RETIRADO (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/empleados?estado=RETIRADO"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('incluye E001', () => pm.expect(pm.response.json().map((e) => e.id)).to.include('E001'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auditoría por rango que incluye el retiro (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/empleados?estado=RETIRADO&desde=2026-01-01&hasta=2027-12-31"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('incluye E001', () => pm.expect(pm.response.json().map((e) => e.id)).to.include('E001'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Auditoría por rango anterior (no incluye E001)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/empleados?estado=RETIRADO&desde=2020-01-01&hasta=2020-12-31"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('no incluye E001', () => pm.expect(pm.response.json().map((e) => e.id)).to.not.include('E001'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Segundo retiro (400, sin otro evento)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{gateway_url}}/empleados/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('El empleado con id E001 ya está retirado'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Notificación DESVINCULACION (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get(\"gateway_url\") + \"/notificaciones/E001\";",
+                  "let found = null;",
+                  "let last = null;",
+                  "for (let i = 0; i < 15; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest(target, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.some((n) => n.tipo === \"DESVINCULACION\")) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('Una desvinculación', () => {",
+                  "    pm.expect(found, 'sin DESVINCULACION tras 15s').to.be.an('array');",
+                  "    const bajas = found.filter((n) => n.tipo === 'DESVINCULACION');",
+                  "    pm.expect(bajas).to.have.lengthOf(1);",
+                  "    pm.expect(bajas[0].destinatario).to.eql('juan.perez@empresa.com');",
+                  "    pm.expect(bajas[0].mensaje).to.eql('Su cuenta ha sido desvinculada');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Perfil archivado (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/perfiles/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get(\"gateway_url\") + \"/perfiles/E001\";",
+                  "let found = null;",
+                  "let last = null;",
+                  "for (let i = 0; i < 15; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest(target, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && body && body.archivado === true) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('archivado y no borrado', () => {",
+                  "    pm.expect(found, 'el perfil no se archivó en 15s').to.be.an('object');",
+                  "    pm.expect(found.archivado).to.eql(true);",
+                  "    pm.expect(found.empleadoId).to.eql('E001');",
+                  "    pm.expect(found.telefono).to.eql('3001234567');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Vacaciones de un empleado retirado (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"E001\",\n  \"fechaInicio\": \"2027-09-01\",\n  \"fechaFin\": \"2027-09-10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "await new Promise((r) => setTimeout(r, 2000));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const url = pm.variables.get('gateway_url') + '/vacaciones';",
+                  "const payload = { empleadoId: 'E001', fechaInicio: '2027-09-01', fechaFin: '2027-09-10' };",
+                  "let code = pm.response.code;",
+                  "let body = pm.response.json();",
+                  "for (let i = 0; i < 10; i++) {",
+                  "    if (code === 400 && body.mensaje && body.mensaje.includes('retirado')) break;",
+                  "    if (code === 201) break;",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url, method: 'POST', header: { 'Content-Type': 'application/json' }, body: { mode: 'raw', raw: JSON.stringify(payload) } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    code = res.code;",
+                  "    body = res.json();",
+                  "}",
+                  "pm.test('Rechaza al empleado retirado', () => {",
+                  "    pm.expect(code, 'la réplica seguía en ACTIVO y creó el período').to.eql(400);",
+                  "    pm.expect(body.mensaje).to.eql('El empleado con id E001 está retirado');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "Reintenta el POST si la réplica todavía no consumió empleado.retirado. Un 201 significa que la réplica seguía en ACTIVO."
+        }
+      ]
+    },
+    {
+      "name": "8. Deduplicación (manual)",
+      "description": "No la incluyas en Newman. En http://localhost:15672 publica DOS veces el mismo JSON al exchange onboarding.eventos con routing key empleado.creado. El id del envelope no cambia. Después corre estas dos peticiones: una sola bienvenida y un solo perfil.\n\n{\n  \"id\": \"11111111-1111-1111-1111-111111111111\",\n  \"type\": \"empleado.creado\",\n  \"version\": 1,\n  \"occurredAt\": \"2027-03-01T10:00:00Z\",\n  \"producer\": \"empleados-service\",\n  \"data\": {\n    \"empleadoId\": \"E002\",\n    \"nombre\": \"Ana\",\n    \"apellido\": \"Gómez\",\n    \"email\": \"ana.gomez@empresa.com\",\n    \"numeroEmpleado\": \"EMP-2027-002\",\n    \"cargo\": \"Analista\",\n    \"area\": \"Tecnología\",\n    \"departamentoId\": \"IT\",\n    \"fechaIngreso\": \"2027-03-01\",\n    \"estado\": \"ACTIVO\"\n  }\n}",
+      "item": [
+        {
+          "name": "E002 tiene una sola BIENVENIDA",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/notificaciones/E002"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get(\"gateway_url\") + \"/notificaciones/E002\";",
+                  "let found = null;",
+                  "let last = null;",
+                  "for (let i = 0; i < 15; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest(target, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.filter((n) => n.tipo === \"BIENVENIDA\").length >= 1) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('exactamente una bienvenida', () => {",
+                  "    pm.expect(found, 'no llegó la notificación de E002').to.be.an('array');",
+                  "    pm.expect(found.filter((n) => n.tipo === 'BIENVENIDA')).to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "E002 tiene un solo perfil",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/perfiles/E002"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('un perfil, no una lista duplicada', () => {",
+                  "    const perfil = pm.response.json();",
+                  "    pm.expect(perfil.empleadoId).to.eql('E002');",
+                  "    pm.expect(perfil.email).to.eql('ana.gomez@empresa.com');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9. Puertos de negocio no publicados (manual)",
+      "description": "Cada petición debe fallar en Postman (Could not get response / ECONNREFUSED). Si el test llega a ejecutarse, el puerto está publicado y el criterio del borde no se cumple. No la incluyas en Newman: el error de conexión es la evidencia.",
+      "item": [
+        {
+          "name": "Acceso directo perfiles :8083 (debe fallar TCP)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{direct_perfiles_url}}/perfiles"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No debería haber respuesta HTTP', function () {",
+                  "    pm.expect.fail('Si este test corre, el puerto 8083 está publicado. perfiles-service debe usar expose:, no ports:.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Acceso directo notificaciones :8084 (debe fallar TCP)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{direct_notificaciones_url}}/notificaciones"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No debería haber respuesta HTTP', function () {",
+                  "    pm.expect.fail('Si este test corre, el puerto 8084 está publicado. notificaciones-service debe usar expose:, no ports:.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Acceso directo vacaciones :8085 (debe fallar TCP)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{direct_vacaciones_url}}/vacaciones"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No debería haber respuesta HTTP', function () {",
+                  "    pm.expect.fail('Si este test corre, el puerto 8085 está publicado. vacaciones-service debe usar expose:, no ports:.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Acceso directo departamentos :8081 (debe fallar TCP)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{direct_departamentos_url}}/departamentos"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No debería haber respuesta HTTP', function () {",
+                  "    pm.expect.fail('Si este test corre, el puerto 8081 está publicado.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

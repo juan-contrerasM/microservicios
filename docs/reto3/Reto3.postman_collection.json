@@ -337,10 +337,11 @@
 		},
 		{
 			"name": "5. Circuit Breaker CLOSED a OPEN",
-			"description": "Detén departamentos-service antes de ejecutar esta carpeta. Las primeras tres altas deben tardar por los reintentos; las siguientes deben responder casi inmediatamente con PENDIENTE_VALIDACION. No reinicies empleados ni el Gateway.",
+			"description": "Demuestra el salto CLOSED → OPEN del circuit breaker de empleados. No es el 503 de la carpeta 4: aquí el Gateway sí llega a empleados, y empleados aplica el fallback (guarda el alta igual).\n\nAntes de ejecutar:\n1. docker compose stop departamentos-service\n2. empleados-service y api-gateway siguen encendidos.\n3. No reinicies empleados a mitad de la carpeta: el circuito vive en memoria y volvería a CLOSED.\n4. Ids E0CB1–E0CB8, cada uno con email y numeroEmpleado distintos. Si repites la carpeta sin limpiar la base, las altas responden conflicto.\n\nQué ocurre, en orden:\n- CB-1, CB-2 y CB-3: circuito CLOSED. Cada POST llama a departamentos por la red interna (GET http://departamentos-service:8081/departamentos/IT). El contenedor está parado, así que validarExistencia agota los reintentos (timeout 5s, hasta 4 intentos, esperas 1s → 2s → 4s). La respuesta es 201 con estado PENDIENTE_VALIDACION y tarda más de 3s (en la evidencia, unos 7–11s). Cada llamada cuenta como fallo. Al terminar la tercera, la ventana de 3 llamadas está al 100% y el circuito pasa a OPEN. La tercera sigue siendo lenta: se abre después de ese fallo, no antes.\n- CB-4 a CB-8: circuito OPEN. Ya no sale a la red (CallNotPermittedException). Misma respuesta 201 y PENDIENTE_VALIDACION, en menos de 500ms (en la evidencia, unos 30–40ms). Ese salto de ~10s a decenas de milisegundos es la prueba.\n- GET /empleados/circuit-breaker confirma { \"name\": \"departamentos\", \"state\": \"OPEN\" }.\n- GET /empleados/E0CB4 confirma que el fallback sí persistió.\n\nDeja departamentos apagado y no reinicies empleados si vas a seguir con la carpeta 6.",
 			"item": [
 				{
 					"name": "CB-1 CLOSED lento (E0CB1)",
+					"description": "Circuito todavía CLOSED. Empleados sí llama a departamentos. Como está apagado, agota reintentos y tarda varios segundos. Aun así responde 201 y guarda E0CB1 como PENDIENTE_VALIDACION. Este fallo es el 1 de 3.",
 					"request": {
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -360,6 +361,7 @@
 				},
 				{
 					"name": "CB-2 CLOSED lento (E0CB2)",
+					"description": "Sigue CLOSED. Segunda llamada real a departamentos, también lenta, también 201 con PENDIENTE_VALIDACION. Este fallo es el 2 de 3. El circuito todavía no se abre.",
 					"request": {
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -379,6 +381,7 @@
 				},
 				{
 					"name": "CB-3 CLOSED lento — abre el circuito (E0CB3)",
+					"description": "Última llamada lenta. Sigue saliendo a la red porque el circuito se abre al terminar este fallo, no antes. Con 3 fallos de 3 (umbral 100%), pasa a OPEN. Respuesta: 201 y PENDIENTE_VALIDACION.",
 					"request": {
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -398,6 +401,7 @@
 				},
 				{
 					"name": "CB-4 OPEN instantaneo (E0CB4)",
+					"description": "Circuito OPEN. Empleados ya no llama a departamentos. La respuesta llega en menos de 500ms, igual 201 y PENDIENTE_VALIDACION. La petición siguiente (GET /empleados/E0CB4) comprueba que este registro quedó guardado.",
 					"request": {
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -417,6 +421,7 @@
 				},
 				{
 					"name": "CB-5 OPEN instantaneo (E0CB5)",
+					"description": "Otra alta con el circuito abierto: sin red, menos de 500ms, 201 y PENDIENTE_VALIDACION. Repite el mismo fallback para mostrar que no fue un caso aislado.",
 					"request": {
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -436,6 +441,7 @@
 				},
 				{
 					"name": "CB-6 OPEN instantaneo (E0CB6)",
+					"description": "Tercera alta inmediata en OPEN. Mismo contrato: 201, PENDIENTE_VALIDACION, menos de 500ms, sin intentar la red.",
 					"request": {
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -455,6 +461,7 @@
 				},
 				{
 					"name": "CB-7 OPEN instantaneo (E0CB7)",
+					"description": "Cuarta alta inmediata en OPEN. El circuito sigue rechazando la llamada a departamentos mientras no pasen los 30s de espera en abierto.",
 					"request": {
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -474,6 +481,7 @@
 				},
 				{
 					"name": "CB-8 OPEN instantaneo (E0CB8)",
+					"description": "Quinta alta inmediata en OPEN. Cierra la serie de respuestas rápidas. Después se consulta el estado observable del circuito.",
 					"request": {
 						"method": "POST",
 						"header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -493,6 +501,7 @@
 				},
 				{
 					"name": "Circuito observable en OPEN",
+					"description": "GET /empleados/circuit-breaker. No crea empleados: solo lee el estado que Resilience4j tiene en memoria. Debe responder 200 y { \"name\": \"departamentos\", \"state\": \"OPEN\" }.",
 					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados/circuit-breaker" },
 					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
 						"pm.test('Status 200', () => pm.response.to.have.status(200));",
@@ -501,6 +510,7 @@
 				},
 				{
 					"name": "Confirmar que E0CB4 quedo persistido pendiente (200)",
+					"description": "GET /empleados/E0CB4. Comprueba que el fallback de CB-4 sí escribió en PostgreSQL: el empleado existe y sigue en PENDIENTE_VALIDACION. No se borró ni se le asignó otro departamento.",
 					"request": { "method": "GET", "header": [], "url": "{{gateway_url}}/empleados/E0CB4" },
 					"event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
 						"pm.test('Status 200 (el fallback persistio)', () => pm.response.to.have.status(200));",

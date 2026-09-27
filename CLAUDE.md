@@ -14,9 +14,11 @@ datos entre servicios.
 
 Documentos de referencia que SIEMPRE hay que leer antes de tocar código:
 
-- Reto 3 (activo): [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md),
+- Reto 4 (activo): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md),
+  [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md), [`docs/reto4/reto4.pdf`](docs/reto4/reto4.pdf).
+  **Actualiza `docs/reto4/STATUS.md` en el mismo commit/PR que cierra o avanza una etapa.**
+- Reto 3 (cerrado): [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md),
   [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md), [`docs/reto3/reto3.pdf`](docs/reto3/reto3.pdf).
-  **Actualiza `docs/reto3/STATUS.md` en el mismo commit/PR que cierra o avanza una etapa.**
 - Reto 2 (cerrado): [`docs/reto2/PLAN-RETO2.md`](docs/reto2/PLAN-RETO2.md),
   [`docs/reto2/STATUS.md`](docs/reto2/STATUS.md), [`docs/reto2/reto2.pdf`](docs/reto2/reto2.pdf).
 
@@ -29,7 +31,8 @@ micro/
 ├── .env.example                 # variables de entorno de referencia (nunca commitear .env real)
 ├── docs/
 │   ├── reto2/                   # plan, STATUS, colección y PDF del Reto 2 (cerrado)
-│   └── reto3/                   # plan, STATUS, colección y PDF del Reto 3 (activo)
+│   ├── reto3/                   # plan, STATUS, colección y PDF del Reto 3 (cerrado)
+│   └── reto4/                   # plan, STATUS, colección y PDF del Reto 4 (activo)
 └── services/
     ├── empleados-service/       # Reto 1, Java 21 + Spring Boot + PostgreSQL
     ├── departamentos-service/   # Reto 2, Go + chi + MySQL
@@ -46,7 +49,7 @@ y solo por red HTTP — nunca por base de datos compartida.
   borde) con su propio Dockerfile. El Gateway es un microservicio más: no comparte runtime ni
   carpeta con Java/Go, y no lleva base de datos.
 - Nunca acceder directamente a la base de datos de otro servicio. Comunicación entre servicios
-  solo por HTTP (o el mecanismo que definan retos futuros), nunca por SQL cruzado.
+  solo por HTTP o por eventos del broker (Reto 4), nunca por SQL cruzado.
 - Toda credencial de base de datos y toda URL de otro servicio se configura por variable de
   entorno, nunca hardcodeada. `docker-compose.yml` es quien las inyecta.
 - Versionamiento de esquema de base de datos siempre mediante changelogs controlados con
@@ -55,6 +58,8 @@ y solo por red HTTP — nunca por base de datos compartida.
     `services/empleados-service/src/main/resources/db/changelog/`.
   - `departamentos-service` (Go): `golang-migrate` — archivos `NNNN_descripcion.up.sql` /
     `.down.sql` en `services/departamentos-service/db/migrations/`.
+  - Reto 4 (cuando existan): Alembic en notificaciones, FluentMigrator en perfiles y Phinx en
+    vacaciones. El detalle está en [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md).
   - Nunca usar auto-DDL de un ORM (`hibernate.ddl-auto=update`, etc.) como mecanismo definitivo
     de esquema — sirve para prototipar, no es lo que se entrega.
 - Cada servicio de negocio expone su propio Swagger/OpenAPI (Springdoc en Java, OpenAPI estático
@@ -66,11 +71,11 @@ y solo por red HTTP — nunca por base de datos compartida.
 
 ## Flujo de trabajo entre varias personas
 
-1. Antes de empezar una etapa, revisa `docs/reto3/STATUS.md` para ver qué sigue disponible y qué
+1. Antes de empezar una etapa, revisa `docs/reto4/STATUS.md` para ver qué sigue disponible y qué
    ya está tomado/hecho.
 2. Trabaja dentro de la carpeta del servicio que te corresponde; evita tocar otro módulo salvo que
    la etapa lo requiera explícitamente (p. ej. `docker-compose.yml` raíz sí lo tocan varias etapas).
-3. Al terminar una etapa, actualiza `docs/reto3/STATUS.md` (marca la etapa, agrega notas de
+3. Al terminar una etapa, actualiza `docs/reto4/STATUS.md` (marca la etapa, agrega notas de
    decisiones tomadas) en el mismo commit.
 4. Las decisiones técnicas del enunciado vigente se documentan en el README de cada servicio
    afectado, con el "por qué", no solo el "qué". El Gateway **no** se implementa con Spring Cloud
