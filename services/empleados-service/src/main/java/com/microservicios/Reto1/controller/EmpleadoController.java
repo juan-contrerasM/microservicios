@@ -1,21 +1,28 @@
 package com.microservicios.Reto1.controller;
 
+import java.time.LocalDate;
 import java.util.List;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.microservicios.Reto1.dto.ActualizarEmpleadoRequest;
 import com.microservicios.Reto1.dto.ApiError;
 import com.microservicios.Reto1.dto.ApiValidationError;
 import com.microservicios.Reto1.dto.CircuitBreakerStatus;
 import com.microservicios.Reto1.dto.ReconciliacionResultado;
 import com.microservicios.Reto1.model.Empleado;
+import com.microservicios.Reto1.model.EstadoEmpleado;
 import com.microservicios.Reto1.service.EmpleadoService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -126,22 +133,80 @@ public class EmpleadoController {
 	}
 
 	/**
-	 * Lista todos los empleados registrados.
-	 *
-	 * @return los empleados registrados con código 200 (arreglo vacío si no hay ninguno)
+	 * Lista empleados. Sin query params devuelve todos. Con {@code estado} filtra.
+	 * {@code desde} y {@code hasta} acotan la fecha UTC de {@code fechaRetiro}.
 	 */
 	@GetMapping
-	@Operation(summary = "Listar empleados", description = "Devuelve todos los empleados registrados.")
+	@Operation(summary = "Listar empleados",
+			description = "Sin parámetros devuelve todos. `estado=RETIRADO` devuelve solo las bajas lógicas. "
+					+ "`desde` y `hasta` (AAAA-MM-DD) incluyen ambos extremos y comparan la fecha de "
+					+ "`fechaRetiro`, no la hora. Deben enviarse juntos.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Listado de empleados",
 					content = @Content(mediaType = JSON,
 							array = @io.swagger.v3.oas.annotations.media.ArraySchema(
 									schema = @Schema(implementation = Empleado.class)))),
+			@ApiResponse(responseCode = "400", description = "Estado o rango de fechas inválido",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class))),
 			@ApiResponse(responseCode = "500", description = "Error interno",
 					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
 	})
-	public ResponseEntity<List<Empleado>> listar() {
-		return ResponseEntity.ok(empleadoService.listarTodos());
+	public ResponseEntity<List<Empleado>> listar(
+			@Parameter(description = "Filtra por estado. Para la auditoría de bajas: RETIRADO")
+			@RequestParam(required = false) EstadoEmpleado estado,
+			@Parameter(description = "Inicio del rango de fechaRetiro, inclusive (AAAA-MM-DD)", example = "2026-01-01")
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+			@Parameter(description = "Fin del rango de fechaRetiro, inclusive (AAAA-MM-DD)", example = "2026-12-31")
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta) {
+		return ResponseEntity.ok(empleadoService.listar(estado, desde, hasta));
+	}
+
+	/**
+	 * Actualización parcial. Publica {@code empleado.actualizado} después del commit.
+	 */
+	@PutMapping("/{id}")
+	@Operation(summary = "Actualizar empleado",
+			description = "Actualiza solo los campos enviados. El id de la ruta no cambia y este "
+					+ "método no pasa el estado a RETIRADO. Si cambia departamentoId, se vuelve a "
+					+ "validar contra departamentos. Tras persistir publica empleado.actualizado.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Empleado actualizado",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
+			@ApiResponse(responseCode = "400",
+					description = "Campo inválido, email o numeroEmpleado duplicado, o departamento inexistente",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class))),
+			@ApiResponse(responseCode = "404", description = "No existe un empleado con ese id",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
+							examples = @ExampleObject(value = "{\"mensaje\":\"El empleado con id E999 no existe\"}")))
+	})
+	public ResponseEntity<Empleado> actualizar(
+			@Parameter(description = "Identificador del empleado", example = "E001", required = true)
+			@PathVariable String id,
+			@Valid @RequestBody ActualizarEmpleadoRequest cambios) {
+		return ResponseEntity.ok(empleadoService.actualizar(id, cambios));
+	}
+
+	/**
+	 * Baja lógica. No borra la fila.
+	 */
+	@DeleteMapping("/{id}")
+	@Operation(summary = "Retirar empleado",
+			description = "Pasa el estado a RETIRADO, guarda fechaRetiro en UTC y publica "
+					+ "empleado.retirado. La fila permanece. Un segundo DELETE responde 400 y no publica.")
+	@ApiResponses({
+			@ApiResponse(responseCode = "200", description = "Empleado retirado",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
+			@ApiResponse(responseCode = "400", description = "El empleado ya estaba retirado",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
+							examples = @ExampleObject(
+									value = "{\"mensaje\":\"El empleado con id E001 ya está retirado\"}"))),
+			@ApiResponse(responseCode = "404", description = "No existe un empleado con ese id",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
+	})
+	public ResponseEntity<Empleado> retirar(
+			@Parameter(description = "Identificador del empleado", example = "E001", required = true)
+			@PathVariable String id) {
+		return ResponseEntity.ok(empleadoService.retirar(id));
 	}
 
 	/**

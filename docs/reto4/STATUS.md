@@ -12,8 +12,8 @@ Leyenda: ✅ hecho · 🔄 en progreso · ⬜ pendiente
 | Etapa | Descripción | Estado | Notas |
 |---|---|---|---|
 | 0 | Plan, este STATUS y colección Postman en `docs/reto4/` (URL de negocio `http://localhost:8080`) | ✅ | Contrato listo. Importar [`Reto4.postman_collection.json`](Reto4.postman_collection.json). Las carpetas automáticas fallarán hasta que existan broker, eventos y los tres servicios. |
-| 1 | RabbitMQ en `docker-compose.yml` (AMQP + management UI), healthcheck, credenciales por entorno, justificación frente a Kafka / Redis Streams / NATS | ⬜ | Criterio 1. |
-| 2 | `empleados-service`: publish de `empleado.creado`, `empleado.actualizado` y `empleado.retirado`. `PUT`, `DELETE` lógico con `fechaRetiro`, auditoría `?estado=RETIRADO` | ⬜ | Criterio 2. Liquibase solo agrega `fecha_retiro`. El fallo del publish no revierte la fila. |
+| 1 | RabbitMQ en `docker-compose.yml` (AMQP + management UI), healthcheck, credenciales por entorno, justificación frente a Kafka / Redis Streams / NATS | ✅ | Criterio 1. `message-broker` (`rabbitmq:3-management`), volumen `vol-rabbitmq`, UI en `:15672`. Justificación en el README raíz. Exchange y colas los declaran los servicios en etapas posteriores. |
+| 2 | `empleados-service`: publish de `empleado.creado`, `empleado.actualizado` y `empleado.retirado`. `PUT`, `DELETE` lógico con `fechaRetiro`, auditoría `?estado=RETIRADO` | ✅ | Criterio 2. Liquibase `002-add-fecha-retiro` (TIMESTAMP, con rollback). El publish va después del commit; si el broker falla, la fila queda y el error queda en el log. `BROKER_URL` ya se inyecta en el compose de empleados para que el publicador alcance `message-broker`. |
 | 3 | `notificaciones-service` (Python): consume los tres eventos, log `[NOTIFICACIÓN]`, historial, deduplicación por `id`, OpenAPI | ⬜ | Criterio 3. |
 | 4 | `perfiles-service` (Java 21 / Spring Boot): perfil por defecto, sincroniza nombre/email, archiva al retirar, REST y OpenAPI | ⬜ | Criterio 4. Mismo lenguaje que empleados, carpeta y base propias. |
 | 5 | `vacaciones-service` (Node.js 22 / Express): CRUD, cuatro validaciones, publica `vacaciones.programadas`, réplica local de empleados | ⬜ | Criterio 5. Mismo lenguaje que el Gateway, carpeta propia. |
@@ -22,11 +22,12 @@ Leyenda: ✅ hecho · 🔄 en progreso · ⬜ pendiente
 
 ## Estado de entrega
 
-Solo la **Etapa 0** está cerrada. No hay broker ni servicios nuevos en el compose. El tráfico
-de negocio sigue entrando por `http://localhost:8080` hacia empleados y departamentos, como
-quedó en el Reto 3.
+Las etapas **0**, **1** y **2** están cerradas. RabbitMQ está en el compose y
+`empleados-service` publica `empleado.creado`, `empleado.actualizado` y `empleado.retirado`.
+Todavía no hay consumidores: perfiles, notificaciones y vacaciones siguen pendientes. El
+tráfico de negocio entra por `http://localhost:8080`.
 
-Cuando las etapas 1 a 6 cierren, el flujo se prueba importando la colección y ejecutando las
+Cuando las etapas 3 a 6 cierren, el flujo se prueba importando la colección y ejecutando las
 carpetas en orden. La carpeta 8 (deduplicación) y la 9 (puertos no publicados) son manuales.
 
 ## Decisiones técnicas del enunciado
@@ -37,11 +38,11 @@ etapa, debe copiarse al README que el PDF pide. Mientras la etapa no cierre, que
 
 | Decisión | Estado | Elección propuesta / tomada |
 |---|---|---|
-| Message broker | Propuesta | RabbitMQ 3 management. Exchange topic `onboarding.eventos`, routing key = `type`, una cola durable por consumidor. UI en `:15672`. |
+| Message broker | Tomada | RabbitMQ 3 management. Exchange topic `onboarding.eventos`, routing key = `type`, una cola durable por consumidor. UI en `:15672`. Credenciales `RABBITMQ_USER` / `RABBITMQ_PASSWORD`. |
 | Lenguajes nuevos | Propuesta | Cuatro en total: Java (empleados y perfiles), Go (departamentos), Node (Gateway y vacaciones), Python (notificaciones). Perfiles → Java 21 + Spring Boot. Vacaciones → Node.js 22 + Express. Notificaciones → Python 3.12 + FastAPI. Sin C# ni PHP. |
 | Bases nuevas | Propuesta | Un Postgres 16 por servicio (`database-perfiles`, `database-notificaciones`, `database-vacaciones`), cada uno con su volumen. Migraciones: Liquibase (perfiles), Alembic (notificaciones), node-pg-migrate (vacaciones). |
 | Validar empleado en vacaciones | Propuesta | Réplica por `empleado.creado` / `empleado.retirado` (opción b del PDF). Un retirado no admite período nuevo (400), un id desconocido tampoco (400). |
-| Baja de empleado | Propuesta | `DELETE` → `RETIRADO` + `fechaRetiro`. Segundo DELETE → 400 y sin segundo evento. |
+| Baja de empleado | Tomada | `DELETE` → `RETIRADO` + `fechaRetiro` UTC. Segundo DELETE → 400 y sin segundo evento. El PUT no cambia el estado a `RETIRADO`. |
 | Catálogo de eventos | Propuesta, con hueco | El envelope (`id`, `type`, `version`, `occurredAt`, `producer`, `data`) lo fija el PDF. El archivo `catalogo-de-eventos.md` no está en el repo; las cargas `data` son las del plan. Si llega el catálogo oficial y un campo no coincide, se corrige el plan y la colección antes de cerrar la Etapa 2. |
 
 ## Cómo actualizar este archivo

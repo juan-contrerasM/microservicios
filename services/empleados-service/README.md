@@ -22,20 +22,24 @@ API REST en Spring Boot para registrar y consultar empleados. Usa **PostgreSQL**
   "area": "Tecnología",
   "departamentoId": "IT",
   "fechaIngreso": "2026-02-10",
-  "estado": "ACTIVO"
+  "estado": "ACTIVO",
+  "fechaRetiro": null
 }
 ```
 
-Estados: `ACTIVO`, `PENDIENTE_VALIDACION` (fallback del Circuit Breaker, Reto 3), `EN_VACACIONES`,
-`RETIRADO`. `EN_VACACIONES` y `RETIRADO` siguen sin usarse (Reto 4/5).
+Estados: `ACTIVO`, `PENDIENTE_VALIDACION` (fallback del Circuit Breaker, Reto 3), `EN_VACACIONES`
+(queda para el Reto 5) y `RETIRADO` (baja lógica del Reto 4). `fechaRetiro` es nulo hasta el
+`DELETE`: entonces guarda el instante UTC del retiro y la fila no se borra.
 
 ## Endpoints
 
 | Método | Ruta | Descripción | Código |
 |--------|------|-------------|--------|
-| `POST` | `/empleados` | Registrar empleado y validar su departamento (vía Circuit Breaker) | `201` / `400` |
-| `GET` | `/empleados/{id}` | Consultar por id | `200` / `404` |
-| `GET` | `/empleados` | Listar todos los empleados registrados | `200` |
+| `POST` | `/empleados` | Registrar empleado y validar su departamento (vía Circuit Breaker). Después del commit publica `empleado.creado` | `201` / `400` |
+| `PUT` | `/empleados/{id}` | Actualización parcial. Si cambia `departamentoId`, lo vuelve a validar. Publica `empleado.actualizado` | `200` / `400` / `404` |
+| `DELETE` | `/empleados/{id}` | Baja lógica: `RETIRADO` + `fechaRetiro`. Publica `empleado.retirado`. Un segundo DELETE no publica | `200` / `400` / `404` |
+| `GET` | `/empleados/{id}` | Consultar por id, también si está retirado | `200` / `404` |
+| `GET` | `/empleados` | Listar todos. `?estado=RETIRADO` filtra bajas. `desde` y `hasta` acotan la fecha UTC de `fechaRetiro`, ambos inclusive | `200` / `400` |
 | `GET` | `/empleados/circuit-breaker` | Estado del Circuit Breaker (`CLOSED`/`OPEN`/`HALF_OPEN`) | `200` |
 | `POST` | `/empleados/reconciliar` | Revalida contra departamentos a los `PENDIENTE_VALIDACION` | `200` |
 | `GET` | `/health` | Verificar la conexión con PostgreSQL | `200` / `503` |
@@ -60,11 +64,31 @@ Los errores se responden en JSON, por ejemplo:
 
 Sin incluir el valor del email en el mensaje.
 
+El `PUT` repite esas unicidades y, si el `departamentoId` cambia, la misma validación contra
+departamentos. No sirve para pasar a `RETIRADO`. Un `DELETE` de alguien que ya está retirado
+responde `400` con `{"mensaje":"El empleado con id {id} ya está retirado"}`.
+
+## Eventos (Reto 4)
+
+Después de confirmar la fila, el servicio publica en el exchange topic `onboarding.eventos`.
+La routing key es el `type`. El commit va primero: si RabbitMQ no responde, la fila queda y el
+error queda en el log. No se revierte el alta, la actualización ni el retiro.
+
+| Hecho | Evento | Cuándo |
+|---|---|---|
+| `POST` 201, sea `ACTIVO` o `PENDIENTE_VALIDACION` | `empleado.creado` | Después del commit |
+| `PUT` 200 | `empleado.actualizado` | Después del commit. La carga lleva el empleado ya guardado, no el diff |
+| `DELETE` 200 la primera vez | `empleado.retirado` | Después del commit. Incluye `fechaRetiro` |
+| `DELETE` de un retirado | ninguno | Responde 400 antes de publicar |
+
+El envelope es `id` (UUID), `type`, `version` 1, `occurredAt` (UTC), `producer`
+`empleados-service` y `data`. Al arrancar declara el exchange, de forma idempotente. Las colas
+las crean los consumidores.
+
 ## OpenAPI / Swagger (Etapa 4)
 
-Springdoc OpenAPI documenta los endpoints con el contrato vigente: `POST /empleados`
-(`201` / `400`), `GET /empleados/{id}` (`200` / `404`), `GET /empleados` (`200`) y
-`GET /health` (`200` / `503`).
+Springdoc OpenAPI documenta los endpoints con el contrato vigente, incluidos `PUT` y `DELETE`
+de empleados, el filtro `estado`/`desde`/`hasta` y `GET /health` (`200` / `503`).
 
 | Recurso | URL (con Compose en la raíz) |
 |---|---|
@@ -413,6 +437,10 @@ La caché no se reutiliza si se ejecuta la construcción con `--no-cache`, se li
 | `CB_FAILURE_RATE_THRESHOLD` | `100` | `100` | % de fallos en la ventana que abre el circuito |
 | `CB_WAIT_DURATION_OPEN` | `30s` | `30s` | Tiempo en `OPEN` antes de pasar a `HALF_OPEN` |
 | `CB_PERMITTED_CALLS_HALF_OPEN` | `1` | `1` | Llamadas de prueba permitidas en `HALF_OPEN` |
+| `BROKER_URL` | `amqp://localhost:5672` | `amqp://message-broker:5672` | AMQP del broker, sin credenciales en la URL |
+| `RABBITMQ_USER` | `onboarding` | `onboarding` | Usuario del broker |
+| `RABBITMQ_PASSWORD` | `onboarding` | `onboarding` | Contraseña del broker |
+| `BROKER_EXCHANGE` | `onboarding.eventos` | `onboarding.eventos` | Exchange topic. La routing key es el `type` del evento |
 
 Las credenciales incluidas están pensadas exclusivamente para desarrollo local. En otros ambientes deben proporcionarse mediante variables protegidas o secretos.
 

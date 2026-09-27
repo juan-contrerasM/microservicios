@@ -1,5 +1,6 @@
 package com.microservicios.Reto1.model;
 
+import java.time.Instant;
 import java.time.LocalDate;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -63,8 +64,14 @@ public class Empleado {
 
 	@NotNull(message = "El estado es obligatorio")
 	@Enumerated(EnumType.STRING)
-	@Schema(description = "En el registro el servicio lo fuerza a ACTIVO", example = "ACTIVO")
+	@Schema(description = "En el registro el servicio lo asigna. DELETE lo pasa a RETIRADO; el PUT no cambia este campo.",
+			example = "ACTIVO")
 	private EstadoEmpleado estado = EstadoEmpleado.ACTIVO;
+
+	@Column(name = "fecha_retiro")
+	@Schema(description = "Momento UTC del retiro lógico. Nulo mientras el empleado no está retirado.",
+			example = "2026-09-26T14:05:00Z", nullable = true)
+	private Instant fechaRetiro;
 
 	public Empleado() {
 	}
@@ -147,5 +154,13 @@ public class Empleado {
 
 	public void setEstado(EstadoEmpleado estado) {
 		this.estado = estado;
+	}
+
+	public Instant getFechaRetiro() {
+		return fechaRetiro;
+	}
+
+	public void setFechaRetiro(Instant fechaRetiro) {
+		this.fechaRetiro = fechaRetiro;
 	}
 }

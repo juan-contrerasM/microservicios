@@ -1,9 +1,10 @@
-# docker-compose.yml — orquestación (Reto 3, Etapa 2)
+# docker-compose.yml — orquestación (Reto 4, Etapa 1: broker)
 # Levantar: cp .env.example .env && docker compose up --build
 # Apagar: docker compose down   |   borrar datos: docker compose down -v
 #
-# Un solo puerto al host: api-gateway :8080. empleados y departamentos usan
+# Puerto de negocio al host: api-gateway :8080. empleados y departamentos usan
 # expose: (visibles solo dentro de microservices-network).
+# Puertos de infraestructura del broker: 5672 (AMQP) y 15672 (management UI).
 
 services:
   # --- PostgreSQL de empleados-service (nadie más la usa) ---
@@ -86,6 +87,10 @@ services:
       CB_FAILURE_RATE_THRESHOLD: ${CB_FAILURE_RATE_THRESHOLD}
       CB_WAIT_DURATION_OPEN: ${CB_WAIT_DURATION_OPEN}
       CB_PERMITTED_CALLS_HALF_OPEN: ${CB_PERMITTED_CALLS_HALF_OPEN}
+      BROKER_URL: amqp://message-broker:5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-onboarding}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
+      BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
     expose:
       - "8080"
     depends_on:
@@ -100,7 +105,30 @@ services:
     networks:
       - microservices-network
 
-  # --- Único puerto publicado al host ---
+  # --- RabbitMQ. Puertos de infraestructura, no una segunda puerta de negocio.
+  #     hostname fijo: el nombre del nodo (rabbit@message-broker) vive en el
+  #     volumen; si cambia, el broker no recupera las colas durables. ---
+  message-broker:
+    image: rabbitmq:3-management
+    hostname: message-broker
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - vol-rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+    networks:
+      - microservices-network
+
+  # --- Único puerto de negocio publicado al host ---
   api-gateway:
     build: ./services/api-gateway
     environment:
@@ -134,3 +162,4 @@ networks:
 volumes:
   vol-empleados:
   vol-departamentos:
+  vol-rabbitmq:

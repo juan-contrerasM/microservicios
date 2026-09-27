@@ -41,7 +41,8 @@ micro/
 
 Cada carpeta en `services/` es autocontenida: su propio `Dockerfile`, su propia configuración,
 su propio README con sus endpoints. `docker-compose.yml` en la raíz es lo único que los conecta,
-y solo por red HTTP — nunca por base de datos compartida.
+por red HTTP o por el broker, nunca por base de datos compartida. `message-broker` (RabbitMQ)
+vive solo en el compose: no es un módulo bajo `services/`.
 
 ## Convenciones para nuevos servicios
 

@@ -9,6 +9,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -57,6 +58,12 @@ public class GlobalExceptionHandler {
 
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
 				.body(new ApiValidationError("La solicitud contiene campos inválidos", errores));
+	}
+
+	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
+	public ResponseEntity<ApiError> handleTipoInvalido(MethodArgumentTypeMismatchException ex) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+				.body(new ApiError("El parámetro " + ex.getName() + " es inválido"));
 	}
 
 	@ExceptionHandler(HttpMessageNotReadableException.class)

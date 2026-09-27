@@ -5,7 +5,9 @@ propio lenguaje, base de datos y Dockerfile, orquestados desde un único `docker
 la raíz.
 
 > Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo).
-> Reto 3 (activo): [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md) y
+> Reto 4 (activo): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md) y
+> [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md).
+> Reto 3 (cerrado): [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md) y
 > [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md).
 > Reto 2 (cerrado): [`docs/reto2/PLAN-RETO2.md`](docs/reto2/PLAN-RETO2.md) y
 > [`docs/reto2/STATUS.md`](docs/reto2/STATUS.md).
@@ -14,13 +16,15 @@ la raíz.
 
 | Servicio | Lenguaje | Motor de BD | Puerto host | Carpeta |
 |---|---|---|---|---|
-| `api-gateway` | Node.js 22 / Express | *(ninguna)* | **`8080` (único)** | [`services/api-gateway`](services/api-gateway) |
+| `api-gateway` | Node.js 22 / Express | *(ninguna)* | **`8080` (negocio)** | [`services/api-gateway`](services/api-gateway) |
 | `empleados-service` | Java 21 / Spring Boot | PostgreSQL 16 | *no publicado* (`expose: 8080`) | [`services/empleados-service`](services/empleados-service) |
 | `departamentos-service` | Go | MySQL 8.4 | *no publicado* (`expose: 8081`) | [`services/departamentos-service`](services/departamentos-service) |
+| `message-broker` | RabbitMQ 3 | *(no es base de un servicio)* | `5672` AMQP, `15672` UI | solo en `docker-compose.yml` |
 
-URL base del sistema: **`http://localhost:8080`**. Todo el tráfico público pasa por el Gateway
+URL base del sistema: **`http://localhost:8080`**. Todo el tráfico de negocio pasa por el Gateway
 (`/empleados`, `/departamentos`, `/health`). `localhost:8081` y `:8082` deben rechazar la
-conexión. `api-gateway` es el tercer lenguaje del monorepo (no Spring Cloud Gateway).
+conexión. `5672` y `15672` son del broker: infraestructura, no una segunda API. `api-gateway` es
+el tercer lenguaje del monorepo (no Spring Cloud Gateway).
 
 ## Arranque desde cero
 
@@ -29,11 +33,15 @@ cp .env.example .env      # ajustar credenciales si hace falta
 docker compose up --build
 ```
 
-Verificar que ambas bases de datos queden `(healthy)` antes que su servicio:
+Verificar que las bases de datos y el broker queden `(healthy)`:
 
 ```bash
 docker compose ps
 ```
+
+La UI de RabbitMQ queda en **`http://localhost:15672`** (usuario y contraseña: `RABBITMQ_USER` /
+`RABBITMQ_PASSWORD` del `.env`). El exchange y las colas los declaran los servicios al arrancar;
+en esta etapa el broker sano no exige crearlos a mano.
 
 Detener conservando datos:
 
@@ -250,6 +258,28 @@ cada servicio afectado:
    consulta previa desde el código, para no depender solo de una ventana de "consultar y luego
    insertar".
 
+## Message broker (Reto 4, criterio 1)
+
+El onboarding deja de ser solo HTTP: un alta tiene que avisar a otros dominios sin que
+`empleados-service` los conozca. El broker es **RabbitMQ 3** (`rabbitmq:3-management`), servicio
+`message-broker` en el compose.
+
+| Opción | Por qué no es la de este sistema |
+|---|---|
+| **Kafka** | El fan-out de este volumen es un exchange y una cola por consumidor, no un log de particiones. Además hay que sumar otra consola para republicar un mensaje, y el enunciado pide hacerlo desde una UI de administración. |
+| **Redis Streams** | Sirve como log ligero, pero no trae una consola para publicar el mismo envelope dos veces. Esa republicación es la evidencia de deduplicación del criterio 3. |
+| **NATS** | Encaja en mensajería simple y tampoco trae esa consola de administración. |
+| **RabbitMQ** | Trae la management UI en `:15672`, exchanges topic y colas durables. Un `basic.publish` con routing key = `type` llega a cada cola ligada a esa key. Si un consumidor se cae, los demás siguen. |
+
+Dentro de la red los servicios hablarán `message-broker:5672`. En el host, `5672` permite
+inspeccionar AMQP y `15672` es la UI del paso 9 del enunciado. El usuario y la contraseña salen
+de `RABBITMQ_USER` y `RABBITMQ_PASSWORD`. El volumen `vol-rabbitmq` monta `/var/lib/rabbitmq`:
+`docker compose down` conserva colas durables; `down -v` las borra. El `hostname` del contenedor
+está fijo en `message-broker` porque el nombre del nodo queda guardado en ese volumen.
+
+El exchange `onboarding.eventos` y las colas todavía no se crean aquí. Cada servicio los declara
+al arrancar, de forma idempotente, en las etapas siguientes.
+
 ## Estado del proyecto
 
 Reto 2: ver [`docs/reto2/STATUS.md`](docs/reto2/STATUS.md). Todas las etapas de ese plan (0-5)
@@ -258,3 +288,6 @@ están implementadas y verificadas end-to-end.
 Reto 3: ver [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md). Todas las etapas 0–4 están
 implementadas y verificadas: Gateway, borde único, Circuit Breaker, fallback, recuperación,
 reconciliación, colección Postman y evidencias reproducibles.
+
+Reto 4: ver [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md). La Etapa 1 deja RabbitMQ en el
+compose, con UI en `:15672` y la justificación de arriba. Aún no hay productores ni consumidores.
