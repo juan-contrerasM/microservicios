@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     broker_exchange: str = "onboarding.eventos"
     broker_queue: str = "q.notificaciones"
     consumer_disabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 1025
+    smtp_from: str = "onboarding@empresa.com"
 
     def amqp_url(self) -> str:
         partes = urlsplit(self.broker_url)

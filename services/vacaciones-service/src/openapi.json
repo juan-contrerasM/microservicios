@@ -3,54 +3,183 @@
   "info": {
     "title": "vacaciones-service",
     "version": "1.0.0",
-    "description": "Períodos de vacaciones. La réplica de empleados llega por eventos. Publica vacaciones.programadas."
+    "description": "Períodos de vacaciones. El empleado se valida contra la réplica local (empleado.creado y empleado.retirado), no con un GET a empleados. POST publica vacaciones.programadas después del commit. DELETE cancela y no publica evento."
   },
+  "tags": [
+    { "name": "Vacaciones" },
+    { "name": "Salud" }
+  ],
   "paths": {
     "/vacaciones": {
       "get": {
-        "summary": "Listar períodos. Con empleadoId, solo los de ese empleado.",
+        "tags": ["Vacaciones"],
+        "summary": "Listar períodos",
+        "description": "Sin empleadoId devuelve todos. Con empleadoId, solo los de ese empleado. El arreglo vacío es 200.",
         "parameters": [
-          { "name": "empleadoId", "in": "query", "schema": { "type": "string" } }
+          {
+            "name": "empleadoId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "example": "E001" }
+          }
         ],
-        "responses": { "200": { "description": "Arreglo, vacío si no hay" } }
+        "responses": {
+          "200": {
+            "description": "Arreglo de períodos",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Periodo" } }
+              }
+            }
+          }
+        }
       },
       "post": {
-        "summary": "Programar un período. Responde 201 y publica vacaciones.programadas.",
+        "tags": ["Vacaciones"],
+        "summary": "Programar un período",
+        "description": "Responde 201 con estado PROGRAMADA y publica vacaciones.programadas. Si el broker falla, el período queda.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProgramarVacaciones" },
+              "example": {
+                "empleadoId": "E001",
+                "fechaInicio": "2027-03-15",
+                "fechaFin": "2027-03-30"
+              }
+            }
+          }
+        },
         "responses": {
-          "201": { "description": "Período PROGRAMADA" },
-          "400": { "description": "Fecha, solapamiento, empleado inexistente o retirado" }
+          "201": {
+            "description": "Período creado",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Periodo" } }
+            }
+          },
+          "400": {
+            "description": "Fecha inválida, solapamiento, empleado inexistente o retirado",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorVacaciones" } }
+            }
+          }
         }
       }
     },
     "/vacaciones/{id}": {
       "get": {
+        "tags": ["Vacaciones"],
         "summary": "Consultar un período",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "example": "V-2027-0001" } }
         ],
         "responses": {
-          "200": { "description": "El período" },
-          "404": { "description": "No existe" }
+          "200": {
+            "description": "El período",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Periodo" } }
+            }
+          },
+          "404": {
+            "description": "No existe",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorSimple" } }
+            }
+          }
         }
       },
       "delete": {
-        "summary": "Cancelar un PROGRAMADA que aún no inicia. No publica evento.",
+        "tags": ["Vacaciones"],
+        "summary": "Cancelar un período PROGRAMADA que aún no inicia",
+        "description": "Pasa el estado a CANCELADA. La fila sigue. No publica evento.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "example": "V-2027-0001" } }
         ],
         "responses": {
-          "200": { "description": "Estado CANCELADA" },
-          "400": { "description": "No se puede cancelar" },
-          "404": { "description": "No existe" }
+          "200": {
+            "description": "Estado CANCELADA",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Periodo" } }
+            }
+          },
+          "400": {
+            "description": "Solo se puede cancelar un PROGRAMADA con fechaInicio posterior a hoy",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorSimple" } }
+            }
+          },
+          "404": {
+            "description": "No existe",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorSimple" } }
+            }
+          }
         }
       }
     },
     "/health": {
       "get": {
-        "summary": "200 solo si PostgreSQL responde y el consumidor de la réplica está conectado.",
+        "tags": ["Salud"],
+        "summary": "200 solo si PostgreSQL responde y el consumidor de la réplica está conectado",
         "responses": {
-          "200": { "description": "UP" },
-          "503": { "description": "DOWN" }
+          "200": {
+            "description": "UP",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Health" } }
+            }
+          },
+          "503": {
+            "description": "DOWN",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Health" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ProgramarVacaciones": {
+        "type": "object",
+        "required": ["empleadoId", "fechaInicio", "fechaFin"],
+        "properties": {
+          "empleadoId": { "type": "string", "example": "E001" },
+          "fechaInicio": { "type": "string", "format": "date", "example": "2027-03-15" },
+          "fechaFin": { "type": "string", "format": "date", "example": "2027-03-30" }
+        }
+      },
+      "Periodo": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "V-2027-0001" },
+          "empleadoId": { "type": "string", "example": "E001" },
+          "fechaInicio": { "type": "string", "format": "date" },
+          "fechaFin": { "type": "string", "format": "date" },
+          "estado": { "type": "string", "example": "PROGRAMADA" },
+          "fechaCreacion": { "type": "string", "format": "date-time" },
+          "diasHabiles": { "type": "integer", "example": 12 }
+        }
+      },
+      "ErrorSimple": {
+        "type": "object",
+        "properties": {
+          "mensaje": { "type": "string" }
+        }
+      },
+      "ErrorVacaciones": {
+        "type": "object",
+        "properties": {
+          "mensaje": { "type": "string" },
+          "periodoEnConflicto": { "$ref": "#/components/schemas/Periodo" }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "UP" },
+          "service": { "type": "string", "example": "vacaciones-service" }
         }
       }
     }

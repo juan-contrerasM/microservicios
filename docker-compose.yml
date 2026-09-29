@@ -128,6 +128,14 @@ services:
     networks:
       - microservices-network
 
+  # --- SMTP de desarrollo. No entrega correo real: lo guarda para verlo en :8025. ---
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "${MAILHOG_UI_PORT:-8025}:8025"
+    networks:
+      - microservices-network
+
   # --- Único puerto de negocio publicado al host ---
   api-gateway:
     build: ./services/api-gateway
@@ -193,6 +201,9 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
       BROKER_QUEUE: q.notificaciones
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_FROM: ${SMTP_FROM:-onboarding@empresa.com}
     expose:
       - "8084"
     depends_on:
@@ -200,6 +211,8 @@ services:
         condition: service_healthy
       message-broker:
         condition: service_healthy
+      mailhog:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
       interval: 5s

@@ -7,8 +7,8 @@ info:
     Cada departamento se identifica por un `id` enviado por el cliente
     (PRIMARY KEY en el esquema; un duplicado responde 400).
 servers:
-  - url: http://localhost:8081
-    description: Docker Compose (puerto publicado al host)
+  - url: http://departamentos-service:8081
+    description: Red de Docker. El puerto no está publicado; el tráfico público entra por el Gateway en /departamentos.
 tags:
   - name: Departamentos
     description: Registro y consulta de departamentos

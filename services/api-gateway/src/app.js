@@ -1,5 +1,12 @@
 import express from 'express';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { backendProxy } from './proxy.js';
+
+const dir = dirname(fileURLToPath(import.meta.url));
+const openapi = readFileSync(join(dir, 'openapi.json'), 'utf8');
+const swaggerHtml = readFileSync(join(dir, 'swagger.html'), 'utf8');
 
 export function createApp({ empleadosUrl, departamentosUrl, notificacionesUrl, perfilesUrl, vacacionesUrl, proxyTimeoutMs = 35_000 }) {
 	const app = express();
@@ -7,6 +14,18 @@ export function createApp({ empleadosUrl, departamentosUrl, notificacionesUrl, p
 
 	app.get('/health', (_req, res) => {
 		res.status(200).json({ status: 'UP', service: 'api-gateway' });
+	});
+
+	app.get('/openapi.json', (_req, res) => {
+		res.type('application/json').send(openapi);
+	});
+
+	app.get(['/swagger', '/swagger/'], (_req, res) => {
+		res.redirect(302, '/swagger/index.html');
+	});
+
+	app.get('/swagger/index.html', (_req, res) => {
+		res.type('html').send(swaggerHtml);
 	});
 
 	app.use(backendProxy({

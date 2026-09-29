@@ -39,7 +39,8 @@ después de descartar un duplicado. Un fallo de base de datos no confirma: el br
 | `GET` | `/notificaciones` | 200, arreglo (vacío si no hay) |
 | `GET` | `/notificaciones/{empleadoId}` | 200, arreglo de ese empleado. Vacío no es 404 |
 | `GET` | `/health` | 200 solo si PostgreSQL responde. Lo usa Docker, no el Gateway |
-| `GET` | `/docs` | OpenAPI de FastAPI |
+| `GET` | `/docs` | Swagger UI de FastAPI. `/swagger` redirige aquí |
+| `GET` | `/openapi.json` | Especificación OpenAPI |
 
 El cuerpo de cada aviso es `id`, `tipo`, `destinatario`, `mensaje`, `fechaEnvio`, `empleadoId`.
 
@@ -53,8 +54,22 @@ El cuerpo de cada aviso es `id`, `tipo`, `destinatario`, `mensaje`, `fechaEnvio`
 | `RABBITMQ_USER` / `RABBITMQ_PASSWORD` | las del broker | Usuario AMQP |
 | `BROKER_EXCHANGE` | `onboarding.eventos` | Exchange topic que también declara este servicio |
 | `BROKER_QUEUE` | `q.notificaciones` | Cola durable. Bindings: `empleado.creado`, `empleado.retirado`, `vacaciones.programadas` |
+| `SMTP_HOST` | `mailhog` | Servidor SMTP. Vacío: no se envía correo |
+| `SMTP_PORT` | `1025` | Puerto SMTP de Mailhog, dentro de la red |
+| `SMTP_FROM` | `onboarding@empresa.com` | Remitente |
 
 El esquema lo crea Alembic al arrancar (`alembic upgrade head`), con downgrade que borra las tres tablas.
+
+## Correo
+
+Mailhog no entrega a internet. La bandeja está en [http://localhost:8025](http://localhost:8025).
+El SMTP es el contenedor `mailhog`, puerto `1025`.
+
+`Settings` en `config.py` lee `SMTP_HOST`, `SMTP_PORT` y `SMTP_FROM`. Si el host está vacío, no se envía nada. `consumidor.py` crea el enviador con `crear_enviador` (`correo.py`) y se lo pasa a `procesar`. `_registrar` en `procesar.py` guarda la fila, escribe el log y después llama al enviador. El asunto sale del mapa `ASUNTOS`: `Bienvenida`, `Desvinculación` o `Vacaciones programadas`. El cuerpo es el mismo `mensaje` de la fila.
+
+Si el SMTP falla, el error queda en el log. La fila no se borra y el evento se confirma. El mismo `id` no manda un segundo correo.
+
+Para verlo: abre la bandeja y haz un `POST /empleados` de un id que todavía no exista. Los avisos ya guardados no se reenvían.
 
 ## Pruebas
 

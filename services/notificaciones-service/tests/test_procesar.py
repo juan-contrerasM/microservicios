@@ -115,3 +115,22 @@ def test_vacaciones_de_un_desconocido_no_inventa_destinatario_y_no_se_repite():
     assert procesar(repo, envelope, AHORA) is Resultado.SIN_DESTINATARIO
     assert procesar(repo, envelope, AHORA) is Resultado.DUPLICADO
     assert repo.notificaciones == []
+
+
+def test_envia_el_correo_una_vez_y_un_fallo_smtp_no_borra_la_fila():
+    repo = Memoria()
+    enviados = []
+
+    def enviar(destino, asunto, cuerpo):
+        enviados.append((destino, asunto, cuerpo))
+
+    assert procesar(repo, creado(), AHORA, enviar) is Resultado.PROCESADO
+    assert procesar(repo, creado(), AHORA, enviar) is Resultado.DUPLICADO
+    assert enviados == [("juan.perez@empresa.com", "Bienvenida", "Bienvenido Juan Pérez")]
+
+    def falla(_destino, _asunto, _cuerpo):
+        raise OSError("smtp caido")
+
+    repo_fallo = Memoria()
+    assert procesar(repo_fallo, creado("evt-smtp"), AHORA, falla) is Resultado.PROCESADO
+    assert len(repo_fallo.notificaciones) == 1

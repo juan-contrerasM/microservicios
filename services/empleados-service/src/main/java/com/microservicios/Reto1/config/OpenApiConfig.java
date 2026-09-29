@@ -20,12 +20,14 @@ public class OpenApiConfig {
 				.version("1.0.0")
 				.description("""
 						API REST del servicio de empleados (Java 21 / Spring Boot + PostgreSQL).
-						Registra y consulta empleados; el estado de un alta siempre queda ACTIVO.
-						Antes de persistir valida departamentoId contra departamentos-service
-						(timeout 3s, 4 intentos, backoff 1s→2s→4s). POST /empleados responde 201;
-						duplicados y departamento inexistente responden 400; si se agotan los
-						reintentos hacia departamentos, 503 y no se persiste. GET /health hace
-						PING real a PostgreSQL (200 UP / 503 DOWN).
+						POST /empleados responde 201. El estado queda ACTIVO si departamentos
+						confirma el departamento, o PENDIENTE_VALIDACION si el circuito está
+						abierto o la llamada falla. Duplicados y departamento inexistente
+						responden 400. PUT actualiza solo los campos enviados y publica
+						empleado.actualizado; no pasa el estado a RETIRADO. DELETE es baja
+						lógica: RETIRADO, fechaRetiro y empleado.retirado (motivo RENUNCIA si
+						el cuerpo no lo trae). Un segundo DELETE responde 400. GET /empleados
+						acepta estado, desde y hasta. GET /health hace PING a PostgreSQL.
 						"""));
 	}
 }

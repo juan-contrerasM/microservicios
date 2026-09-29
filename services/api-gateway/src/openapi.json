@@ -1,0 +1,221 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "api-gateway",
+    "version": "1.0.0",
+    "description": "Puerta pública del sistema. Reenvía el path, el query, el cuerpo y el código de estado. GET /health no consulta backends. Si un destino no responde, el borde responde 503 JSON. El Swagger de cada servicio vive en su red interna; este documento es el contrato que se llama desde el host."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Salud del Gateway",
+        "responses": {
+          "200": {
+            "description": "UP aunque un backend esté caído",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthGateway" } } }
+          }
+        }
+      }
+    },
+    "/empleados": {
+      "get": {
+        "summary": "Listar empleados",
+        "parameters": [
+          { "name": "estado", "in": "query", "schema": { "type": "string", "example": "RETIRADO" } },
+          { "name": "desde", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "hasta", "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      },
+      "post": {
+        "summary": "Registrar empleado. Publica empleado.creado después del commit.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmpleadoAlta" } } }
+        },
+        "responses": {
+          "201": { "description": "ACTIVO o PENDIENTE_VALIDACION" },
+          "400": { "description": "Duplicado o departamento inexistente" },
+          "503": { "$ref": "#/components/responses/NoDisponible" }
+        }
+      }
+    },
+    "/empleados/{id}": {
+      "get": {
+        "summary": "Consultar empleado",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "El empleado" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      },
+      "put": {
+        "summary": "Actualizar campos enviados. Publica empleado.actualizado.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmpleadoCambio" } } } },
+        "responses": { "200": { "description": "Actualizado" }, "400": { "description": "Dato inválido" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      },
+      "delete": {
+        "summary": "Baja lógica. Publica empleado.retirado.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Retiro" } } } },
+        "responses": { "200": { "description": "RETIRADO" }, "400": { "description": "Ya estaba retirado" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      }
+    },
+    "/departamentos": {
+      "get": {
+        "summary": "Listar departamentos",
+        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      },
+      "post": {
+        "summary": "Registrar departamento",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Departamento" } } } },
+        "responses": { "201": { "description": "Creado" }, "400": { "description": "Id duplicado o cuerpo inválido" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      }
+    },
+    "/departamentos/{id}": {
+      "get": {
+        "summary": "Consultar departamento",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "El departamento" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      }
+    },
+    "/perfiles": {
+      "get": {
+        "summary": "Listar perfiles",
+        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      }
+    },
+    "/perfiles/{empleadoId}": {
+      "get": {
+        "summary": "Perfil creado por empleado.creado",
+        "parameters": [{ "name": "empleadoId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "El perfil" }, "404": { "description": "Todavía no existe o nunca se creó" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      },
+      "put": {
+        "summary": "Editar teléfono, dirección, ciudad y biografía. No publica eventos.",
+        "parameters": [{ "name": "empleadoId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PerfilCambio" } } } },
+        "responses": { "200": { "description": "Actualizado" }, "404": { "description": "No hay perfil" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      }
+    },
+    "/notificaciones": {
+      "get": {
+        "summary": "Historial de notificaciones",
+        "responses": { "200": { "description": "Arreglo, vacío si no hay" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      }
+    },
+    "/notificaciones/{empleadoId}": {
+      "get": {
+        "summary": "Notificaciones de un empleado. Vacío no es 404.",
+        "parameters": [{ "name": "empleadoId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      }
+    },
+    "/vacaciones": {
+      "get": {
+        "summary": "Listar períodos",
+        "parameters": [{ "name": "empleadoId", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      },
+      "post": {
+        "summary": "Programar vacaciones. Publica vacaciones.programadas.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProgramarVacaciones" } } } },
+        "responses": { "201": { "description": "PROGRAMADA" }, "400": { "description": "Fecha, solapamiento, empleado inexistente o retirado" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      }
+    },
+    "/vacaciones/{id}": {
+      "get": {
+        "summary": "Consultar un período",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "El período" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      },
+      "delete": {
+        "summary": "Cancelar un PROGRAMADA futuro. No publica evento.",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "CANCELADA" }, "400": { "description": "No se puede cancelar" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "NoDisponible": {
+        "description": "El backend no respondió",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NoDisponible" } } }
+      }
+    },
+    "schemas": {
+      "HealthGateway": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "UP" },
+          "service": { "type": "string", "example": "api-gateway" }
+        }
+      },
+      "NoDisponible": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer", "example": 503 },
+          "mensaje": { "type": "string" },
+          "servicio": { "type": "string" }
+        }
+      },
+      "EmpleadoAlta": {
+        "type": "object",
+        "required": ["id", "nombre", "apellido", "email", "numeroEmpleado", "cargo", "area", "departamentoId", "fechaIngreso"],
+        "properties": {
+          "id": { "type": "string", "example": "E001" },
+          "nombre": { "type": "string" },
+          "apellido": { "type": "string" },
+          "email": { "type": "string" },
+          "numeroEmpleado": { "type": "string" },
+          "cargo": { "type": "string" },
+          "area": { "type": "string" },
+          "departamentoId": { "type": "string", "example": "IT" },
+          "fechaIngreso": { "type": "string", "format": "date" }
+        }
+      },
+      "EmpleadoCambio": {
+        "type": "object",
+        "properties": {
+          "nombre": { "type": "string" },
+          "apellido": { "type": "string" },
+          "email": { "type": "string" },
+          "numeroEmpleado": { "type": "string" },
+          "cargo": { "type": "string" },
+          "area": { "type": "string" },
+          "departamentoId": { "type": "string" },
+          "fechaIngreso": { "type": "string", "format": "date" }
+        }
+      },
+      "Retiro": {
+        "type": "object",
+        "properties": { "motivo": { "type": "string", "example": "RENUNCIA" } }
+      },
+      "Departamento": {
+        "type": "object",
+        "required": ["id", "nombre"],
+        "properties": {
+          "id": { "type": "string", "example": "IT" },
+          "nombre": { "type": "string" },
+          "descripcion": { "type": "string" }
+        }
+      },
+      "PerfilCambio": {
+        "type": "object",
+        "properties": {
+          "telefono": { "type": "string" },
+          "direccion": { "type": "string" },
+          "ciudad": { "type": "string" },
+          "biografia": { "type": "string" }
+        }
+      },
+      "ProgramarVacaciones": {
+        "type": "object",
+        "required": ["empleadoId", "fechaInicio", "fechaFin"],
+        "properties": {
+          "empleadoId": { "type": "string", "example": "E001" },
+          "fechaInicio": { "type": "string", "format": "date", "example": "2027-03-15" },
+          "fechaFin": { "type": "string", "format": "date", "example": "2027-03-30" }
+        }
+      }
+    }
+  }
+}

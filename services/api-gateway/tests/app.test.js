@@ -107,6 +107,14 @@ describe('api-gateway', () => {
 		assert.match(res.headers['content-type'], /json/);
 	});
 
+	it('sirve el OpenAPI del borde y la UI', async () => {
+		const spec = await request(app).get('/openapi.json').expect(200);
+		assert.equal(spec.body.info.title, 'api-gateway');
+		assert.ok(spec.body.paths['/vacaciones']);
+		const ui = await request(app).get('/swagger/index.html').expect(200);
+		assert.match(ui.headers['content-type'], /html/);
+	});
+
 	it('propaga 201, cuerpo y cabeceras de empleados', async () => {
 		const payload = { id: 'E001', nombre: 'Juan' };
 		const res = await request(app)

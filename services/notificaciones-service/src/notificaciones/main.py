@@ -6,7 +6,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message
 logging.getLogger("notificaciones").setLevel(logging.INFO)
 
 from fastapi import Depends, FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -58,7 +58,20 @@ def obtener_sesion():
         sesion.close()
 
 
-@app.get("/health")
+@app.get("/swagger", include_in_schema=False)
+@app.get("/swagger/", include_in_schema=False)
+def swagger():
+    return RedirectResponse("/docs")
+
+
+@app.get(
+    "/health",
+    summary="Health check contra PostgreSQL",
+    responses={
+        200: {"description": "UP"},
+        503: {"description": "DOWN"},
+    },
+)
 def health():
     if base_responde(motor):
         return {"status": "UP", "service": "notificaciones-service"}
@@ -68,11 +81,19 @@ def health():
     )
 
 
-@app.get("/notificaciones", response_model=list[NotificacionRespuesta])
+@app.get(
+    "/notificaciones",
+    response_model=list[NotificacionRespuesta],
+    summary="Listar notificaciones. Arreglo vacío si no hay.",
+)
 def listar(sesion: Session = Depends(obtener_sesion)):
     return SqlRepositorio(sesion).listar()
 
 
-@app.get("/notificaciones/{empleado_id}", response_model=list[NotificacionRespuesta])
+@app.get(
+    "/notificaciones/{empleado_id}",
+    response_model=list[NotificacionRespuesta],
+    summary="Listar las notificaciones de un empleado. Vacío no es 404.",
+)
 def listar_de_empleado(empleado_id: str, sesion: Session = Depends(obtener_sesion)):
     return SqlRepositorio(sesion).listar(empleado_id)

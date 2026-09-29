@@ -64,10 +64,24 @@ docker compose down -v
 
 ## Documentación OpenAPI / Swagger
 
-Tras la Etapa 2, Swagger de cada servicio **no** es alcanzable desde el host (ya no hay
-`ports:` en empleados/departamentos). El contrato público se prueba con Postman contra el
-Gateway. Las UIs internas siguen existiendo dentro de la red Docker (`/swagger-ui.html` en
-empleados, `/swagger/index.html` en departamentos).
+Desde el navegador, con el compose arriba:
+
+- [Swagger del Gateway](http://127.0.0.1:8080/swagger)
+- [Spec del Gateway](http://127.0.0.1:8080/openapi.json)
+
+Si `localhost` responde y `127.0.0.1` no, usa [http://localhost:8080/swagger](http://localhost:8080/swagger).
+`/swagger` redirige a `/swagger/index.html`. Ese documento lista las rutas públicas.
+
+Los otros Swagger no tienen puerto publicado. La URL es la del contenedor; el archivo es el contrato en el repo.
+
+| Servicio | UI (red Docker) | Spec |
+|---|---|---|
+| Gateway | [http://127.0.0.1:8080/swagger](http://127.0.0.1:8080/swagger) | [http://127.0.0.1:8080/openapi.json](http://127.0.0.1:8080/openapi.json) · [`openapi.json`](services/api-gateway/src/openapi.json) |
+| empleados | `http://empleados-service:8080/swagger-ui.html` | `http://empleados-service:8080/v3/api-docs` |
+| departamentos | `http://departamentos-service:8081/swagger/index.html` | [`openapi.yaml`](services/departamentos-service/internal/httpapi/swagger/openapi.yaml) |
+| perfiles | `http://perfiles-service:8083/swagger-ui.html` | `http://perfiles-service:8083/v3/api-docs` |
+| notificaciones | `http://notificaciones-service:8084/docs` | `http://notificaciones-service:8084/openapi.json` |
+| vacaciones | `http://vacaciones-service:8085/swagger/index.html` | [`openapi.json`](services/vacaciones-service/src/openapi.json) |
 
 ## Colección de Postman (Reto 3)
 
@@ -288,6 +302,45 @@ de `RABBITMQ_USER` y `RABBITMQ_PASSWORD`. El volumen `vol-rabbitmq` monta `/var/
 `docker compose down` conserva colas durables; `down -v` las borra. El `hostname` del contenedor
 está fijo en `message-broker` porque el nombre del nodo queda guardado en ese volumen.
 
+### Correo con Mailhog
+
+Mailhog es un SMTP de desarrollo. No entrega a internet: guarda el mensaje para verlo en
+[http://localhost:8025](http://localhost:8025). El puerto de la bandeja es `8025`. El SMTP,
+`1025`, solo existe dentro de la red Docker.
+
+El compose inyecta en `notificaciones-service`:
+
+| Variable | Valor | Para qué |
+|---|---|---|
+| `SMTP_HOST` | `mailhog` | Nombre del contenedor |
+| `SMTP_PORT` | `1025` | Puerto SMTP |
+| `SMTP_FROM` | `onboarding@empresa.com` | Remitente |
+
+Si `SMTP_HOST` queda vacío, no se envía correo. En el compose siempre apunta a `mailhog`.
+
+Después de guardar la fila y escribir el log `[NOTIFICACIÓN]`, el servicio manda ese mismo
+`mensaje`. El asunto depende del tipo:
+
+| Tipo | Asunto |
+|---|---|
+| `BIENVENIDA` | Bienvenida |
+| `DESVINCULACION` | Desvinculación |
+| `VACACIONES` | Vacaciones programadas |
+
+Si Mailhog no responde, el error queda en el log. La fila ya está guardada y el mensaje de
+RabbitMQ se confirma. El mismo `id` de evento no manda un segundo correo, porque la
+deduplicación ocurre antes de registrar la notificación.
+
+Para ver uno: con el compose arriba, abre la bandeja y crea un empleado que todavía no exista
+(`POST /empleados`). Los avisos anteriores no se reenvían.
+
+El código está en `notificaciones-service`:
+
+- `src/notificaciones/config.py`: `Settings` lee `SMTP_HOST`, `SMTP_PORT` y `SMTP_FROM`.
+- `src/notificaciones/correo.py`: `crear_enviador` abre la conexión SMTP y manda el mensaje.
+- `src/notificaciones/consumidor.py`: al arrancar crea el enviador y se lo pasa a `procesar`.
+- `src/notificaciones/procesar.py`: guarda la fila, escribe el log y llama al enviador. El mapa `ASUNTOS` define el asunto.
+
 Al arrancar, cada servicio declara de forma idempotente el exchange topic `onboarding.eventos`
 y su cola:
 
@@ -395,6 +448,5 @@ npx newman run docs/reto4/Reto4.postman_collection.json \
   --env-var "gateway_url=http://127.0.0.1:8080"
 ```
 
-Swagger de cada servicio responde dentro de la red Docker (`/swagger-ui.html` en empleados y
-perfiles, `/swagger/index.html` en departamentos, `/docs` en notificaciones, `/openapi.json` en
-vacaciones). Esos puertos no se publican para abrir la UI desde el host.
+Swagger de cada servicio responde dentro de la red Docker. Desde el navegador se abre el del
+Gateway: [http://127.0.0.1:8080/swagger](http://127.0.0.1:8080/swagger).

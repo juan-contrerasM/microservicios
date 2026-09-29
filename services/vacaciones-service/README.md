@@ -29,7 +29,8 @@ festivos. Del 15 al 30 de marzo de 2027 son 12.
 | `GET` | `/vacaciones` | 200, arreglo |
 | `DELETE` | `/vacaciones/{id}` | 200 y `CANCELADA` si está `PROGRAMADA` y `fechaInicio` es posterior a hoy (UTC). Si no, 400. No publica evento |
 | `GET` | `/health` | 200 solo si PostgreSQL responde y el consumidor está conectado |
-| `GET` | `/openapi.json` | OpenAPI estático |
+| `GET` | `/openapi.json` | Especificación OpenAPI |
+| `GET` | `/swagger/index.html` | Swagger UI. `/swagger` redirige ahí |
 
 El cuerpo de un período es `id` (`V-{año}-{secuencia de 4 dígitos}`, el año es el de
 `fechaInicio`), `empleadoId`, `fechaInicio`, `fechaFin`, `estado`, `fechaCreacion` y

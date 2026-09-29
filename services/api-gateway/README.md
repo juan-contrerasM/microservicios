@@ -17,6 +17,7 @@ destino no contesta. El Circuit Breaker vive en `empleados-service` (Etapa 3).
 | Ruta externa (cliente → Gateway) | Destino interno | Notas |
 |---|---|---|
 | `GET /health` | el propio Gateway | `{ "status": "UP", "service": "api-gateway" }`. No hace ping a los backends. |
+| `GET /openapi.json` y `GET /swagger/index.html` | el propio Gateway | Contrato público. `/swagger` redirige a la UI. |
 | `/empleados` y `/empleados/*` | `{EMPLEADOS_URL}/empleados` y `/empleados/*` | Path **sin** strip. Un `201`/`400` del backend se reenvía tal cual. |
 | `/departamentos` y `/departamentos/*` | `{DEPARTAMENTOS_URL}/departamentos` y `/departamentos/*` | Igual: query, cuerpo y status se conservan. |
 | `/notificaciones` y `/notificaciones/*` | `{NOTIFICACIONES_URL}` | Solo si la variable está definida. Si no, la ruta responde 404 del propio Gateway. |

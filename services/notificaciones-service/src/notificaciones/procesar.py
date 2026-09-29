@@ -11,6 +11,12 @@ TIPO_BIENVENIDA = "BIENVENIDA"
 TIPO_DESVINCULACION = "DESVINCULACION"
 TIPO_VACACIONES = "VACACIONES"
 
+ASUNTOS = {
+    TIPO_BIENVENIDA: "Bienvenida",
+    TIPO_DESVINCULACION: "Desvinculación",
+    TIPO_VACACIONES: "Vacaciones programadas",
+}
+
 
 class Resultado(Enum):
     PROCESADO = "procesado"
@@ -19,7 +25,7 @@ class Resultado(Enum):
     IGNORADO = "ignorado"
 
 
-def procesar(repositorio, envelope: dict, ahora: datetime) -> Resultado:
+def procesar(repositorio, envelope: dict, ahora: datetime, enviar=None) -> Resultado:
     event_id = str(envelope.get("id") or "")
     if not event_id:
         logger.error("Evento sin id; se confirma sin efecto")
@@ -31,13 +37,13 @@ def procesar(repositorio, envelope: dict, ahora: datetime) -> Resultado:
     data = envelope.get("data") or {}
     try:
         if tipo == "empleado.creado":
-            _bienvenida(repositorio, data, ahora)
+            _bienvenida(repositorio, data, ahora, enviar)
         elif tipo == "empleado.retirado":
-            if not _desvinculacion(repositorio, data, ahora):
+            if not _desvinculacion(repositorio, data, ahora, enviar):
                 repositorio.marcar_procesado(event_id, ahora)
                 return Resultado.SIN_DESTINATARIO
         elif tipo == "vacaciones.programadas":
-            if not _vacaciones(repositorio, data, ahora):
+            if not _vacaciones(repositorio, data, ahora, enviar):
                 repositorio.marcar_procesado(event_id, ahora)
                 return Resultado.SIN_DESTINATARIO
         else:
@@ -53,17 +59,17 @@ def procesar(repositorio, envelope: dict, ahora: datetime) -> Resultado:
     return Resultado.PROCESADO
 
 
-def _bienvenida(repositorio, data: dict, ahora: datetime) -> None:
+def _bienvenida(repositorio, data: dict, ahora: datetime, enviar) -> None:
     empleado_id = data["empleadoId"]
     email = data["email"]
     nombre = data.get("nombre") or ""
     apellido = data.get("apellido") or ""
     repositorio.guardar_destinatario(Destinatario(empleado_id, email, nombre, apellido))
     mensaje = f"Bienvenido {nombre} {apellido}".strip()
-    _registrar(repositorio, TIPO_BIENVENIDA, email, mensaje, ahora, empleado_id)
+    _registrar(repositorio, TIPO_BIENVENIDA, email, mensaje, ahora, empleado_id, enviar)
 
 
-def _desvinculacion(repositorio, data: dict, ahora: datetime) -> bool:
+def _desvinculacion(repositorio, data: dict, ahora: datetime, enviar) -> bool:
     empleado_id = data.get("empleadoId")
     email = data.get("email") or _email_guardado(repositorio, empleado_id)
     if not email:
@@ -79,11 +85,12 @@ def _desvinculacion(repositorio, data: dict, ahora: datetime) -> bool:
         "Su cuenta ha sido desvinculada",
         ahora,
         empleado_id,
+        enviar,
     )
     return True
 
 
-def _vacaciones(repositorio, data: dict, ahora: datetime) -> bool:
+def _vacaciones(repositorio, data: dict, ahora: datetime, enviar) -> bool:
     empleado_id = data.get("empleadoId")
     email = data.get("email") or _email_guardado(repositorio, empleado_id)
     if not email:
@@ -95,7 +102,7 @@ def _vacaciones(repositorio, data: dict, ahora: datetime) -> bool:
     inicio = data.get("fechaInicio")
     fin = data.get("fechaFin")
     mensaje = f"Sus vacaciones del {inicio} al {fin} han sido programadas"
-    _registrar(repositorio, TIPO_VACACIONES, email, mensaje, ahora, empleado_id)
+    _registrar(repositorio, TIPO_VACACIONES, email, mensaje, ahora, empleado_id, enviar)
     return True
 
 
@@ -106,7 +113,7 @@ def _email_guardado(repositorio, empleado_id: str | None) -> str | None:
     return guardado.email if guardado else None
 
 
-def _registrar(repositorio, tipo: str, email: str, mensaje: str, ahora: datetime, empleado_id: str) -> None:
+def _registrar(repositorio, tipo: str, email: str, mensaje: str, ahora: datetime, empleado_id: str, enviar) -> None:
     momento = ahora if ahora.tzinfo else ahora.replace(tzinfo=timezone.utc)
     repositorio.guardar_notificacion(
         Notificacion(
@@ -119,3 +126,9 @@ def _registrar(repositorio, tipo: str, email: str, mensaje: str, ahora: datetime
         )
     )
     logger.info('[NOTIFICACIÓN] Tipo: %s | Para: %s | Mensaje: "%s"', tipo, email, mensaje)
+    if enviar is None:
+        return
+    try:
+        enviar(email, ASUNTOS[tipo], mensaje)
+    except Exception:
+        logger.exception("No se pudo enviar el correo a %s; la notificación ya quedó guardada", email)
