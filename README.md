@@ -270,6 +270,11 @@ El onboarding deja de ser solo HTTP: un alta tiene que avisar a otros dominios s
 `empleados-service` los conozca. El broker es **RabbitMQ 3** (`rabbitmq:3-management`), servicio
 `message-broker` en el compose.
 
+Se eligió RabbitMQ porque este flujo es un aviso a varios servicios, cada uno con su cola, y el
+enunciado pide republicar el mismo mensaje desde una consola de administración. RabbitMQ trae
+esa UI en `:15672`, un exchange topic y colas durables. La routing key es el `type` del evento.
+Si un consumidor está caído, su cola conserva la copia y los demás siguen.
+
 | Opción | Por qué no es la de este sistema |
 |---|---|
 | **Kafka** | El fan-out de este volumen es un exchange y una cola por consumidor, no un log de particiones. Además hay que sumar otra consola para republicar un mensaje, y el enunciado pide hacerlo desde una UI de administración. |
@@ -295,6 +300,21 @@ y su cola:
 La routing key es el `type` del evento. El ack es manual y el prefetch es 1. Esas colas quedan
 en 0 porque el consumidor confirma el mensaje al recibirlo. Para ver el JSON, crea antes del
 POST una cola `q.prueba` atada a `onboarding.eventos` y léela con Get messages, Ack requeue false.
+
+### Una copia por cola
+
+RabbitMQ no guarda un solo mensaje y espera a que lo lean N servicios. Al publicar, el exchange
+copia el mensaje en cada cola atada a esa routing key. Cada cola tiene su copia y su propio ack.
+
+Con `empleado.creado` quedan tres copias: `q.vacaciones`, `q.notificaciones` y `q.perfiles`. Si
+vacaciones ya confirmó y notificaciones todavía no, la copia de `q.vacaciones` desaparece y la
+de `q.notificaciones` sigue hasta que ese servicio haga ack. Una cola no bloquea a las otras.
+No hay un contador de servicios pendientes: el reparto ocurrió al publicar.
+
+La cola no es el almacén del negocio. Vacaciones, al consumir `empleado.creado`, guarda
+`empleadoId`, `email` y `estado` en `empleados_replica`, tabla de su propia base, y después
+confirma. Un `POST /vacaciones` posterior lee esa tabla. El detalle de por qué es una réplica y
+no un GET a empleados está en [Réplica de empleados en vacaciones](#réplica-de-empleados-en-vacaciones).
 
 ## Estado del proyecto
 
