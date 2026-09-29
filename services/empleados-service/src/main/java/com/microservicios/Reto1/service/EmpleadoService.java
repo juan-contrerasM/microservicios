@@ -40,6 +40,7 @@ public class EmpleadoService {
 
 	private static final Logger log = LoggerFactory.getLogger(EmpleadoService.class);
 	static final String CIRCUIT_BREAKER_NAME = "departamentos";
+	static final String MOTIVO_RETIRO_POR_DEFECTO = "RENUNCIA";
 
 	private final EmpleadoRepository empleadoRepository;
 	private final DepartamentoClient departamentoClient;
@@ -123,15 +124,25 @@ public class EmpleadoService {
 	 */
 	@Transactional
 	public Empleado retirar(String id) {
+		return retirar(id, MOTIVO_RETIRO_POR_DEFECTO);
+	}
+
+	/**
+	 * @param motivo valor de {@code data.motivo} en {@code empleado.retirado}. El catálogo
+	 *               lo exige; si el cliente no lo envía se usa {@code RENUNCIA}.
+	 */
+	@Transactional
+	public Empleado retirar(String id, String motivo) {
 		Empleado empleado = consultarPorId(id);
 		if (empleado.getEstado() == EstadoEmpleado.RETIRADO) {
 			throw new BadRequestException("El empleado con id " + id + " ya está retirado");
 		}
+		String motivoEvento = motivo == null || motivo.isBlank() ? MOTIVO_RETIRO_POR_DEFECTO : motivo;
 		empleado.setEstado(EstadoEmpleado.RETIRADO);
 		empleado.setFechaRetiro(Instant.now(clock));
 		Empleado guardado = empleadoRepository.save(empleado);
 		log.info("Empleado retirado con id {}", guardado.getId());
-		publicarDespuesDelCommit(() -> eventPublisher.publicarRetirado(guardado));
+		publicarDespuesDelCommit(() -> eventPublisher.publicarRetirado(guardado, motivoEvento));
 		return guardado;
 	}
 

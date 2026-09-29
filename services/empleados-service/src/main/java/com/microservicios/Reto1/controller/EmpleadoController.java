@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.microservicios.Reto1.dto.ActualizarEmpleadoRequest;
+import com.microservicios.Reto1.dto.RetirarEmpleadoRequest;
 import com.microservicios.Reto1.dto.ApiError;
 import com.microservicios.Reto1.dto.ApiValidationError;
 import com.microservicios.Reto1.dto.CircuitBreakerStatus;
@@ -192,7 +193,8 @@ public class EmpleadoController {
 	@DeleteMapping("/{id}")
 	@Operation(summary = "Retirar empleado",
 			description = "Pasa el estado a RETIRADO, guarda fechaRetiro en UTC y publica "
-					+ "empleado.retirado. La fila permanece. Un segundo DELETE responde 400 y no publica.")
+					+ "empleado.retirado con motivo (RENUNCIA si el cuerpo no lo trae). "
+					+ "La fila permanece. Un segundo DELETE responde 400 y no publica.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Empleado retirado",
 					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
@@ -205,8 +207,10 @@ public class EmpleadoController {
 	})
 	public ResponseEntity<Empleado> retirar(
 			@Parameter(description = "Identificador del empleado", example = "E001", required = true)
-			@PathVariable String id) {
-		return ResponseEntity.ok(empleadoService.retirar(id));
+			@PathVariable String id,
+			@RequestBody(required = false) RetirarEmpleadoRequest solicitud) {
+		String motivo = solicitud == null ? null : solicitud.getMotivo();
+		return ResponseEntity.ok(empleadoService.retirar(id, motivo));
 	}
 
 	/**

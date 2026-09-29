@@ -36,7 +36,10 @@ micro/
 └── services/
     ├── empleados-service/       # Reto 1, Java 21 + Spring Boot + PostgreSQL
     ├── departamentos-service/   # Reto 2, Go + chi + MySQL
-    └── api-gateway/             # Reto 3, Node.js 22 + Express (sin BD)
+    ├── api-gateway/             # Reto 3, Node.js 22 + Express (sin BD)
+    ├── notificaciones-service/ # Reto 4, Python 3.12 + FastAPI + PostgreSQL
+    ├── perfiles-service/       # Reto 4, Java 21 + Spring Boot + PostgreSQL
+    └── vacaciones-service/     # Reto 4, Node.js 22 + Express + PostgreSQL
 ```
 
 Cada carpeta en `services/` es autocontenida: su propio `Dockerfile`, su propia configuración,
@@ -59,8 +62,12 @@ vive solo en el compose: no es un módulo bajo `services/`.
     `services/empleados-service/src/main/resources/db/changelog/`.
   - `departamentos-service` (Go): `golang-migrate` — archivos `NNNN_descripcion.up.sql` /
     `.down.sql` en `services/departamentos-service/db/migrations/`.
-  - Reto 4 (cuando existan): Alembic en notificaciones, FluentMigrator en perfiles y Phinx en
-    vacaciones. El detalle está en [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md).
+  - `notificaciones-service` (Python): Alembic — revisiones en
+    `services/notificaciones-service/alembic/versions/`.
+  - `perfiles-service` (Java): Liquibase — changelogs en
+    `services/perfiles-service/src/main/resources/db/changelog/`.
+  - `vacaciones-service` (Node): node-pg-migrate — migraciones en
+    `services/vacaciones-service/migrations/`.
   - Nunca usar auto-DDL de un ORM (`hibernate.ddl-auto=update`, etc.) como mecanismo definitivo
     de esquema — sirve para prototipar, no es lo que se entrega.
 - Cada servicio de negocio expone su propio Swagger/OpenAPI (Springdoc en Java, OpenAPI estático

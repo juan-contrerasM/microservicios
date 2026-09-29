@@ -1,0 +1,20 @@
+{
+  "name": "vacaciones-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Períodos de vacaciones. Node.js 22 + Express + PostgreSQL. Publica vacaciones.programadas.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.5",
+    "express": "^4.21.2",
+    "node-pg-migrate": "^7.9.1",
+    "pg": "^8.13.1"
+  }
+}

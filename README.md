@@ -20,11 +20,17 @@ la raíz.
 | `empleados-service` | Java 21 / Spring Boot | PostgreSQL 16 | *no publicado* (`expose: 8080`) | [`services/empleados-service`](services/empleados-service) |
 | `departamentos-service` | Go | MySQL 8.4 | *no publicado* (`expose: 8081`) | [`services/departamentos-service`](services/departamentos-service) |
 | `message-broker` | RabbitMQ 3 | *(no es base de un servicio)* | `5672` AMQP, `15672` UI | solo en `docker-compose.yml` |
+| `notificaciones-service` | Python 3.12 / FastAPI | PostgreSQL 16 | *no publicado* (`expose: 8084`) | [`services/notificaciones-service`](services/notificaciones-service) |
+| `perfiles-service` | Java 21 / Spring Boot | PostgreSQL 16 | *no publicado* (`expose: 8083`) | [`services/perfiles-service`](services/perfiles-service) |
+| `vacaciones-service` | Node.js 22 / Express | PostgreSQL 16 | *no publicado* (`expose: 8085`) | [`services/vacaciones-service`](services/vacaciones-service) |
 
-URL base del sistema: **`http://localhost:8080`**. Todo el tráfico de negocio pasa por el Gateway
-(`/empleados`, `/departamentos`, `/health`). `localhost:8081` y `:8082` deben rechazar la
-conexión. `5672` y `15672` son del broker: infraestructura, no una segunda API. `api-gateway` es
-el tercer lenguaje del monorepo (no Spring Cloud Gateway).
+URL base del sistema: **`http://localhost:8080`**. Todo el tráfico de negocio pasa por el Gateway:
+`/empleados`, `/departamentos`, `/perfiles`, `/notificaciones`, `/vacaciones` y `/health`.
+Los puertos `8081`, `8082`, `8083`, `8084` y `8085` no están publicados: desde el host la conexión
+se rechaza. `5672` y `15672` son del broker, no una segunda API de negocio.
+
+Hay cuatro lenguajes: Java (empleados y perfiles), Go (departamentos), Node.js (Gateway y
+vacaciones) y Python (notificaciones). El Gateway no es Spring Cloud Gateway.
 
 ## Arranque desde cero
 
@@ -277,8 +283,18 @@ de `RABBITMQ_USER` y `RABBITMQ_PASSWORD`. El volumen `vol-rabbitmq` monta `/var/
 `docker compose down` conserva colas durables; `down -v` las borra. El `hostname` del contenedor
 está fijo en `message-broker` porque el nombre del nodo queda guardado en ese volumen.
 
-El exchange `onboarding.eventos` y las colas todavía no se crean aquí. Cada servicio los declara
-al arrancar, de forma idempotente, en las etapas siguientes.
+Al arrancar, cada servicio declara de forma idempotente el exchange topic `onboarding.eventos`
+y su cola:
+
+| Cola | Bindings |
+|---|---|
+| `q.notificaciones` | `empleado.creado`, `empleado.retirado`, `vacaciones.programadas` |
+| `q.perfiles` | `empleado.creado`, `empleado.actualizado`, `empleado.retirado` |
+| `q.vacaciones` | `empleado.creado`, `empleado.retirado` |
+
+La routing key es el `type` del evento. El ack es manual y el prefetch es 1. Esas colas quedan
+en 0 porque el consumidor confirma el mensaje al recibirlo. Para ver el JSON, crea antes del
+POST una cola `q.prueba` atada a `onboarding.eventos` y léela con Get messages, Ack requeue false.
 
 ## Estado del proyecto
 
@@ -289,5 +305,76 @@ Reto 3: ver [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md). Todas las etapas 0�
 implementadas y verificadas: Gateway, borde único, Circuit Breaker, fallback, recuperación,
 reconciliación, colección Postman y evidencias reproducibles.
 
-Reto 4: ver [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md). La Etapa 1 deja RabbitMQ en el
-compose, con UI en `:15672` y la justificación de arriba. Aún no hay productores ni consumidores.
+Reto 4: ver [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md). Las etapas 0 a 7 están cerradas.
+La evidencia de la corrida está en [`docs/reto4/EVIDENCIAS.md`](docs/reto4/EVIDENCIAS.md).
+
+## Eventos (Reto 4)
+
+Contrato del catálogo [`docs/reto4/catalogo-de-eventos.pdf`](docs/reto4/catalogo-de-eventos.pdf).
+El envelope no cambia entre tipos:
+
+```json
+{
+  "id": "uuid",
+  "type": "empleado.creado",
+  "version": 1,
+  "occurredAt": "2027-03-01T10:00:00Z",
+  "producer": "empleados-service",
+  "data": {}
+}
+```
+
+`id` es la clave de deduplicación. Republicar el mismo `id` no repite el efecto.
+
+| `type` | `data` | Quién publica | Quién consume |
+|---|---|---|---|
+| `empleado.creado` | `empleadoId`, `nombre`, `apellido`, `email`, `numeroEmpleado`, `cargo`, `area`, `departamentoId`, `fechaIngreso`, `estado` | empleados | perfiles, notificaciones, vacaciones |
+| `empleado.actualizado` | `empleadoId`, `nombre`, `apellido`, `email`, `cargo`, `area`, `departamentoId` | empleados | perfiles |
+| `empleado.retirado` | `empleadoId`, `email`, `fechaRetiro`, `motivo` | empleados | perfiles, notificaciones, vacaciones |
+| `vacaciones.programadas` | `vacacionesId`, `empleadoId`, `email`, `fechaInicio`, `fechaFin`, `diasHabiles` | vacaciones | notificaciones |
+
+`empleado.retirado` usa `motivo` `RENUNCIA` cuando el `DELETE` no trae cuerpo. `diasHabiles`
+cuenta lunes a viernes, inclusive, sin festivos. Del 15 al 30 de marzo de 2027 son 12.
+
+El alta y el retiro de este reto disparan `BIENVENIDA` y `DESVINCULACION`. El catálogo reserva
+`usuario.creado` y `cuenta.desactivada` para el reto de autenticación, que todavía no existe.
+`vacaciones.iniciadas` y `vacaciones.finalizadas` tampoco se publican aquí.
+
+## Réplica de empleados en vacaciones
+
+Vacaciones no llama a empleados por HTTP para aceptar un período. Guarda una réplica con
+`empleado.creado` (id, email, estado) y la pasa a `RETIRADO` con `empleado.retirado`. Así puede
+programar vacaciones aunque empleados esté caído. El costo es la ventana hasta que el evento
+llega: un alta recién hecha puede responder 400 `El empleado con id {id} no existe`, y un retiro
+recién hecho puede aceptar un período unos segundos más. El `POST` reintenta esa espera. No
+consume `empleado.actualizado`: el email del evento de vacaciones es el del alta.
+
+## Cómo repetir el flujo
+
+Fechas de ejemplo: **2027-03-15** a **2027-03-30**. No uses junio de 2026: esa fecha ya pasó y
+`fechaInicio` anterior a hoy responde 400.
+
+1. `docker compose up --build` y espera `healthy`.
+2. Si `localhost` se queda colgado, usa `http://127.0.0.1:8080`.
+3. Importa [`docs/reto4/Reto4.postman_collection.json`](docs/reto4/Reto4.postman_collection.json) y corre las carpetas 0 a 7 en orden. Hace falta una base vacía: un segundo `POST` de `E001` o de `IT` no es 201.
+4. Carpeta 8, a mano: en `http://localhost:15672` publica dos veces el mismo JSON en `onboarding.eventos` con routing key `empleado.creado`. El `id` del envelope no se cambia. Después `GET /notificaciones/E002` trae una sola `BIENVENIDA` y `GET /perfiles/E002` un solo perfil.
+5. Carpeta 9, a mano: `8081`, `8083`, `8084` y `8085` rechazan la conexión.
+
+Para correr las carpetas automáticas con Newman, sobre datos limpios:
+
+```bash
+npx newman run docs/reto4/Reto4.postman_collection.json \
+  --folder "0. Salud y departamento" \
+  --folder "1. Alta y fan-out" \
+  --folder "2. Actualizar empleado" \
+  --folder "3. Perfil por REST" \
+  --folder "4. Programar vacaciones" \
+  --folder "5. Validaciones de vacaciones" \
+  --folder "6. Consultar y cancelar" \
+  --folder "7. Retiro y auditoria" \
+  --env-var "gateway_url=http://127.0.0.1:8080"
+```
+
+Swagger de cada servicio responde dentro de la red Docker (`/swagger-ui.html` en empleados y
+perfiles, `/swagger/index.html` en departamentos, `/docs` en notificaciones, `/openapi.json` en
+vacaciones). Esos puertos no se publican para abrir la UI desde el host.

@@ -67,15 +67,30 @@ class RabbitEmpleadoEventPublisherTest {
 		empleado.setEstado(EstadoEmpleado.RETIRADO);
 		empleado.setFechaRetiro(Instant.parse("2026-09-26T14:05:00Z"));
 
-		publisher.publicarRetirado(empleado);
+		publisher.publicarRetirado(empleado, "RENUNCIA");
 
 		ArgumentCaptor<Message> mensaje = ArgumentCaptor.forClass(Message.class);
 		verify(rabbitTemplate).send(eq("onboarding.eventos"), eq("empleado.retirado"), mensaje.capture());
 		String json = new String(mensaje.getValue().getBody(), StandardCharsets.UTF_8);
 		assertThat(json).contains("\"type\":\"empleado.retirado\"");
 		assertThat(json).contains("\"fechaRetiro\":\"2026-09-26T14:05:00Z\"");
-		assertThat(json).contains("\"estado\":\"RETIRADO\"");
+		assertThat(json).contains("\"motivo\":\"RENUNCIA\"");
+		assertThat(json).contains("\"email\":\"juan.perez@empresa.com\"");
 		assertThat(json).doesNotContain("numeroEmpleado");
+		assertThat(json).doesNotContain("\"estado\"");
+	}
+
+	@Test
+	void publicaActualizadoSoloConLosCamposDelCatalogo() {
+		publisher.publicarActualizado(empleado());
+
+		ArgumentCaptor<Message> mensaje = ArgumentCaptor.forClass(Message.class);
+		verify(rabbitTemplate).send(eq("onboarding.eventos"), eq("empleado.actualizado"), mensaje.capture());
+		String json = new String(mensaje.getValue().getBody(), StandardCharsets.UTF_8);
+		assertThat(json).contains("\"cargo\":\"Desarrollador Senior\"");
+		assertThat(json).doesNotContain("numeroEmpleado");
+		assertThat(json).doesNotContain("fechaIngreso");
+		assertThat(json).doesNotContain("\"estado\"");
 	}
 
 	@Test

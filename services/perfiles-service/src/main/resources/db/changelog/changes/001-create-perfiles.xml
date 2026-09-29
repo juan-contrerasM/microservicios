@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+			https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+	<changeSet id="001-create-perfiles" author="perfiles-service">
+		<createTable tableName="perfiles">
+			<column name="id" type="VARCHAR(36)">
+				<constraints nullable="false" primaryKey="true" primaryKeyName="pk_perfiles"/>
+			</column>
+			<column name="empleado_id" type="VARCHAR(64)">
+				<constraints nullable="false" unique="true" uniqueConstraintName="uk_perfiles_empleado"/>
+			</column>
+			<column name="nombre" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="email" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="telefono" type="VARCHAR(64)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="direccion" type="VARCHAR(255)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="ciudad" type="VARCHAR(128)">
+				<constraints nullable="false"/>
+			</column>
+			<column name="biografia" type="TEXT">
+				<constraints nullable="false"/>
+			</column>
+			<column name="fecha_creacion" type="TIMESTAMP">
+				<constraints nullable="false"/>
+			</column>
+			<column name="archivado" type="BOOLEAN" defaultValueBoolean="false">
+				<constraints nullable="false"/>
+			</column>
+		</createTable>
+		<createTable tableName="eventos_procesados">
+			<column name="id" type="VARCHAR(64)">
+				<constraints nullable="false" primaryKey="true" primaryKeyName="pk_eventos_procesados"/>
+			</column>
+			<column name="procesado_en" type="TIMESTAMP">
+				<constraints nullable="false"/>
+			</column>
+		</createTable>
+		<rollback>
+			<dropTable tableName="eventos_procesados"/>
+			<dropTable tableName="perfiles"/>
+		</rollback>
+	</changeSet>
+</databaseChangeLog>

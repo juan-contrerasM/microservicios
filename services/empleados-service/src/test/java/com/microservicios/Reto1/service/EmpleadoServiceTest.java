@@ -400,12 +400,12 @@ class EmpleadoServiceTest {
 		TransactionSynchronizationManager.initSynchronization();
 
 		Empleado retirado = empleadoService.retirar("E001");
-		verify(eventPublisher, never()).publicarRetirado(any());
+		verify(eventPublisher, never()).publicarRetirado(any(), any());
 		confirmarTransaccion();
 
 		assertThat(retirado.getEstado()).isEqualTo(EstadoEmpleado.RETIRADO);
 		assertThat(retirado.getFechaRetiro()).isEqualTo(Instant.parse("2026-09-26T14:05:00Z"));
-		verify(eventPublisher).publicarRetirado(retirado);
+		verify(eventPublisher).publicarRetirado(retirado, "RENUNCIA");
 	}
 
 	@Test
@@ -418,7 +418,7 @@ class EmpleadoServiceTest {
 		assertThatThrownBy(() -> empleadoService.retirar("E001"))
 				.isInstanceOf(BadRequestException.class)
 				.hasMessage("El empleado con id E001 ya está retirado");
-		verify(eventPublisher, never()).publicarRetirado(any());
+		verify(eventPublisher, never()).publicarRetirado(any(), any());
 		verify(empleadoRepository, never()).save(any());
 	}
 
@@ -427,7 +427,7 @@ class EmpleadoServiceTest {
 		Empleado empleado = nuevoEmpleado();
 		when(empleadoRepository.findById("E001")).thenReturn(java.util.Optional.of(empleado));
 		org.mockito.Mockito.doThrow(new RuntimeException("broker caído"))
-				.when(eventPublisher).publicarRetirado(any());
+				.when(eventPublisher).publicarRetirado(any(), any());
 		TransactionSynchronizationManager.initSynchronization();
 
 		Empleado retirado = empleadoService.retirar("E001");

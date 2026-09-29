@@ -1,0 +1,58 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "vacaciones-service",
+    "version": "1.0.0",
+    "description": "Períodos de vacaciones. La réplica de empleados llega por eventos. Publica vacaciones.programadas."
+  },
+  "paths": {
+    "/vacaciones": {
+      "get": {
+        "summary": "Listar períodos. Con empleadoId, solo los de ese empleado.",
+        "parameters": [
+          { "name": "empleadoId", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Arreglo, vacío si no hay" } }
+      },
+      "post": {
+        "summary": "Programar un período. Responde 201 y publica vacaciones.programadas.",
+        "responses": {
+          "201": { "description": "Período PROGRAMADA" },
+          "400": { "description": "Fecha, solapamiento, empleado inexistente o retirado" }
+        }
+      }
+    },
+    "/vacaciones/{id}": {
+      "get": {
+        "summary": "Consultar un período",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "El período" },
+          "404": { "description": "No existe" }
+        }
+      },
+      "delete": {
+        "summary": "Cancelar un PROGRAMADA que aún no inicia. No publica evento.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Estado CANCELADA" },
+          "400": { "description": "No se puede cancelar" },
+          "404": { "description": "No existe" }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "200 solo si PostgreSQL responde y el consumidor de la réplica está conectado.",
+        "responses": {
+          "200": { "description": "UP" },
+          "503": { "description": "DOWN" }
+        }
+      }
+    }
+  }
+}

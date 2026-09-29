@@ -52,18 +52,24 @@ public class RabbitEmpleadoEventPublisher implements EmpleadoEventPublisher {
 
 	@Override
 	public void publicarActualizado(Empleado empleado) {
-		publicar(ACTUALIZADO, datosPersistidos(empleado), Instant.now(clock), empleado.getId());
-	}
-
-	@Override
-	public void publicarRetirado(Empleado empleado) {
-		EmpleadoRetiradoData data = new EmpleadoRetiradoData(
+		EmpleadoActualizadoData data = new EmpleadoActualizadoData(
 				empleado.getId(),
 				empleado.getNombre(),
 				empleado.getApellido(),
 				empleado.getEmail(),
+				empleado.getCargo(),
+				empleado.getArea(),
+				empleado.getDepartamentoId());
+		publicar(ACTUALIZADO, data, Instant.now(clock), empleado.getId());
+	}
+
+	@Override
+	public void publicarRetirado(Empleado empleado, String motivo) {
+		EmpleadoRetiradoData data = new EmpleadoRetiradoData(
+				empleado.getId(),
+				empleado.getEmail(),
 				empleado.getFechaRetiro(),
-				empleado.getEstado().name());
+				motivo);
 		publicar(RETIRADO, data, empleado.getFechaRetiro(), empleado.getId());
 	}
 

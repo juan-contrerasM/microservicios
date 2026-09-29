@@ -55,13 +55,10 @@ que lo discuta con el equipo antes de tocar el compose raíz.
 
 ## Catálogo de eventos (contrato de trabajo)
 
-El PDF remite a un `catalogo-de-eventos.md` (secciones 3.1 a 3.3 y 3.8) que **no está en este
-repositorio**. El envelope sí está fijado por el enunciado y no se toca. Las cargas `data` de
-abajo son el contrato con el que se implementa y con el que está escrita la colección Postman:
-los campos que los consumidores de este mismo PDF necesitan, en el camelCase que ya usa la API
-de empleados. Si aparece el catálogo oficial y un nombre no coincide, manda el catálogo: se
-actualiza esta sección y la colección **antes** de cerrar la Etapa 2. No se publican otros
-tipos de evento en este reto.
+El catálogo oficial está en [`catalogo-de-eventos.pdf`](catalogo-de-eventos.pdf). El envelope
+no cambia. Las cargas `data` de abajo son las de ese catálogo. No se publican otros tipos de
+evento en este reto: `usuario.*`, `cuenta.*` y el scheduler de vacaciones son de un reto
+posterior.
 
 Envelope, igual para los cuatro tipos:
 
@@ -85,8 +82,8 @@ Envelope, igual para los cuatro tipos:
 | `producer` | `empleados-service` o `vacaciones-service`. |
 | `data` | Carga de abajo. Un consumidor ignora campos que no usa. |
 
-`empleado.creado` y `empleado.actualizado` (`producer`: `empleados-service`). En el actualizado
-viajan los campos ya persistidos, no el diff:
+`empleado.creado` (`producer`: `empleados-service`). Incluye `estado`, que puede ser
+`PENDIENTE_VALIDACION` cuando el alta se guardó con el circuito abierto:
 
 ```json
 {
@@ -103,37 +100,51 @@ viajan los campos ya persistidos, no el diff:
 }
 ```
 
-`empleado.retirado`:
+`empleado.actualizado`. Solo los campos que el catálogo replica. No viajan `numeroEmpleado`,
+`fechaIngreso` ni `estado`:
 
 ```json
 {
   "empleadoId": "E001",
   "nombre": "Juan",
-  "apellido": "Pérez",
+  "apellido": "Pérez Gómez",
   "email": "juan.perez@empresa.com",
-  "fechaRetiro": "2026-09-26T14:05:00Z",
-  "estado": "RETIRADO"
+  "cargo": "Tech Lead",
+  "area": "Tecnología",
+  "departamentoId": "IT"
 }
 ```
 
-`vacaciones.programadas` (`producer`: `vacaciones-service`). No lleva el email: notificaciones
-ya lo conoce por `empleado.creado`. No desactiva ninguna cuenta.
+`empleado.retirado`. El `DELETE` sin cuerpo publica `motivo` `RENUNCIA`, el ejemplo del
+catálogo. Un cuerpo `{"motivo":"..."}` reemplaza ese valor.
 
 ```json
 {
-  "vacacionId": "V-2027-0001",
   "empleadoId": "E001",
-  "fechaInicio": "2027-03-15",
-  "fechaFin": "2027-03-30",
-  "estado": "PROGRAMADA"
+  "email": "juan.perez@empresa.com",
+  "fechaRetiro": "2026-11-30T16:45:00Z",
+  "motivo": "RENUNCIA"
+}
+```
+
+`vacaciones.programadas` (`producer`: `vacaciones-service`). El id del período es
+`vacacionesId` y el evento trae `email` y `diasHabiles`. No desactiva ninguna cuenta.
+
+```json
+{
+  "vacacionesId": "V-2026-0042",
+  "empleadoId": "E001",
+  "email": "juan.perez@empresa.com",
+  "fechaInicio": "2026-03-15",
+  "fechaFin": "2026-03-30",
+  "diasHabiles": 12
 }
 ```
 
 Perfiles, al recibir `empleado.creado`, copia `nombre` y `email` al perfil. Al recibir
 `empleado.actualizado`, vuelve a copiar esos dos campos y no pisa teléfono, dirección, ciudad
-ni biografía. Notificaciones no consume `empleado.actualizado`: si el email cambia, el correo
-de vacaciones sigue yendo al destinatario guardado en el alta. Es un límite de este reto y se
-escribe en el README.
+ni biografía. Notificaciones no consume `empleado.actualizado`. El aviso de vacaciones usa el
+`email` del propio evento; si no viene, el destinatario guardado en el alta.
 
 ## Arquitectura objetivo
 
@@ -252,10 +263,10 @@ consultar el historial.
     traen email.
   - `empleado.retirado` → `DESVINCULACION` y log
     `[NOTIFICACIÓN] Tipo: DESVINCULACION | Para: {email} | Mensaje: "Su cuenta ha sido desvinculada"`.
-  - `vacaciones.programadas` → busca el email por `empleadoId`. Si no está, registra el error
-    y no inventa destinatario (no ack, para reintentar cuando el alta ya se haya procesado, o
-    ack sin fila si el empleado es desconocido tras un reintento: se documenta la opción
-    tomada en el README). Si está, fila `VACACIONES` y log
+  - `vacaciones.programadas` → usa el `email` del evento. Si no viene, el destinatario guardado
+    en el alta. Si tampoco está, registra el error, confirma el mensaje y no inventa
+    destinatario: el `id` queda procesado para no bloquear la cola. Si hay email, fila
+    `VACACIONES` y log
     `[NOTIFICACIÓN] Tipo: VACACIONES | Para: {email} | Mensaje: "Sus vacaciones del {fechaInicio} al {fechaFin} han sido programadas"`.
 - El `tipo` persistido es `BIENVENIDA`, `DESVINCULACION` o `VACACIONES` (sin acento: así está
   el esquema del PDF).

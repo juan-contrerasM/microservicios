@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Reto 4 - Comunicación asincrónica y eventos",
-    "description": "Colección del Reto 4. URL de negocio única: http://localhost:8080 (api-gateway). Importar este archivo en Postman.\n\nEjecución desde datos limpios (`docker compose down -v` y `docker compose up --build`):\n1. Carpetas 0 a 7, en orden, con todos los contenedores UP. Newman:\n   newman run docs/reto4/Reto4.postman_collection.json --folder \"0. Salud y departamento\" --folder \"1. Alta y fan-out\" --folder \"2. Actualizar empleado\" --folder \"3. Perfil por REST\" --folder \"4. Programar vacaciones\" --folder \"5. Validaciones de vacaciones\" --folder \"6. Consultar y cancelar\" --folder \"7. Retiro y auditoria\" --timeout-script 30000\n2. Carpeta 8, a mano: publicar dos veces el mismo envelope desde la UI de RabbitMQ (http://localhost:15672) y después correr las peticiones.\n3. Carpeta 9, a mano: cada petición debe fallar por conexión rechazada. Ese error es la evidencia.\n\nLas fechas de vacaciones son de 2027. Las de junio 2026 del PDF ya caen en el pasado y la validación de fecha las rechazaría.\nLos GET de perfil y de notificaciones reintentan hasta 15 s dentro del test: la respuesta que muestra Postman puede ser la primera (aún vacía o 404) aunque el test pase.",
+    "description": "Guía para recorrer el Reto 4 en orden. Toda petición de negocio va a {{gateway_url}} (http://localhost:8080). Importa este archivo en Postman y abre la descripción de cada carpeta antes de pulsar Send.\n\nAntes de empezar\n1. docker compose up --build y espera a que los contenedores queden healthy.\n2. Si Postman se queda esperando en localhost, cambia la variable gateway_url a http://127.0.0.1:8080.\n3. Parte de datos limpios. Si E001 o el departamento IT ya existen, la carpeta 1 no responde 201. Para vaciar solo las bases y conservar RabbitMQ: docker compose down, borra los volúmenes de Postgres y MySQL, y vuelve a subir. docker compose down -v también borra el broker.\n4. Corre las carpetas de arriba hacia abajo, y dentro de cada carpeta las peticiones en el orden en que aparecen. No saltes pasos: cada una usa lo que dejó la anterior.\n\nQué puedes probar hoy\n- Carpetas 0 a 7, en ese orden.\n- Carpeta 8, a mano, cuando quieras ver la deduplicación.\n- Carpeta 9, a mano: el fallo de conexión es la evidencia.\n\nCómo leer un resultado asíncrono\nPerfil y notificación no nacen en el mismo HTTP del alta. El script del test vuelve a consultar hasta 15 s. Mira la pestaña Test Results. El Body puede seguir mostrando el primer 404 aunque el test haya pasado.\n\nCómo ver el mensaje en RabbitMQ\nq.notificaciones, q.perfiles y q.vacaciones quedan en 0: el servicio confirma el mensaje al instante. Para ver el JSON, antes del POST crea la cola q.prueba y átala al exchange onboarding.eventos con la routing key del evento (empleado.creado, empleado.actualizado o empleado.retirado). Después del POST, en q.prueba usa Get messages con Ack message requeue false.\n\nRabbitMQ: http://localhost:15672, usuario y clave onboarding. Exchange onboarding.eventos, tipo topic.\n",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -39,7 +39,7 @@
   "item": [
     {
       "name": "0. Salud y departamento",
-      "description": "Sistema sano. Crea el departamento IT que el alta de E001 va a validar.",
+      "description": "Paso 0. Deja el sistema listo para el alta.\n\nOrden: primero el health del gateway, después el departamento IT. Sin IT, el POST de E001 responde 400 porque el departamento no existe.\n\nQué mirar: health 200 con status UP. El alta de IT responde 201. Si IT ya estaba creado, no repitas esta carpeta.",
       "item": [
         {
           "name": "Health del Gateway (UP)",
@@ -60,7 +60,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 0.1. GET /health del gateway. Responde 200 y {\"status\":\"UP\",\"service\":\"api-gateway\"}. No llama a empleados, departamentos, perfiles ni notificaciones: el borde sigue UP aunque un backend esté caído."
         },
         {
           "name": "Crear departamento IT (201)",
@@ -94,13 +95,14 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 0.2. Crea el departamento que el alta de E001 va a validar. Responde 201 con id IT. Si lo omites, el paso 1.1 responde 400: el departamento con id IT no existe."
         }
       ]
     },
     {
       "name": "1. Alta y fan-out",
-      "description": "POST /empleados persiste y publica empleado.creado. Perfil y notificación BIENVENIDA aparecen solos.",
+      "description": "Paso 1. Un solo POST crea al empleado y publica empleado.creado. Nadie llama a perfiles ni a notificaciones: ellos leen la cola.\n\nOrden: alta, luego perfil, luego notificación. Espera a que el test del perfil pase antes de seguir; si lo saltas, las carpetas 2 y 3 no tienen teléfono ni nombre que comparar.\n\nQué mirar:\n- El POST responde 201 y estado ACTIVO.\n- GET /perfiles/E001 termina en 200: nombre Juan, email juan.perez@empresa.com, telefono vacío, archivado false.\n- GET /notificaciones/E001 trae una sola fila BIENVENIDA con mensaje \"Bienvenido Juan Pérez\".\n- En RabbitMQ, q.notificaciones y q.perfiles siguen en 0 y con 1 consumidor. El efecto está en esas dos APIs, no en la cola.",
       "item": [
         {
           "name": "Registrar empleado E001 (201 ACTIVO)",
@@ -135,7 +137,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 1.1. Persiste a Juan Pérez y, después del commit, publica empleado.creado. Responde 201, id E001 y estado ACTIVO. Si E001 ya existe, no es 201: hay que empezar con la base vacía. El perfil y la notificación no vienen en esta respuesta."
         },
         {
           "name": "Perfil creado por el evento (reintenta)",
@@ -174,7 +177,7 @@
               }
             }
           ],
-          "description": "La primera respuesta puede ser 404. El test vuelve a consultar hasta 15 s."
+          "description": "Paso 1.2. Consulta el perfil que debió crear q.perfiles. La primera respuesta puede ser 404; el test reintenta hasta 15 s. Cuando pasa: empleadoId E001, nombre Juan, email juan.perez@empresa.com, telefono \"\", archivado false. Mira Test Results, no solo el Body."
         },
         {
           "name": "Notificación BIENVENIDA (reintenta)",
@@ -212,13 +215,14 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 1.3. Consulta el aviso que debió crear q.notificaciones. Tiene que haber una sola fila tipo BIENVENIDA, destinatario juan.perez@empresa.com y mensaje \"Bienvenido Juan Pérez\". La cola puede estar en 0: el mensaje ya se consumió."
         }
       ]
     },
     {
       "name": "2. Actualizar empleado",
-      "description": "PUT parcial publica empleado.actualizado. El perfil copia nombre y email, y no pisa el teléfono.",
+      "description": "Paso 2. El PUT parcial publica empleado.actualizado. Solo perfiles lo consume. Notificaciones no crea otra fila.\n\nOrden: primero el PUT del empleado, después el GET del perfil.\n\nQué mirar: el empleado queda con nombre \"Juan Carlos\", sigue ACTIVO y conserva el email. El perfil copia ese nombre y el email, deja telefono en \"\" y archivado en false. La biografía y la ciudad, que todavía están vacías, no se tocan.",
       "item": [
         {
           "name": "PUT empleado E001 cambia el nombre (200)",
@@ -254,7 +258,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 2.1. Cambia solo el nombre a Juan Carlos. Responde 200, sigue ACTIVO y el email no se borra. Publica empleado.actualizado. Ese evento no genera otra notificación."
         },
         {
           "name": "Perfil sincronizó el nombre (reintenta)",
@@ -291,13 +296,14 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 2.2. El perfil debe mostrar nombre Juan Carlos y el mismo email. telefono sigue vacío y archivado sigue false. El test reintenta hasta 15 s porque la copia es asíncrona."
         }
       ]
     },
     {
       "name": "3. Perfil por REST",
-      "description": "PUT /perfiles edita teléfono, ciudad y biografía. No publica eventos y no revierte el nombre.",
+      "description": "Paso 3. RRHH edita el perfil por HTTP. Este PUT no publica ningún evento y no revierte el nombre que llegó por la cola.\n\nOrden: PUT del perfil, listado, y el 404 de un id que no existe.\n\nQué mirar: teléfono 3001234567, ciudad Armenia, biografía \"Ingeniero de sistemas\", y el nombre sigue siendo \"Juan Carlos\". El listado incluye E001. GET /perfiles/NO-EXISTE responde 404 con el mensaje \"El perfil del empleado NO-EXISTE no existe\".",
       "item": [
         {
           "name": "PUT perfil E001 (200)",
@@ -335,7 +341,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 3.1. Edita teléfono, ciudad y biografía. No envía nombre ni email. Responde 200 con teléfono 3001234567, ciudad Armenia, biografía \"Ingeniero de sistemas\" y el nombre Juan Carlos intacto. No publica evento."
         },
         {
           "name": "Listar perfiles incluye E001 (200)",
@@ -355,7 +362,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 3.2. GET /perfiles responde 200 y el arreglo incluye el empleadoId E001."
         },
         {
           "name": "Perfil inexistente (404)",
@@ -375,13 +383,14 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 3.3. GET /perfiles/NO-EXISTE responde 404 y el mensaje exacto \"El perfil del empleado NO-EXISTE no existe\"."
         }
       ]
     },
     {
       "name": "4. Programar vacaciones",
-      "description": "POST /vacaciones responde 201 PROGRAMADA y notificaciones registra VACACIONES sin otro llamado.",
+      "description": "Paso 4. Programa vacaciones para E001, del 15 al 30 de marzo de 2027. El POST responde 201, estado PROGRAMADA, y guarda el id en la variable vacacion_id. Después publica vacaciones.programadas. La petición siguiente, sin otro POST, espera una notificación VACACIONES: \"Sus vacaciones del 2027-03-15 al 2027-03-30 han sido programadas\".\n\nE001 tiene que existir y no estar retirado. Si la réplica todavía no consumió el alta, el POST responde 400 porque el empleado no existe: espera un momento y reinténtalo.",
       "item": [
         {
           "name": "Programar período de E001 (201)",
@@ -425,7 +434,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 4.1. Crea el período. Responde 201, estado PROGRAMADA, fechas 2027-03-15 a 2027-03-30, y guarda el id en la variable de colección vacacion_id. Después del commit publica vacaciones.programadas. Si el broker falla, el período igual queda guardado."
         },
         {
           "name": "Notificación VACACIONES (reintenta)",
@@ -462,13 +472,14 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 4.2. Este GET no crea nada: espera la fila VACACIONES para juan.perez@empresa.com con el mensaje \"Sus vacaciones del 2027-03-15 al 2027-03-30 han sido programadas\". El test reintenta 15 s. Mira Test Results."
         }
       ]
     },
     {
       "name": "5. Validaciones de vacaciones",
-      "description": "Las cuatro deben responder 400. El solapamiento incluye periodoEnConflicto. Correr después de la carpeta 4.",
+      "description": "Paso 5. Hay que ejecutarla después de la carpeta 4, porque el solapamiento usa el período que esa carpeta dejó PROGRAMADA.\n\nLas cuatro responden 400:\n1. fechaFin anterior a fechaInicio.\n2. fechaInicio en el pasado.\n3. Otro rango que cruza el período de marzo de 2027. El cuerpo trae periodoEnConflicto con el id guardado en vacacion_id.\n4. Un empleado que no está en la réplica.",
       "item": [
         {
           "name": "Fechas incoherentes (400)",
@@ -502,7 +513,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 5.1. fechaFin (15 jun 2027) es anterior a fechaInicio (30 jun 2027). Debe responder 400: \"La fechaFin debe ser posterior a la fechaInicio\"."
         },
         {
           "name": "Fecha en el pasado (400)",
@@ -536,7 +548,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 5.2. fechaInicio es 2026-01-10, anterior a hoy. Debe responder 400: \"La fechaInicio no puede ser anterior a la fecha actual\"."
         },
         {
           "name": "Solapamiento (400 con el período en conflicto)",
@@ -576,7 +589,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 5.3. El rango 20 mar a 5 abr de 2027 cruza el período de la carpeta 4. Debe responder 400, el mensaje de solapamiento, y periodoEnConflicto con el id de vacacion_id y estado PROGRAMADA."
         },
         {
           "name": "Empleado inexistente (400)",
@@ -610,13 +624,14 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 5.4. NO-EXISTE no está en la réplica de vacaciones. Debe responder 400: \"El empleado con id NO-EXISTE no existe\"."
         }
       ]
     },
     {
       "name": "6. Consultar y cancelar",
-      "description": "DELETE pasa el período a CANCELADA y la fila se queda. Un CANCELADA no bloquea un rango nuevo.",
+      "description": "Paso 6. Usa la variable vacacion_id que llenó la carpeta 4.\n\nOrden: consultar por id, listar los de E001, listar todos, cancelar, comprobar que la fila sigue, crear otra vez el mismo rango (ya no hay solapamiento) y pedir un id que no existe.\n\nEl DELETE no borra el período: lo pasa a CANCELADA. Un CANCELADA no bloquea un período nuevo con las mismas fechas.",
       "item": [
         {
           "name": "Consultar período por id (200)",
@@ -636,7 +651,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 6.1. GET /vacaciones/{{vacacion_id}} responde 200 y estado PROGRAMADA. Si vacacion_id está vacío, corre antes la carpeta 4."
         },
         {
           "name": "Listar períodos de E001 (200)",
@@ -656,7 +672,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 6.2. GET /vacaciones?empleadoId=E001 responde 200 e incluye el id guardado en vacacion_id."
         },
         {
           "name": "Listar todos los períodos (200)",
@@ -676,7 +693,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 6.3. GET /vacaciones responde 200 y un arreglo."
         },
         {
           "name": "Cancelar período futuro (200 CANCELADA)",
@@ -697,7 +715,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 6.4. DELETE del período de la carpeta 4. Responde 200, el mismo id y estado CANCELADA. La fila no se borra y no se publica evento."
         },
         {
           "name": "El período cancelado sigue consultable (200)",
@@ -717,7 +736,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 6.5. El mismo GET por id sigue en 200 y el estado sigue CANCELADA."
         },
         {
           "name": "Mismas fechas tras cancelar (201, ya no hay solapamiento)",
@@ -756,7 +776,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 6.6. Repite el rango 15 al 30 de marzo de 2027. Ahora responde 201 y un id distinto, porque el período anterior ya está CANCELADA. La variable vacacion_id pasa a ser este id nuevo."
         },
         {
           "name": "Período inexistente (404)",
@@ -776,13 +797,14 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 6.7. GET /vacaciones/V-NO-EXISTE responde 404: \"El período de vacaciones con id V-NO-EXISTE no existe\"."
         }
       ]
     },
     {
       "name": "7. Retiro y auditoria",
-      "description": "DELETE no borra al empleado. Publica empleado.retirado: notificación DESVINCULACION y perfil archivado.",
+      "description": "Paso 7. La baja es lógica. El DELETE no envía cuerpo: publica empleado.retirado con motivo RENUNCIA, notificaciones agrega DESVINCULACION y el perfil pasa a archivado sin perder el teléfono.\n\nOrden estricto. El segundo DELETE tiene que ir después del primero. Las consultas de notificación y perfil van después del retiro, porque el evento es asíncrono.\n\nQué mirar:\n- El primer DELETE responde 200, estado RETIRADO y fechaRetiro con hora.\n- GET /empleados/E001 sigue devolviendo la fila.\n- ?estado=RETIRADO lo incluye. El rango 2026-2027 también. El rango de 2020 no.\n- El segundo DELETE responde 400: \"El empleado con id E001 ya está retirado\". No publica otro evento.\n- Aparece una sola DESVINCULACION: \"Su cuenta ha sido desvinculada\".\n- El perfil sigue en 200, archivado true, y el teléfono sigue siendo 3001234567.\n\nLa última petición (vacaciones de un retirado) espera a vacaciones-service. Hoy responde 404.",
       "item": [
         {
           "name": "Retirar E001 (200)",
@@ -805,7 +827,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 7.1. DELETE sin cuerpo. Responde 200, estado RETIRADO, fechaRetiro con hora UTC y el mismo id. La fila no se borra. Publica empleado.retirado con motivo RENUNCIA."
         },
         {
           "name": "GET del retirado sigue existiendo (200)",
@@ -826,7 +849,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 7.2. GET /empleados/E001 sigue en 200, estado RETIRADO y fechaRetiro presente. La baja no fue un borrado físico."
         },
         {
           "name": "Auditoría por estado RETIRADO (200)",
@@ -846,7 +870,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 7.3. GET /empleados?estado=RETIRADO responde 200 y la lista de ids incluye E001."
         },
         {
           "name": "Auditoría por rango que incluye el retiro (200)",
@@ -866,7 +891,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 7.4. El mismo filtro RETIRADO, con desde 2026-01-01 y hasta 2027-12-31. E001 entra porque fechaRetiro cae en ese rango. desde y hasta se mandan juntos."
         },
         {
           "name": "Auditoría por rango anterior (no incluye E001)",
@@ -886,7 +912,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 7.5. Mismo filtro, pero el rango es todo 2020. Responde 200 y E001 no está en la lista."
         },
         {
           "name": "Segundo retiro (400, sin otro evento)",
@@ -906,7 +933,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 7.6. Repite el DELETE de E001. Responde 400: \"El empleado con id E001 ya está retirado\". No se publica un segundo empleado.retirado, así que no aparece otra DESVINCULACION."
         },
         {
           "name": "Notificación DESVINCULACION (reintenta)",
@@ -943,7 +971,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 7.7. Tras el retiro debe haber una sola fila DESVINCULACION, para juan.perez@empresa.com, con mensaje \"Su cuenta ha sido desvinculada\". El test reintenta 15 s. La BIENVENIDA del paso 1 sigue en el arreglo."
         },
         {
           "name": "Perfil archivado (reintenta)",
@@ -979,7 +1008,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 7.8. El perfil de E001 sigue existiendo. archivado pasa a true y el teléfono del paso 3.1 sigue siendo 3001234567. El test reintenta hasta ver archivado true."
         },
         {
           "name": "Vacaciones de un empleado retirado (400)",
@@ -1039,13 +1069,13 @@
               }
             }
           ],
-          "description": "Reintenta el POST si la réplica todavía no consumió empleado.retirado. Un 201 significa que la réplica seguía en ACTIVO."
+          "description": "Paso 7.9. Un período nuevo para E001 debe responder 400: \"El empleado con id E001 está retirado\". El test reintenta porque la réplica puede tardar en marcar el retiro. Un 201 significaría que la réplica seguía en ACTIVO."
         }
       ]
     },
     {
       "name": "8. Deduplicación (manual)",
-      "description": "No la incluyas en Newman. En http://localhost:15672 publica DOS veces el mismo JSON al exchange onboarding.eventos con routing key empleado.creado. El id del envelope no cambia. Después corre estas dos peticiones: una sola bienvenida y un solo perfil.\n\n{\n  \"id\": \"11111111-1111-1111-1111-111111111111\",\n  \"type\": \"empleado.creado\",\n  \"version\": 1,\n  \"occurredAt\": \"2027-03-01T10:00:00Z\",\n  \"producer\": \"empleados-service\",\n  \"data\": {\n    \"empleadoId\": \"E002\",\n    \"nombre\": \"Ana\",\n    \"apellido\": \"Gómez\",\n    \"email\": \"ana.gomez@empresa.com\",\n    \"numeroEmpleado\": \"EMP-2027-002\",\n    \"cargo\": \"Analista\",\n    \"area\": \"Tecnología\",\n    \"departamentoId\": \"IT\",\n    \"fechaIngreso\": \"2027-03-01\",\n    \"estado\": \"ACTIVO\"\n  }\n}",
+      "description": "Paso 8. No la corras con Newman ni con Run de la carpeta antes de publicar. El mismo mensaje, dos veces, debe dejar una sola bienvenida y un solo perfil.\n\nEn http://localhost:15672 (onboarding / onboarding):\n1. Entra a Exchanges y abre onboarding.eventos.\n2. Abre Publish message.\n3. Routing key: empleado.creado. Deja el exchange en onboarding.eventos.\n4. Pega el JSON de abajo en Payload. Properties puede quedar vacío.\n5. Pulsa Publish message.\n6. Sin cambiar ni una letra del JSON, pulsa Publish message otra vez. El id del envelope tiene que ser el mismo.\n\nDespués corre, en este orden, \"E002 tiene una sola BIENVENIDA\" y \"E002 tiene un solo perfil\".\n\n{\n  \"id\": \"11111111-1111-1111-1111-111111111111\",\n  \"type\": \"empleado.creado\",\n  \"version\": 1,\n  \"occurredAt\": \"2027-03-01T10:00:00Z\",\n  \"producer\": \"empleados-service\",\n  \"data\": {\n    \"empleadoId\": \"E002\",\n    \"nombre\": \"Ana\",\n    \"apellido\": \"Gómez\",\n    \"email\": \"ana.gomez@empresa.com\",\n    \"numeroEmpleado\": \"EMP-2027-002\",\n    \"cargo\": \"Analista\",\n    \"area\": \"Tecnología\",\n    \"departamentoId\": \"IT\",\n    \"fechaIngreso\": \"2027-03-01\",\n    \"estado\": \"ACTIVO\"\n  }\n}",
       "item": [
         {
           "name": "E002 tiene una sola BIENVENIDA",
@@ -1079,7 +1109,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 8.1. Córrerla solo después de publicar dos veces el mismo JSON en onboarding.eventos. GET /notificaciones/E002 debe traer exactamente una BIENVENIDA, no dos."
         },
         {
           "name": "E002 tiene un solo perfil",
@@ -1103,13 +1134,14 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 8.2. GET /perfiles/E002 responde 200, un objeto (no una lista) con empleadoId E002 y email ana.gomez@empresa.com. El segundo publish del mismo id no creó otro perfil."
         }
       ]
     },
     {
       "name": "9. Puertos de negocio no publicados (manual)",
-      "description": "Cada petición debe fallar en Postman (Could not get response / ECONNREFUSED). Si el test llega a ejecutarse, el puerto está publicado y el criterio del borde no se cumple. No la incluyas en Newman: el error de conexión es la evidencia.",
+      "description": "Paso 9. Cada petición debe fallar en Postman con Could not get any response o ECONNREFUSED. Ese error es la evidencia: el puerto no está publicado al host.\n\nSi el test llega a ejecutarse y dice que el puerto está publicado, el servicio está usando ports: en lugar de expose:.\n\nNo la incluyas en Newman. 8080 (gateway) y 15672/5672 (RabbitMQ) sí deben responder: son la puerta de negocio y la infraestructura del broker. 8081, 8083, 8084 y 8085 no.",
       "item": [
         {
           "name": "Acceso directo perfiles :8083 (debe fallar TCP)",
@@ -1130,7 +1162,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 9.1. GET http://localhost:8083/perfiles no debe conectar. Perfiles solo se alcanza por http://localhost:8080/perfiles."
         },
         {
           "name": "Acceso directo notificaciones :8084 (debe fallar TCP)",
@@ -1151,7 +1184,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 9.2. GET http://localhost:8084/notificaciones no debe conectar. El historial se consulta por http://localhost:8080/notificaciones."
         },
         {
           "name": "Acceso directo vacaciones :8085 (debe fallar TCP)",
@@ -1172,7 +1206,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 9.3. GET http://localhost:8085/vacaciones no debe conectar, tampoco cuando el servicio exista. La puerta es http://localhost:8080/vacaciones."
         },
         {
           "name": "Acceso directo departamentos :8081 (debe fallar TCP)",
@@ -1193,7 +1228,8 @@
                 ]
               }
             }
-          ]
+          ],
+          "description": "Paso 9.4. GET http://localhost:8081/departamentos no debe conectar. Los departamentos entran por http://localhost:8080/departamentos."
         }
       ]
     }

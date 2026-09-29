@@ -1,7 +1,7 @@
 import express from 'express';
 import { backendProxy } from './proxy.js';
 
-export function createApp({ empleadosUrl, departamentosUrl, proxyTimeoutMs = 35_000 }) {
+export function createApp({ empleadosUrl, departamentosUrl, notificacionesUrl, perfilesUrl, vacacionesUrl, proxyTimeoutMs = 35_000 }) {
 	const app = express();
 	app.disable('x-powered-by');
 
@@ -22,6 +22,33 @@ export function createApp({ empleadosUrl, departamentosUrl, proxyTimeoutMs = 35_
 		pathPrefix: '/departamentos',
 		timeoutMs: proxyTimeoutMs,
 	}));
+
+	if (notificacionesUrl) {
+		app.use(backendProxy({
+			target: notificacionesUrl,
+			servicio: 'notificaciones-service',
+			pathPrefix: '/notificaciones',
+			timeoutMs: proxyTimeoutMs,
+		}));
+	}
+
+	if (perfilesUrl) {
+		app.use(backendProxy({
+			target: perfilesUrl,
+			servicio: 'perfiles-service',
+			pathPrefix: '/perfiles',
+			timeoutMs: proxyTimeoutMs,
+		}));
+	}
+
+	if (vacacionesUrl) {
+		app.use(backendProxy({
+			target: vacacionesUrl,
+			servicio: 'vacaciones-service',
+			pathPrefix: '/vacaciones',
+			timeoutMs: proxyTimeoutMs,
+		}));
+	}
 
 	app.use((req, res) => {
 		res.status(404).json({

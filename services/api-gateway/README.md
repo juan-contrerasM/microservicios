@@ -19,6 +19,9 @@ destino no contesta. El Circuit Breaker vive en `empleados-service` (Etapa 3).
 | `GET /health` | el propio Gateway | `{ "status": "UP", "service": "api-gateway" }`. No hace ping a los backends. |
 | `/empleados` y `/empleados/*` | `{EMPLEADOS_URL}/empleados` y `/empleados/*` | Path **sin** strip. Un `201`/`400` del backend se reenvía tal cual. |
 | `/departamentos` y `/departamentos/*` | `{DEPARTAMENTOS_URL}/departamentos` y `/departamentos/*` | Igual: query, cuerpo y status se conservan. |
+| `/notificaciones` y `/notificaciones/*` | `{NOTIFICACIONES_URL}` | Solo si la variable está definida. Si no, la ruta responde 404 del propio Gateway. |
+| `/perfiles` y `/perfiles/*` | `{PERFILES_URL}` | Igual. |
+| `/vacaciones` y `/vacaciones/*` | `{VACACIONES_URL}` | Igual. |
 
 Cualquier otra ruta responde `404` JSON (`{"status":404,"mensaje":"Recurso no encontrado"}`),
 nunca una página HTML de Express.
@@ -33,7 +36,7 @@ Si el destino no responde (conexión rechazada, timeout, reset):
 }
 ```
 
-El campo `servicio` distingue `empleados-service` y `departamentos-service`.
+El campo `servicio` distingue el backend (`empleados-service`, `departamentos-service`, `notificaciones-service`, `perfiles-service`, `vacaciones-service`). El `mensaje` usa el nombre sin el sufijo `-service`.
 
 ## Variables de entorno
 
@@ -44,6 +47,9 @@ Nunca se hardcodean hosts. En Compose las inyecta el `docker-compose.yml` raíz 
 | `PORT` | `8080` | Puerto HTTP del Gateway |
 | `EMPLEADOS_URL` | *(obligatoria)* | Origen interno, p. ej. `http://empleados-service:8080` |
 | `DEPARTAMENTOS_URL` | *(obligatoria)* | Origen interno, p. ej. `http://departamentos-service:8081` |
+| `NOTIFICACIONES_URL` | *(opcional)* | `http://notificaciones-service:8084`. Si falta, `/notificaciones` no se publica. |
+| `PERFILES_URL` | *(opcional)* | `http://perfiles-service:8083` |
+| `VACACIONES_URL` | *(opcional)* | `http://vacaciones-service:8085` |
 | `PROXY_TIMEOUT_MS` | `35000` | Timeout del proxy hacia cada backend. Supera el peor caso de empleados (4×5s + backoff 1s→2s→4s ≈ 27s) para no cortar el fallback antes de tiempo. |
 
 ## Cómo correrlo

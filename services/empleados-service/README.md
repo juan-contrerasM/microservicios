@@ -77,8 +77,8 @@ error queda en el log. No se revierte el alta, la actualización ni el retiro.
 | Hecho | Evento | Cuándo |
 |---|---|---|
 | `POST` 201, sea `ACTIVO` o `PENDIENTE_VALIDACION` | `empleado.creado` | Después del commit |
-| `PUT` 200 | `empleado.actualizado` | Después del commit. La carga lleva el empleado ya guardado, no el diff |
-| `DELETE` 200 la primera vez | `empleado.retirado` | Después del commit. Incluye `fechaRetiro` |
+| `PUT` 200 | `empleado.actualizado` | Después del commit. El catálogo solo lleva `empleadoId`, `nombre`, `apellido`, `email`, `cargo`, `area` y `departamentoId` |
+| `DELETE` 200 la primera vez | `empleado.retirado` | Después del commit. Lleva `empleadoId`, `email`, `fechaRetiro` y `motivo` (`RENUNCIA` si el cuerpo no lo envía) |
 | `DELETE` de un retirado | ninguno | Responde 400 antes de publicar |
 
 El envelope es `id` (UUID), `type`, `version` 1, `occurredAt` (UTC), `producer`

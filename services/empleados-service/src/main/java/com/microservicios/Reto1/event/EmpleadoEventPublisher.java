@@ -12,5 +12,5 @@ public interface EmpleadoEventPublisher {
 
 	void publicarActualizado(Empleado empleado);
 
-	void publicarRetirado(Empleado empleado);
+	void publicarRetirado(Empleado empleado, String motivo);
 }
