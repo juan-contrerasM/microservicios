@@ -1,9 +1,13 @@
-function requiredUrl(env, name) {
+function required(env, name) {
 	const value = env[name];
 	if (!value || value.trim() === '') {
 		throw new Error(`La variable de entorno ${name} es obligatoria`);
 	}
-	return value.replace(/\/+$/, '');
+	return value.trim();
+}
+
+function requiredUrl(env, name) {
+	return required(env, name).replace(/\/+$/, '');
 }
 
 export function loadConfig(env = process.env) {
@@ -20,6 +24,8 @@ export function loadConfig(env = process.env) {
 		vacacionesUrl: env.VACACIONES_URL
 			? requiredUrl(env, 'VACACIONES_URL')
 			: undefined,
+		authUrl: requiredUrl(env, 'AUTH_URL'),
+		jwtSecret: required(env, 'JWT_SECRET'),
 		proxyTimeoutMs: Number(env.PROXY_TIMEOUT_MS || 35_000),
 	};
 }

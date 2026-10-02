@@ -1,0 +1,2231 @@
+{
+  "info": {
+    "name": "Reto 5 - Seguridad y control de acceso con JWT",
+    "description": "Guía para recorrer el Reto 5 en orden. Toda petición de negocio va a {{gateway_url}} (http://localhost:8080). Importa este archivo en Postman y abre la descripción de cada carpeta antes de pulsar Send.\n\nAntes de empezar\n1. docker compose up --build y espera a que los contenedores queden healthy. Tiene que existir la semilla admin / Admin1234! (AUTH_ADMIN_USUARIO y AUTH_ADMIN_PASSWORD).\n2. Si Postman se queda esperando en localhost, cambia la variable gateway_url a http://127.0.0.1:8080.\n3. Parte de datos limpios. Si E001, E002 o el departamento IT ya existen, la carpeta 1 no responde 201.\n4. Corre las carpetas de arriba hacia abajo. No saltes pasos: cada una usa el token que dejó la anterior.\n\nQué puedes probar cuando las etapas 1 a 6 estén cerradas\n- Carpetas 0 a 10, en ese orden.\n- Carpeta 11, a mano: el fallo de conexión es la evidencia.\n\nCómo leer un resultado asíncrono\nLa cuenta, el perfil y la notificación no nacen en el mismo HTTP del alta. El aviso SEGURIDAD da dos saltos (auth y luego notificaciones). El script reintenta hasta 20 s. Mira Test Results.\n\nLa colección del Reto 4 busca BIENVENIDA y DESVINCULACION. Este reto ya no las inserta. No mezcles las dos colecciones en la misma base.\n\nRabbitMQ: http://localhost:15672. Exchange onboarding.eventos. Cola nueva: q.auth.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "gateway_url",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "admin_usuario",
+      "value": "admin"
+    },
+    {
+      "key": "admin_password",
+      "value": "Admin1234!"
+    },
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "user_token",
+      "value": ""
+    },
+    {
+      "key": "user_password",
+      "value": "Usuario123!"
+    },
+    {
+      "key": "reset_token",
+      "value": ""
+    },
+    {
+      "key": "reset_token_e002",
+      "value": ""
+    },
+    {
+      "key": "vacacion_id",
+      "value": ""
+    },
+    {
+      "key": "vacacion_id_e002",
+      "value": ""
+    },
+    {
+      "key": "fecha_manana",
+      "value": ""
+    },
+    {
+      "key": "direct_auth_url",
+      "value": "http://localhost:8086"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Salud y login de admin",
+      "description": "Paso 0. El health del gateway sigue público. El login de la semilla también: todavía no hay empleados.\n\nQué mirar: health 200 con service api-gateway. El login responde 200, role ADMIN, y el test guarda admin_token. La clave Admin1234! cumple la política (8 caracteres, mayúscula, minúscula y dígito).",
+      "item": [
+        {
+          "name": "Health del Gateway (UP, sin token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status UP', () => pm.expect(pm.response.json().status).to.eql('UP'));",
+                  "pm.test('identifica al Gateway', () => pm.expect(pm.response.json().service).to.eql('api-gateway'));"
+                ]
+              }
+            }
+          ],
+          "description": "GET /health no lleva Authorization. Responde 200 y {\"status\":\"UP\",\"service\":\"api-gateway\"}. No valida JWT ni llama a los backends."
+        },
+        {
+          "name": "Login admin (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"{{admin_usuario}}\",\n  \"contrasena\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('role ADMIN', () => pm.expect(body.role).to.eql('ADMIN'));",
+                  "pm.test('Bearer', () => pm.expect(body.tokenType).to.eql('Bearer'));",
+                  "pm.test('hay token', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
+                  "let parte = body.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "parte += '='.repeat((4 - parte.length % 4) % 4);",
+                  "const payload = JSON.parse(decodeURIComponent(atob(parte).split('').map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));",
+                  "pm.test('sub admin', () => pm.expect(payload.sub).to.eql('admin'));",
+                  "pm.test('role en el JWT', () => pm.expect(payload.role).to.eql('ADMIN'));",
+                  "pm.test('sin contraseña en el JWT', () => pm.expect(JSON.stringify(payload).toLowerCase()).to.not.include('admin1234'));",
+                  "pm.collectionVariables.set('admin_token', body.token);"
+                ]
+              }
+            }
+          ],
+          "description": "POST /auth/login con usuario admin y contrasena Admin1234!. Público. Guarda admin_token. El payload lleva sub=admin y role=ADMIN, y no lleva la contraseña."
+        },
+        {
+          "name": "Login admin con clave mala (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"admin\",\n  \"contrasena\": \"no-es-la-clave\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('Credenciales inválidas'));"
+                ]
+              }
+            }
+          ],
+          "description": "La misma semilla con otra clave. 401 y mensaje Credenciales inválidas. No entrega token."
+        }
+      ]
+    },
+    {
+      "name": "1. Alta con JWT de admin",
+      "description": "Paso 1. El admin crea IT, E001 y E002. Sin el token, estos POST responden 401.\n\nOrden: departamento, los dos empleados, el perfil de E001, la notificación SEGURIDAD. El test de SEGURIDAD guarda reset_token y reset_token_e002.\n\nQué mirar: no aparece una fila BIENVENIDA. El mensaje trae el enlace con el token de activación.",
+      "item": [
+        {
+          "name": "Crear departamento IT (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/departamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"IT\",\n  \"nombre\": \"Tecnología\",\n  \"descripcion\": \"Departamento de TI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('id IT', () => pm.expect(pm.response.json().id).to.eql('IT'));"
+                ]
+              }
+            }
+          ],
+          "description": "POST /departamentos con el JWT de admin. 201, id IT."
+        },
+        {
+          "name": "Registrar empleado E001 (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"E001\",\n  \"nombre\": \"Juan\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"juan.perez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-001\",\n  \"cargo\": \"Desarrollador Senior\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('estado ACTIVO', () => pm.expect(pm.response.json().estado).to.eql('ACTIVO'));"
+                ]
+              }
+            }
+          ],
+          "description": "POST /empleados E001. 201 y estado ACTIVO. Después del commit se publica empleado.creado. La cuenta nace inactiva en auth; este 201 no es un login."
+        },
+        {
+          "name": "Registrar empleado E002 (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"E002\",\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Gómez\",\n  \"email\": \"ana.gomez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-002\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-03-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('id E002', () => pm.expect(pm.response.json().id).to.eql('E002'));"
+                ]
+              }
+            }
+          ],
+          "description": "POST /empleados E002. Hace falta para el caso borde de la carpeta 9. Email ana.gomez@empresa.com."
+        },
+        {
+          "name": "Perfil de E001 (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/perfiles/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/perfiles/E001';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && body && body.empleadoId === 'E001') { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('Perfil creado por empleado.creado', () => {",
+                  "    pm.expect(found, 'sin perfil tras 20s').to.be.an('object');",
+                  "    pm.expect(found.archivado).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "GET /perfiles/E001 con el JWT de admin. Puede ir 404 los primeros segundos. A los 20 s tiene que existir y archivado en false."
+        },
+        {
+          "name": "Notificación SEGURIDAD de E001 (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.some((n) => n.tipo === 'SEGURIDAD')) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('Una SEGURIDAD y ninguna BIENVENIDA', () => {",
+                  "    pm.expect(found, 'sin SEGURIDAD tras 20s').to.be.an('array');",
+                  "    pm.expect(found.filter((n) => n.tipo === 'BIENVENIDA')).to.have.lengthOf(0);",
+                  "    const seg = found.filter((n) => n.tipo === 'SEGURIDAD');",
+                  "    pm.expect(seg).to.have.lengthOf(1);",
+                  "    pm.expect(seg[0].destinatario).to.eql('juan.perez@empresa.com');",
+                  "    pm.expect(seg[0].empleadoId).to.eql('E001');",
+                  "    const match = /token=([^\\s\"]+)/.exec(seg[0].mensaje);",
+                  "    pm.expect(match, 'el mensaje no trae el token').to.not.eql(null);",
+                  "    pm.collectionVariables.set('reset_token', match[1]);",
+                  "    pm.expect(seg[0].mensaje).to.include('Para establecer o restablecer su contraseña ingrese a https://app.empresa.com/reset?token=');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "GET /notificaciones/E001. Una fila SEGURIDAD, cero BIENVENIDA, y el mensaje contiene el token. El test lo guarda en reset_token."
+        },
+        {
+          "name": "Notificación SEGURIDAD de E002 (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E002"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E002';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.some((n) => n.tipo === 'SEGURIDAD')) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('Una SEGURIDAD y ninguna BIENVENIDA', () => {",
+                  "    pm.expect(found, 'sin SEGURIDAD tras 20s').to.be.an('array');",
+                  "    pm.expect(found.filter((n) => n.tipo === 'BIENVENIDA')).to.have.lengthOf(0);",
+                  "    const seg = found.filter((n) => n.tipo === 'SEGURIDAD');",
+                  "    pm.expect(seg).to.have.lengthOf(1);",
+                  "    pm.expect(seg[0].destinatario).to.eql('ana.gomez@empresa.com');",
+                  "    pm.expect(seg[0].empleadoId).to.eql('E002');",
+                  "    const match = /token=([^\\s\"]+)/.exec(seg[0].mensaje);",
+                  "    pm.expect(match, 'el mensaje no trae el token').to.not.eql(null);",
+                  "    pm.collectionVariables.set('reset_token_e002', match[1]);",
+                  "    pm.expect(seg[0].mensaje).to.include('Para establecer o restablecer su contraseña ingrese a https://app.empresa.com/reset?token=');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "Igual que E001, para ana.gomez@empresa.com. Guarda reset_token_e002."
+        }
+      ]
+    },
+    {
+      "name": "2. Petición denegada",
+      "description": "Paso 2. GET /empleados sin token, con un token alterado y con el reset token en el header.\n\nQué mirar: los tres responden 401 y {\"status\":401,\"mensaje\":\"No autenticado\"}. El reset token no es un access token.",
+      "item": [
+        {
+          "name": "GET /empleados sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/empleados"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('No autenticado'));"
+                ]
+              }
+            }
+          ],
+          "description": "Sin header Authorization. 401. El Gateway no proxea."
+        },
+        {
+          "name": "GET /empleados con firma alterada (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJBRE1JTiJ9.firma-alterada"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('No autenticado'));"
+                ]
+              }
+            }
+          ],
+          "description": "Bearer con el payload de admin y una firma que no corresponde. 401."
+        },
+        {
+          "name": "GET /empleados con el reset token (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{reset_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('No autenticado'));"
+                ]
+              }
+            }
+          ],
+          "description": "El JWT de activación en Authorization. type RESET_PASSWORD no abre el borde. 401."
+        }
+      ]
+    },
+    {
+      "name": "3. Activar E001 y leer",
+      "description": "Paso 3. reset-password es público: el token va en el cuerpo. Luego el login del empleado y un GET con su JWT.\n\nQué mirar: el reset responde 200. El login responde 200, role USER, sub E001. El GET /empleados con ese token responde 200. La clave Usuario123! cumple la política.",
+      "item": [
+        {
+          "name": "Reset de E001 (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/reset-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{reset_token}}\",\n  \"contrasena\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('Contraseña actualizada'));"
+                ]
+              }
+            }
+          ],
+          "description": "POST /auth/reset-password sin Authorization. Establece Usuario123! y publica cuenta.activada con motivo ACTIVACION_INICIAL."
+        },
+        {
+          "name": "Login de E001 (200 USER)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"juan.perez@empresa.com\",\n  \"contrasena\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('role USER', () => pm.expect(body.role).to.eql('USER'));",
+                  "let parte = body.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');",
+                  "parte += '='.repeat((4 - parte.length % 4) % 4);",
+                  "const payload = JSON.parse(decodeURIComponent(atob(parte).split('').map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));",
+                  "pm.test('sub E001', () => pm.expect(payload.sub).to.eql('E001'));",
+                  "pm.test('role en el JWT', () => pm.expect(payload.role).to.eql('USER'));",
+                  "pm.collectionVariables.set('user_token', body.token);"
+                ]
+              }
+            }
+          ],
+          "description": "Login con el email juan.perez@empresa.com y la clave recién puesta. Guarda user_token. sub es E001, no el email."
+        },
+        {
+          "name": "GET /empleados con el JWT de E001 (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('incluye E001', () => pm.expect(pm.response.json().some((e) => e.id === 'E001')).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "description": "Lectura con rol USER. 200. El Gateway deja pasar los GET."
+        },
+        {
+          "name": "Cuenta activada (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.some((n) => n.tipo === 'CUENTA' && String(n.mensaje).includes('Bienvenido de regreso. Su cuenta ha sido reactivada'))) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('CUENTA de activación inicial', () => {",
+                  "    pm.expect(found, 'sin aviso tras 20s').to.be.an('array');",
+                  "    const fila = found.find((n) => n.tipo === 'CUENTA' && String(n.mensaje).includes('Bienvenido de regreso. Su cuenta ha sido reactivada'));",
+                  "    pm.expect(fila).to.be.an('object');",
+                  "    pm.expect(fila.empleadoId).to.eql('E001');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "Tras el primer reset tiene que existir una CUENTA con el mensaje de bienvenida de regreso. Es cuenta.activada, motivo ACTIVACION_INICIAL."
+        }
+      ]
+    },
+    {
+      "name": "4. Recuperar contraseña",
+      "description": "Paso 4. recover-password con el email de E001. El test espera una segunda SEGURIDAD, toma el token nuevo y vuelve a fijar la misma clave Usuario123! para no desalinear las carpetas siguientes.\n\nQué mirar: recover responde 200 con el mensaje genérico, haya o no correo. La segunda SEGURIDAD trae otro token.",
+      "item": [
+        {
+          "name": "Recover de E001 (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/recover-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"juan.perez@empresa.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('mensaje genérico', () => pm.expect(pm.response.json().mensaje).to.eql('Si el correo existe, se envió un enlace de recuperación'));"
+                ]
+              }
+            }
+          ],
+          "description": "POST /auth/recover-password. Público. 200 siempre. Publica usuario.recuperacion porque la cuenta está ACTIVA."
+        },
+        {
+          "name": "Recover de un email que no existe (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/recover-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nadie@empresa.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('el mismo mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('Si el correo existe, se envió un enlace de recuperación'));"
+                ]
+              }
+            }
+          ],
+          "description": "El mismo 200. No publica evento y no dice si el correo existe."
+        },
+        {
+          "name": "Segunda SEGURIDAD (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "const anterior = pm.collectionVariables.get('reset_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.filter((n) => n.tipo === 'SEGURIDAD').length >= 2) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('Dos SEGURIDAD y un token nuevo', () => {",
+                  "    pm.expect(found, 'sin segunda SEGURIDAD tras 20s').to.be.an('array');",
+                  "    const seg = found.filter((n) => n.tipo === 'SEGURIDAD');",
+                  "    pm.expect(seg.length).to.be.at.least(2);",
+                  "    const tokens = seg.map((n) => (/token=([^\\s\"]+)/.exec(n.mensaje) || [])[1]).filter(Boolean);",
+                  "    const nuevo = tokens.find((t) => t !== anterior);",
+                  "    pm.expect(nuevo, 'no hay un token distinto').to.be.a('string');",
+                  "    pm.collectionVariables.set('reset_token', nuevo);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "Espera al menos dos filas SEGURIDAD. Guarda en reset_token el que no es el de la activación."
+        },
+        {
+          "name": "Reset con el token de recuperación (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/reset-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{reset_token}}\",\n  \"contrasena\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "description": "Vuelve a dejar Usuario123!. La cuenta ya estaba ACTIVA: no debe publicarse otro cuenta.activada."
+        },
+        {
+          "name": "Login tras la recuperación (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"juan.perez@empresa.com\",\n  \"contrasena\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('user_token', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "description": "El login con Usuario123! sigue funcionando. Actualiza user_token por si el anterior se quiere descartar."
+        }
+      ]
+    },
+    {
+      "name": "5. Escritura denegada y propiedad",
+      "description": "Paso 5. El JWT de E001 lee, cambia su perfil y no puede escribir en el resto.\n\nQué mirar: DELETE y POST de empleados, departamentos y vacaciones responden 403. PUT /perfiles/E001 responde 200. PUT /perfiles/E002 responde 403, no 401. GET /perfiles/E002 responde 200: la lectura no exige ser el dueño.",
+      "item": [
+        {
+          "name": "DELETE /empleados/E001 con USER (403)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('No tiene permisos para realizar esta operación'));"
+                ]
+              }
+            }
+          ],
+          "description": "Un USER no retira empleados. 403. La fila sigue ACTIVA."
+        },
+        {
+          "name": "POST /departamentos con USER (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/departamentos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"HR\",\n  \"nombre\": \"RRHH\",\n  \"descripcion\": \"No debe crearse\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "description": "POST de otro servicio con USER. 403."
+        },
+        {
+          "name": "PUT perfil propio E001 (200)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/perfiles/E001",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"3001234567\",\n  \"ciudad\": \"Armenia\",\n  \"biografia\": \"Ingeniero de sistemas\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('telefono', () => pm.expect(pm.response.json().telefono).to.eql('3001234567'));"
+                ]
+              }
+            }
+          ],
+          "description": "PUT /perfiles/E001 con sub E001. 200. El teléfono queda 3001234567."
+        },
+        {
+          "name": "GET perfil de E002 con el JWT de E001 (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/perfiles/E002"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/perfiles/E002';",
+                  "const token = pm.collectionVariables.get('user_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && body && body.empleadoId === 'E002') { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('USER puede leer el perfil de otro', () => {",
+                  "    pm.expect(found, 'sin perfil de E002 tras 20s').to.be.an('object');",
+                  "    pm.expect(found.empleadoId).to.eql('E002');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "La lectura de otro perfil está permitida. Puede tardar si el perfil de E002 aún no se consumió; el reintento usa el token de admin que ya guardó el script interno. Si falla por 401, el perfil no está y el test lo dice."
+        },
+        {
+          "name": "PUT perfil de E002 con el JWT de E001 (403)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/perfiles/E002",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telefono\": \"0000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));",
+                  "pm.test('no es 401', () => pm.expect(pm.response.code).to.not.eql(401));"
+                ]
+              }
+            }
+          ],
+          "description": "sub E001 contra el recurso E002. 403. No es un problema de autenticación."
+        }
+      ]
+    },
+    {
+      "name": "6. Cambio de contraseña",
+      "description": "Paso 6. change-password exige el access token de E001. La clave nueva es Usuario456!.\n\nQué mirar: la clave vieja deja de entrar (401 Credenciales inválidas) y la nueva entra (200). El test vuelve a dejar user_token con la clave nueva. La política rechaza una clave corta con 400.",
+      "item": [
+        {
+          "name": "Change-password sin token (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/change-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contrasenaActual\": \"{{user_password}}\",\n  \"contrasenaNueva\": \"Usuario456!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "description": "Sin Bearer. 401 del Gateway. No llega a auth."
+        },
+        {
+          "name": "Change-password que no cumple la política (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/change-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contrasenaActual\": \"{{user_password}}\",\n  \"contrasenaNueva\": \"corta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('política', () => pm.expect(pm.response.json().mensaje).to.eql('La contraseña no cumple la política de seguridad'));"
+                ]
+              }
+            }
+          ],
+          "description": "USER autenticado, clave nueva demasiado corta. 400. La clave anterior sigue valiendo."
+        },
+        {
+          "name": "Change-password de E001 (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/change-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contrasenaActual\": \"{{user_password}}\",\n  \"contrasenaNueva\": \"Usuario456!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('mensaje', () => pm.expect(pm.response.json().mensaje).to.eql('Contraseña actualizada'));",
+                  "pm.collectionVariables.set('user_password', 'Usuario456!');"
+                ]
+              }
+            }
+          ],
+          "description": "Cambia Usuario123! por Usuario456!. 200. Actualiza la variable user_password."
+        },
+        {
+          "name": "Login con la clave anterior (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"juan.perez@empresa.com\",\n  \"contrasena\": \"Usuario123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('credenciales', () => pm.expect(pm.response.json().mensaje).to.eql('Credenciales inválidas'));"
+                ]
+              }
+            }
+          ],
+          "description": "La clave vieja ya no entra. 401 Credenciales inválidas."
+        },
+        {
+          "name": "Login con la clave nueva (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"juan.perez@empresa.com\",\n  \"contrasena\": \"Usuario456!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('user_token', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "description": "Entra con Usuario456! y refresca user_token."
+        }
+      ]
+    },
+    {
+      "name": "7. Vacaciones: suspensión y reactivación",
+      "description": "Paso 7. El admin programa vacaciones de E001 para mañana, fuerza el inicio y luego el fin.\n\nMañana evita que el cron de cada minuto gane la carrera. El paso 12 del PDF (hoy/hoy) se muestra aparte, en la sustentación.\n\nQué mirar: el POST responde 201 PROGRAMADA. forzar-inicio deja EN_CURSO y el login de E001 pasa a 401 con el mensaje La cuenta no está activa. forzar-fin deja FINALIZADA y el login vuelve a 200.",
+      "item": [
+        {
+          "name": "Calcular la fecha de mañana",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{gateway_url}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const hoy = new Date();",
+                  "const manana = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate() + 1));",
+                  "const iso = manana.toISOString().slice(0, 10);",
+                  "pm.collectionVariables.set('fecha_manana', iso);",
+                  "pm.test('fecha lista', () => pm.expect(iso).to.match(/^\\d{4}-\\d{2}-\\d{2}$/));"
+                ]
+              }
+            }
+          ],
+          "description": "No crea datos. Deja fecha_manana en UTC (YYYY-MM-DD) para el POST de vacaciones."
+        },
+        {
+          "name": "Programar vacaciones de E001 (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"E001\",\n  \"fechaInicio\": \"{{fecha_manana}}\",\n  \"fechaFin\": \"{{fecha_manana}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('PROGRAMADA', () => pm.expect(body.estado).to.eql('PROGRAMADA'));",
+                  "pm.test('mismo día', () => pm.expect(body.fechaFin).to.eql(body.fechaInicio));",
+                  "pm.collectionVariables.set('vacacion_id', body.id);"
+                ]
+              }
+            }
+          ],
+          "description": "POST /vacaciones con el JWT de admin. Inicio y fin son el mismo día (mañana). 201 PROGRAMADA. Un USER recibiría 403."
+        },
+        {
+          "name": "USER no programa vacaciones (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"E001\",\n  \"fechaInicio\": \"{{fecha_manana}}\",\n  \"fechaFin\": \"{{fecha_manana}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "description": "El mismo cuerpo con el JWT de E001. 403. No crea otro período."
+        },
+        {
+          "name": "Confirmación de vacaciones programadas (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.some((n) => n.tipo === 'VACACIONES' && String(n.mensaje).includes('han sido programadas'))) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('VACACIONES programadas', () => {",
+                  "    pm.expect(found, 'sin aviso tras 20s').to.be.an('array');",
+                  "    const fila = found.find((n) => n.tipo === 'VACACIONES' && String(n.mensaje).includes('han sido programadas'));",
+                  "    pm.expect(fila).to.be.an('object');",
+                  "    pm.expect(fila.empleadoId).to.eql('E001');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "Sigue el aviso del Reto 4: tipo VACACIONES y el mensaje de período programado."
+        },
+        {
+          "name": "Forzar inicio (200 EN_CURSO)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones/{{vacacion_id}}/forzar-inicio"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('EN_CURSO', () => pm.expect(pm.response.json().estado).to.eql('EN_CURSO'));"
+                ]
+              }
+            }
+          ],
+          "description": "POST de desarrollo, solo ADMIN. Pasa a EN_CURSO y publica vacaciones.iniciadas aunque la fecha sea mañana."
+        },
+        {
+          "name": "Aviso de inicio y cuenta desactivada (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    const ok = Array.isArray(body) && body.some((n) => n.mensaje === 'Su cuenta fue desactivada') && body.some((n) => String(n.mensaje).includes('han iniciado'));",
+                  "    if (res.code === 200 && ok) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('CUENTA desactivada y vacaciones iniciadas', () => {",
+                  "    pm.expect(found, 'sin los dos avisos tras 20s').to.be.an('array');",
+                  "    pm.expect(found.some((n) => n.tipo === 'CUENTA' && n.mensaje === 'Su cuenta fue desactivada')).to.eql(true);",
+                  "    pm.expect(found.some((n) => n.tipo === 'VACACIONES' && String(n.mensaje).includes('han iniciado'))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "Tienen que convivir el aviso de vacaciones iniciadas y la CUENTA Su cuenta fue desactivada."
+        },
+        {
+          "name": "Login de E001 suspendido (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"juan.perez@empresa.com\",\n  \"contrasena\": \"Usuario456!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/auth/login';",
+                  "let last = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, method: 'POST', header: { 'Content-Type': 'application/json' }, body: { mode: 'raw', raw: JSON.stringify({ usuario: 'juan.perez@empresa.com', contrasena: 'Usuario456!' }) } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    if (res.code === 401) break;",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('401 cuenta no activa', () => {",
+                  "    pm.expect(last.code).to.eql(401);",
+                  "    pm.expect(last.json().mensaje).to.eql('La cuenta no está activa');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "La clave buena ya no entra. 401 y mensaje La cuenta no está activa. Reintenta porque auth consume el evento después del POST."
+        },
+        {
+          "name": "Forzar fin (200 FINALIZADA)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones/{{vacacion_id}}/forzar-fin"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('FINALIZADA', () => pm.expect(pm.response.json().estado).to.eql('FINALIZADA'));"
+                ]
+              }
+            }
+          ],
+          "description": "ADMIN. Pasa a FINALIZADA y publica vacaciones.finalizadas. La cuenta estaba solo suspendida, así que auth la reactiva."
+        },
+        {
+          "name": "Login de E001 reactivado (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"juan.perez@empresa.com\",\n  \"contrasena\": \"Usuario456!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/auth/login';",
+                  "let last = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, method: 'POST', header: { 'Content-Type': 'application/json' }, body: { mode: 'raw', raw: JSON.stringify({ usuario: 'juan.perez@empresa.com', contrasena: 'Usuario456!' }) } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    if (res.code === 200) break;",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('vuelve a entrar', () => {",
+                  "    pm.expect(last.code).to.eql(200);",
+                  "    pm.expect(last.json().role).to.eql('USER');",
+                  "});",
+                  "pm.collectionVariables.set('user_token', last.json().token);"
+                ]
+              }
+            }
+          ],
+          "description": "Tras cuenta.activada con motivo FIN_VACACIONES el login responde 200 otra vez."
+        },
+        {
+          "name": "Bienvenida de regreso (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && Array.isArray(body) && body.some((n) => n.tipo === 'CUENTA' && String(n.mensaje).includes('Bienvenido de regreso. Su cuenta ha sido reactivada'))) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('CUENTA de fin de vacaciones', () => {",
+                  "    pm.expect(found, 'sin aviso tras 20s').to.be.an('array');",
+                  "    const fila = found.find((n) => n.tipo === 'CUENTA' && String(n.mensaje).includes('Bienvenido de regreso. Su cuenta ha sido reactivada'));",
+                  "    pm.expect(fila).to.be.an('object');",
+                  "    pm.expect(fila.empleadoId).to.eql('E001');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "Hay al menos una CUENTA con Bienvenido de regreso. La de la activación inicial también cuenta: el test exige que el mensaje exista."
+        }
+      ]
+    },
+    {
+      "name": "8. Caso borde: retiro durante las vacaciones",
+      "description": "Paso 8. E002 activa su clave, entra de vacaciones y el admin lo retira antes del fin.\n\nQué mirar: después de forzar-fin el período queda FINALIZADA y el login sigue en 401 con La cuenta no está activa. La activación inicial ya dejó un Bienvenido de regreso; el fin no debe sumar otro.",
+      "item": [
+        {
+          "name": "Reset de E002 (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/reset-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{reset_token_e002}}\",\n  \"contrasena\": \"Usuario123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "description": "Activa la cuenta de Ana. La clave de esta carpeta es Usuario123! y no se cambia."
+        },
+        {
+          "name": "Login de E002 antes de las vacaciones (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"ana.gomez@empresa.com\",\n  \"contrasena\": \"Usuario123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('role USER', () => pm.expect(pm.response.json().role).to.eql('USER'));"
+                ]
+              }
+            }
+          ],
+          "description": "Comprueba que E002 podía entrar. No hace falta guardar el token: el caso borde lo ejecuta el admin."
+        },
+        {
+          "name": "Programar vacaciones de E002 (201)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empleadoId\": \"E002\",\n  \"fechaInicio\": \"{{fecha_manana}}\",\n  \"fechaFin\": \"{{fecha_manana}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('vacacion_id_e002', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "description": "Período de E002, también mañana. No se solapa con el de E001 porque el solapamiento es por empleado, y el de E001 ya está FINALIZADA."
+        },
+        {
+          "name": "Forzar inicio de E002 (200)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones/{{vacacion_id_e002}}/forzar-inicio"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('EN_CURSO', () => pm.expect(pm.response.json().estado).to.eql('EN_CURSO'));"
+                ]
+              }
+            }
+          ],
+          "description": "E002 queda EN_CURSO. Auth debe suspender la cuenta."
+        },
+        {
+          "name": "Login de E002 suspendido (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"ana.gomez@empresa.com\",\n  \"contrasena\": \"Usuario123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/auth/login';",
+                  "let last = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, method: 'POST', header: { 'Content-Type': 'application/json' }, body: { mode: 'raw', raw: JSON.stringify({ usuario: 'ana.gomez@empresa.com', contrasena: 'Usuario123!' }) } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    if (res.code === 401) break;",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('401', () => pm.expect(last.code).to.eql(401));"
+                ]
+              }
+            }
+          ],
+          "description": "Antes del retiro, la suspensión ya impide el login."
+        },
+        {
+          "name": "Retirar E002 durante las vacaciones (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados/E002"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('RETIRADO', () => pm.expect(pm.response.json().estado).to.eql('RETIRADO'));",
+                  "pm.test('fechaRetiro', () => pm.expect(pm.response.json().fechaRetiro).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "description": "DELETE /empleados/E002 con el JWT de admin. 200, RETIRADO, fechaRetiro. Publica empleado.retirado y la cuenta pasa a DESACTIVADA_PERMANENTE."
+        },
+        {
+          "name": "Contar bienvenidas de E002 antes del fin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E002"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E002';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let body = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    const lista = Array.isArray(body) ? body : [];",
+                  "    if (lista.some((n) => n.mensaje === 'Su cuenta fue desactivada')) break;",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "const n = (Array.isArray(body) ? body : []).filter((n) => String(n.mensaje).includes('Bienvenido de regreso')).length;",
+                  "pm.collectionVariables.set('regreso_e002', String(n));",
+                  "pm.test('la suspensión ya avisó', () => pm.expect(body.some((n) => n.mensaje === 'Su cuenta fue desactivada')).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "description": "Guarda cuántas filas Bienvenido de regreso tiene E002 antes de forzar el fin. La activación inicial ya dejó una. El fin no debe sumar otra."
+        },
+        {
+          "name": "Forzar fin de E002 (200 FINALIZADA)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones/{{vacacion_id_e002}}/forzar-fin"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('FINALIZADA', () => pm.expect(pm.response.json().estado).to.eql('FINALIZADA'));"
+                ]
+              }
+            }
+          ],
+          "description": "El período termina. Auth no debe publicar cuenta.activada."
+        },
+        {
+          "name": "Login de E002 sigue cerrado (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"ana.gomez@empresa.com\",\n  \"contrasena\": \"Usuario123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/auth/login';",
+                  "let visto200 = false;",
+                  "let last = null;",
+                  "for (let i = 0; i < 8; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, method: 'POST', header: { 'Content-Type': 'application/json' }, body: { mode: 'raw', raw: JSON.stringify({ usuario: 'ana.gomez@empresa.com', contrasena: 'Usuario123!' }) } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    if (res.code === 200) visto200 = true;",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('nunca vuelve a 200', () => pm.expect(visto200).to.eql(false));",
+                  "pm.test('sigue 401', () => pm.expect(last.code).to.eql(401));",
+                  "pm.test('cuenta no activa', () => pm.expect(last.json().mensaje).to.eql('La cuenta no está activa'));"
+                ]
+              }
+            }
+          ],
+          "description": "Durante 8 s el login no puede responder 200. Al final sigue en 401. Si auth reactiva la cuenta, este test falla."
+        },
+        {
+          "name": "E002 no gana otra bienvenida de regreso",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E002"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E002';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "const antes = Number(pm.collectionVariables.get('regreso_e002') || '0');",
+                  "let body = null;",
+                  "await new Promise((r) => setTimeout(r, 8000));",
+                  "const res = await new Promise((resolve, reject) => {",
+                  "    pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "});",
+                  "body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "pm.test('no se sumó una bienvenida de regreso', () => {",
+                  "    pm.expect(body).to.be.an('array');",
+                  "    const ahora = body.filter((n) => String(n.mensaje).includes('Bienvenido de regreso')).length;",
+                  "    pm.expect(ahora).to.eql(antes);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "Ocho segundos después del fin, E002 tiene las mismas filas Bienvenido de regreso que antes. La de la activación inicial sigue ahí. No aparece otra por vacaciones.finalizadas."
+        }
+      ]
+    },
+    {
+      "name": "9. Offboarding de E001",
+      "description": "Paso 9. El admin retira a E001, que volvió de vacaciones en la carpeta 7 y su cuenta está ACTIVA.\n\nQué mirar: DELETE 200, estado RETIRADO y fechaRetiro. El login queda en 401. GET ?estado=RETIRADO lo lista. No se inserta DESVINCULACION: el aviso es CUENTA Su cuenta fue desactivada. El perfil queda archivado.",
+      "item": [
+        {
+          "name": "Retirar E001 (200)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('RETIRADO', () => pm.expect(pm.response.json().estado).to.eql('RETIRADO'));",
+                  "pm.test('fechaRetiro', () => pm.expect(pm.response.json().fechaRetiro).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ],
+          "description": "DELETE /empleados/E001 con el JWT de admin. 200. No es 204. Publica empleado.retirado."
+        },
+        {
+          "name": "Login de E001 retirado (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario\": \"juan.perez@empresa.com\",\n  \"contrasena\": \"Usuario456!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/auth/login';",
+                  "let last = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, method: 'POST', header: { 'Content-Type': 'application/json' }, body: { mode: 'raw', raw: JSON.stringify({ usuario: 'juan.perez@empresa.com', contrasena: 'Usuario456!' }) } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    last = res;",
+                  "    if (res.code === 401 && last.json && last.json().mensaje === 'La cuenta no está activa') break;",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('401 cuenta no activa', () => {",
+                  "    pm.expect(last.code).to.eql(401);",
+                  "    pm.expect(last.json().mensaje).to.eql('La cuenta no está activa');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "La clave buena ya no entra. 401 La cuenta no está activa, no 403."
+        },
+        {
+          "name": "Auditoría RETIRADO (200)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/empleados?estado=RETIRADO"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const lista = pm.response.json();",
+                  "pm.test('incluye E001 y E002', () => {",
+                  "    pm.expect(lista.some((e) => e.id === 'E001' && e.fechaRetiro)).to.eql(true);",
+                  "    pm.expect(lista.some((e) => e.id === 'E002' && e.fechaRetiro)).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "GET /empleados?estado=RETIRADO con el JWT de admin. E001 y E002 están, cada uno con fechaRetiro."
+        },
+        {
+          "name": "Sin DESVINCULACION y con CUENTA (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/notificaciones/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    const desactivadas = Array.isArray(body) ? body.filter((n) => n.mensaje === 'Su cuenta fue desactivada') : [];",
+                  "    if (res.code === 200 && desactivadas.length >= 2) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('dos desactivaciones y ninguna DESVINCULACION', () => {",
+                  "    pm.expect(found, 'sin la segunda desactivación tras 20s').to.be.an('array');",
+                  "    pm.expect(found.filter((n) => n.tipo === 'DESVINCULACION')).to.have.lengthOf(0);",
+                  "    pm.expect(found.filter((n) => n.mensaje === 'Su cuenta fue desactivada').length).to.be.at.least(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "E001 ya tuvo una desactivación por vacaciones. El retiro suma otra. No hay tipo DESVINCULACION."
+        },
+        {
+          "name": "Perfil de E001 archivado (reintenta)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/perfiles/E001"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const target = pm.variables.get('gateway_url') + '/perfiles/E001';",
+                  "const token = pm.collectionVariables.get('admin_token');",
+                  "let found = null;",
+                  "for (let i = 0; i < 20; i++) {",
+                  "    const res = await new Promise((resolve, reject) => {",
+                  "        pm.sendRequest({ url: target, header: { Authorization: 'Bearer ' + token } }, (err, response) => err ? reject(err) : resolve(response));",
+                  "    });",
+                  "    const body = (() => { try { return res.json(); } catch (e) { return null; } })();",
+                  "    if (res.code === 200 && body && body.archivado === true) { found = body; break; }",
+                  "    await new Promise((r) => setTimeout(r, 1000));",
+                  "}",
+                  "pm.test('archivado', () => {",
+                  "    pm.expect(found, 'el perfil no se archivó en 20s').to.be.an('object');",
+                  "    pm.expect(found.archivado).to.eql(true);",
+                  "    pm.expect(found.telefono).to.eql('3001234567');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "description": "empleado.retirado archiva el perfil y no lo borra. El teléfono que puso el USER se conserva."
+        }
+      ]
+    },
+    {
+      "name": "10. Reglas que el USER no salta",
+      "description": "Paso 10. Contraseñas que no cumplen la política en el reset, y un forzar-inicio con el JWT de E001.\n\nE001 ya está retirado: su user_token puede seguir vigente hasta que expire (no hay denylist en este reto). El 403 sale del rol, no de la cuenta.\n\nQué mirar: reset con clave corta responde 400. forzar-inicio con USER responde 403.",
+      "item": [
+        {
+          "name": "Reset con clave corta (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{gateway_url}}/auth/reset-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{reset_token}}\",\n  \"contrasena\": \"corta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('política', () => pm.expect(pm.response.json().mensaje).to.eql('La contraseña no cumple la política de seguridad'));"
+                ]
+              }
+            }
+          ],
+          "description": "El token de recuperación puede estar vencido si la carpeta se corre tarde: el mensaje sería el del token, no el de la política. Corre esta petición cuando el token todavía vive, o acepta que un 400 de token también demuestra que no se cambió la clave. El contrato de la política es este mensaje cuando el token es válido."
+        },
+        {
+          "name": "Forzar inicio con USER (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": "{{gateway_url}}/vacaciones/{{vacacion_id}}/forzar-inicio"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "description": "El período de E001 ya está FINALIZADA. Igual el Gateway responde 403 antes de llegar a vacaciones, porque el rol es USER."
+        }
+      ]
+    },
+    {
+      "name": "11. Puerto de auth no publicado (manual)",
+      "description": "Paso 11. A mano. Postman a veces espera mucho cuando el puerto está cerrado. Si la petición falla al instante, esa es la evidencia.\n\nQué mirar: http://localhost:8086/health no conecta. 8080 sí. No abras 8086 para ver Swagger.",
+      "item": [
+        {
+          "name": "Acceso directo auth :8086 (debe fallar TCP)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{direct_auth_url}}/health"
+          },
+          "description": "Cambia a mano la URL a {{direct_auth_url}}/health (http://localhost:8086/health). Tiene que fallar la conexión. No dejes esta URL en la colección para Newman: Newman no puede afirmar un fallo TCP de forma estable en todos los sistemas."
+        }
+      ]
+    }
+  ]
+}

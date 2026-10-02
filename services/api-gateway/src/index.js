@@ -17,6 +17,7 @@ const server = app.listen(config.port, () => {
 	if (config.vacacionesUrl) {
 		console.log(`  VACACIONES_URL=${config.vacacionesUrl}`);
 	}
+	console.log(`  AUTH_URL=${config.authUrl}`);
 });
 
 function shutdown(signal) {

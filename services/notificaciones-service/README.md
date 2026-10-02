@@ -6,8 +6,8 @@ traza cuando llegan eventos y deja consultarla. Python 3.12, FastAPI, PostgreSQL
 ## Por qué estas tres trazas
 
 El catálogo oficial dice que el correo de bienvenida sale con `usuario.creado` y el de
-despedida con `cuenta.desactivada`. Esos eventos son del reto de autenticación, que todavía
-no existe. Este reto pide la traza en el alta, el retiro y las vacaciones programadas:
+despedida con `cuenta.desactivada`. Esos eventos ya los publica `auth-service`. Este
+servicio sigue con las tres trazas del Reto 4 hasta la etapa 4 del Reto 5:
 
 | Evento | Fila | Log |
 |---|---|---|

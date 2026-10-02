@@ -5,7 +5,9 @@ propio lenguaje, base de datos y Dockerfile, orquestados desde un único `docker
 la raíz.
 
 > Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo).
-> Reto 4 (activo): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md) y
+> Reto 5 (activo): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md) y
+> [`docs/reto5/STATUS.md`](docs/reto5/STATUS.md).
+> Reto 4 (cerrado): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md) y
 > [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md).
 > Reto 3 (cerrado): [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md) y
 > [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md).

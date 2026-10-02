@@ -2,13 +2,30 @@ import express from 'express';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { exigirAcceso } from './auth.js';
 import { backendProxy } from './proxy.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const openapi = readFileSync(join(dir, 'openapi.json'), 'utf8');
 const swaggerHtml = readFileSync(join(dir, 'swagger.html'), 'utf8');
 
-export function createApp({ empleadosUrl, departamentosUrl, notificacionesUrl, perfilesUrl, vacacionesUrl, proxyTimeoutMs = 35_000 }) {
+export function createApp({
+	empleadosUrl,
+	departamentosUrl,
+	notificacionesUrl,
+	perfilesUrl,
+	vacacionesUrl,
+	authUrl,
+	jwtSecret,
+	proxyTimeoutMs = 35_000,
+}) {
+	if (!jwtSecret) {
+		throw new Error('La variable de entorno JWT_SECRET es obligatoria');
+	}
+	if (!authUrl) {
+		throw new Error('La variable de entorno AUTH_URL es obligatoria');
+	}
+
 	const app = express();
 	app.disable('x-powered-by');
 
@@ -27,6 +44,15 @@ export function createApp({ empleadosUrl, departamentosUrl, notificacionesUrl, p
 	app.get('/swagger/index.html', (_req, res) => {
 		res.type('html').send(swaggerHtml);
 	});
+
+	app.use(exigirAcceso(jwtSecret));
+
+	app.use(backendProxy({
+		target: authUrl,
+		servicio: 'auth-service',
+		pathPrefix: '/auth',
+		timeoutMs: proxyTimeoutMs,
+	}));
 
 	app.use(backendProxy({
 		target: empleadosUrl,

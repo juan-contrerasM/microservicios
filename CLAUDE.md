@@ -14,9 +14,11 @@ datos entre servicios.
 
 Documentos de referencia que SIEMPRE hay que leer antes de tocar código:
 
-- Reto 4 (activo): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md),
+- Reto 5 (activo): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md),
+  [`docs/reto5/STATUS.md`](docs/reto5/STATUS.md), [`docs/reto5/reto5.pdf`](docs/reto5/reto5.pdf).
+  **Actualiza `docs/reto5/STATUS.md` en el mismo commit/PR que cierra o avanza una etapa.**
+- Reto 4 (cerrado): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md),
   [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md), [`docs/reto4/reto4.pdf`](docs/reto4/reto4.pdf).
-  **Actualiza `docs/reto4/STATUS.md` en el mismo commit/PR que cierra o avanza una etapa.**
 - Reto 3 (cerrado): [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md),
   [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md), [`docs/reto3/reto3.pdf`](docs/reto3/reto3.pdf).
 - Reto 2 (cerrado): [`docs/reto2/PLAN-RETO2.md`](docs/reto2/PLAN-RETO2.md),
@@ -32,14 +34,16 @@ micro/
 ├── docs/
 │   ├── reto2/                   # plan, STATUS, colección y PDF del Reto 2 (cerrado)
 │   ├── reto3/                   # plan, STATUS, colección y PDF del Reto 3 (cerrado)
-│   └── reto4/                   # plan, STATUS, colección y PDF del Reto 4 (activo)
+│   ├── reto4/                   # plan, STATUS, colección y PDF del Reto 4 (cerrado)
+│   └── reto5/                   # plan, STATUS, colección y PDF del Reto 5 (activo)
 └── services/
     ├── empleados-service/       # Reto 1, Java 21 + Spring Boot + PostgreSQL
     ├── departamentos-service/   # Reto 2, Go + chi + MySQL
     ├── api-gateway/             # Reto 3, Node.js 22 + Express (sin BD)
     ├── notificaciones-service/ # Reto 4, Python 3.12 + FastAPI + PostgreSQL
     ├── perfiles-service/       # Reto 4, Java 21 + Spring Boot + PostgreSQL
-    └── vacaciones-service/     # Reto 4, Node.js 22 + Express + PostgreSQL
+    ├── vacaciones-service/     # Reto 4, Node.js 22 + Express + PostgreSQL
+    └── auth-service/           # Reto 5, Python 3.12 + FastAPI + PostgreSQL
 ```
 
 Cada carpeta en `services/` es autocontenida: su propio `Dockerfile`, su propia configuración,
@@ -68,6 +72,9 @@ vive solo en el compose: no es un módulo bajo `services/`.
     `services/perfiles-service/src/main/resources/db/changelog/`.
   - `vacaciones-service` (Node): node-pg-migrate — migraciones en
     `services/vacaciones-service/migrations/`.
+  - `auth-service` (Python): Alembic — revisiones en
+    `services/auth-service/alembic/versions/`. No se reutilizan las revisiones de
+    `notificaciones-service`.
   - Nunca usar auto-DDL de un ORM (`hibernate.ddl-auto=update`, etc.) como mecanismo definitivo
     de esquema — sirve para prototipar, no es lo que se entrega.
 - Cada servicio de negocio expone su propio Swagger/OpenAPI (Springdoc en Java, OpenAPI estático
@@ -79,11 +86,11 @@ vive solo en el compose: no es un módulo bajo `services/`.
 
 ## Flujo de trabajo entre varias personas
 
-1. Antes de empezar una etapa, revisa `docs/reto4/STATUS.md` para ver qué sigue disponible y qué
+1. Antes de empezar una etapa, revisa `docs/reto5/STATUS.md` para ver qué sigue disponible y qué
    ya está tomado/hecho.
 2. Trabaja dentro de la carpeta del servicio que te corresponde; evita tocar otro módulo salvo que
    la etapa lo requiera explícitamente (p. ej. `docker-compose.yml` raíz sí lo tocan varias etapas).
-3. Al terminar una etapa, actualiza `docs/reto4/STATUS.md` (marca la etapa, agrega notas de
+3. Al terminar una etapa, actualiza `docs/reto5/STATUS.md` (marca la etapa, agrega notas de
    decisiones tomadas) en el mismo commit.
 4. Las decisiones técnicas del enunciado vigente se documentan en el README de cada servicio
    afectado, con el "por qué", no solo el "qué". El Gateway **no** se implementa con Spring Cloud
