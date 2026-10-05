@@ -1,0 +1,412 @@
+{
+  "info": {
+    "_postman_id": "2e953965-e949-4225-ac52-32d5fb3a40b5",
+    "name": "Reto1 - Servicio de Empleados",
+    "description": "Colección para probar la API REST de empleados (registro y consulta). Ejecutar en orden con Docker Compose levantado (docker compose up --build) — la app queda en http://localhost:8080.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "34930034"
+  },
+  "item": [
+    {
+      "name": "Registrar empleado - éxito",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Devuelve el empleado creado', () => {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.id).to.eql('E001');",
+              "    pm.expect(body.estado).to.eql('ACTIVO');",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Generate a unique ID starting with 'E00' followed by a random digit\r",
+              "const randomDigit = Math.floor(Math.random() * 10);\r",
+              "const uniqueId = `E00${randomDigit}`;\r",
+              "\r",
+              "// Store the generated ID in the environment variable\r",
+              "pm.environment.set(\"id\", uniqueId);\r",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/empleados",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "empleados"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Registrar empleado - id duplicado (409)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "pm.test('Mensaje de id duplicado', () => {",
+              "    pm.expect(pm.response.json().mensaje).to.eql('Ya existe un empleado con ese id');",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"E005\",\n  \"nombre\": \"Otro\",\n  \"apellido\": \"Empleado\",\n  \"email\": \"otro.empleado@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-002\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\",\n  \"estado\": \"ACTIVO\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/empleados",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "empleados"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Registrar empleado - email duplicado (409)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "pm.test('Mensaje de email duplicado', () => {",
+              "    pm.expect(pm.response.json().mensaje).to.eql('Ya existe un empleado registrado con ese email');",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"E006\",\n  \"nombre\": \"Otro\",\n  \"apellido\": \"Empleado\",\n  \"email\": \"juan.perez@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-002\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\",\n  \"estado\": \"ACTIVO\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/empleados",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "empleados"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Registrar empleado - numeroEmpleado duplicado (409)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 409', () => pm.response.to.have.status(409));",
+              "pm.test('Mensaje de numeroEmpleado duplicado', () => {",
+              "    pm.expect(pm.response.json().mensaje).to.eql('Ya existe un empleado registrado con ese numeroEmpleado');",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"E002\",\n  \"nombre\": \"Otro\",\n  \"apellido\": \"Empleado\",\n  \"email\": \"otro.empleado@empresam.com\",\n  \"numeroEmpleado\": \"EMP-2026-001\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\",\n  \"estado\": \"ACTIVO\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/empleados",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "empleados"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Registrar empleado - campo obligatorio faltante (400)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 400', () => pm.response.to.have.status(400));",
+              "pm.test('Mensaje de nombre obligatorio', () => {",
+              "    pm.expect(pm.response.json().mensaje).to.eql('El nombre es obligatorio');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"E003\",\n  \"apellido\": \"Pérez\",\n  \"email\": \"otro.mas@empresa.com\",\n  \"numeroEmpleado\": \"EMP-2026-003\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\",\n  \"estado\": \"ACTIVO\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/empleados",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "empleados"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Registrar empleado - email con formato inválido (400)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 400', () => pm.response.to.have.status(400));",
+              "pm.test('Mensaje de email inválido', () => {",
+              "    pm.expect(pm.response.json().mensaje).to.eql('El email no tiene un formato válido');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"E004\",\n  \"nombre\": \"Ana\",\n  \"apellido\": \"Gómez\",\n  \"email\": \"no-es-un-email\",\n  \"numeroEmpleado\": \"EMP-2026-004\",\n  \"cargo\": \"Analista\",\n  \"area\": \"Tecnología\",\n  \"departamentoId\": \"IT\",\n  \"fechaIngreso\": \"2026-02-10\",\n  \"estado\": \"ACTIVO\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/empleados",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "empleados"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Consultar empleado existente (200)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Devuelve el empleado E004', () => {",
+              "    pm.expect(pm.response.json().email).to.eql('otro.empleado@empresa.com');",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/empleados/{{id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "empleados",
+            "{{id}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Consultar empleado inexistente (404)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 404', () => pm.response.to.have.status(404));",
+              "pm.test('Mensaje de empleado no encontrado', () => {",
+              "    pm.expect(pm.response.json().mensaje).to.eql('El empleado con id E999 no existe');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/empleados/E999",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "empleados",
+            "E999"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Ruta no definida (404)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 404', () => pm.response.to.have.status(404));",
+              "pm.test('Mensaje de recurso no encontrado', () => {",
+              "    pm.expect(pm.response.json().mensaje).to.eql('Recurso no encontrado');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/no-existe",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "no-existe"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ]
+}

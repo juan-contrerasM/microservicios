@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flujo Reto 4 — Onboarding con eventos</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121a30;
+    --panel-2: #18223d;
+    --line: #2a3658;
+    --text: #e6ebf5;
+    --muted: #8f9bb8;
+    --req: #60a5fa;
+    --res: #34d399;
+    --err: #f87171;
+    --evt: #fbbf24;
+    --db: #a78bfa;
+    --mail: #f472b6;
+    --ack: #94a3b8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--line); background: #0e152a;
+  }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .controls label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  button {
+    font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--req); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: #1d4ed8; border-color: #2563eb; }
+
+  .layout { display: grid; grid-template-columns: 290px 1fr; min-height: calc(100vh - 66px); }
+  aside { border-right: 1px solid var(--line); padding: 14px; overflow-y: auto; background: #0e152a; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+  .sc {
+    display: block; width: 100%; text-align: left; margin-bottom: 8px; padding: 10px 12px;
+    background: var(--panel); border-radius: 10px;
+  }
+  .sc b { display: block; font-size: 14px; }
+  .sc span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .sc .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 5px; margin-right: 4px; font-family: ui-monospace, Consolas, monospace; }
+  .state-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+  .state-box div { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .state-box code { color: var(--evt); }
+
+  main { padding: 14px; display: grid; grid-template-rows: auto 1fr; gap: 14px; min-width: 0; }
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px; position: relative; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 6px 10px 4px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  .banner {
+    position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+    background: rgba(18,26,48,.92); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 16px; font-size: 13px; max-width: 80%; text-align: center; transition: opacity .3s;
+  }
+
+  .bottom { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; min-height: 260px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; min-height: 0; }
+  .card h3 { margin: 0; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
+  #log { list-style: none; margin: 0; padding: 8px 10px; overflow-y: auto; max-height: 300px; counter-reset: paso; }
+  #log li { display: grid; grid-template-columns: 26px 10px 1fr; gap: 8px; align-items: start; padding: 5px 4px; border-bottom: 1px dashed #212c49; animation: aparece .35s ease; }
+  #log li::before { counter-increment: paso; content: counter(paso); color: var(--muted); font-size: 12px; text-align: right; }
+  #log li i { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
+  #log li.titulo { grid-template-columns: 1fr; background: #1a2544; border-radius: 6px; font-weight: 600; border: 0; margin: 6px 0 2px; }
+  #log li.titulo::before { content: none; counter-increment: none; }
+  #log code { color: var(--evt); font-size: 12.5px; }
+  @keyframes aparece { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  pre#evento {
+    margin: 0; padding: 12px 14px; overflow: auto; font: 12.5px/1.5 ui-monospace, Consolas, monospace; color: #cbd5e1; max-height: 300px;
+  }
+  pre#evento .k { color: #93c5fd; } pre#evento .s { color: #fcd34d; } pre#evento .n { color: #86efac; }
+
+  /* SVG */
+  .edge { fill: none; stroke: #2c3a5f; stroke-width: 2; }
+  .edge.dashed { stroke-dasharray: 5 6; }
+  .lit { fill: none; stroke-width: 3.5; stroke-dasharray: 8 8; animation: fluye .6s linear infinite; opacity: .95; }
+  @keyframes fluye { to { stroke-dashoffset: -16; } }
+  .node rect.box, .node path.box { fill: #16203b; stroke: #33436d; stroke-width: 1.5; transition: stroke .25s, fill .25s; }
+  .node .t { font-size: 14px; font-weight: 700; fill: var(--text); }
+  .node .s { font-size: 11px; fill: var(--muted); }
+  .node .st { font-size: 11px; fill: #fcd34d; font-family: ui-monospace, Consolas, monospace; }
+  .node.hit rect.box, .node.hit path.box { stroke: var(--c, #fff); stroke-width: 3; fill: #1d2a4d; }
+  .node.hit { animation: late .5s ease; }
+  @keyframes late { 50% { transform: scale(1.05); } }
+  .node { transform-box: fill-box; transform-origin: center; }
+  .node.down rect.box { stroke: var(--err); stroke-dasharray: 5 4; fill: #2a1520; }
+  .node.down .t, .node.down .s { opacity: .55; }
+  .node .downtag { display: none; font-size: 11px; font-weight: 700; fill: var(--err); }
+  .node.down .downtag { display: block; }
+  .node.queue rect.box { fill: #221c0e; stroke: #6b5520; }
+  .node.exchange rect.box { fill: #2a1f0a; stroke: #b7791f; }
+  .node.db path.box { fill: #1c1733; stroke: #54468f; }
+  .qbar { fill: var(--evt); transition: width .3s; }
+  .pkt text { font-size: 11.5px; font-weight: 700; paint-order: stroke; stroke: #0b1020; stroke-width: 4px; }
+  .zone { fill: none; stroke: #26314f; stroke-dasharray: 3 5; }
+  .zone-t { font-size: 11px; fill: #56648a; letter-spacing: .08em; text-transform: uppercase; }
+  .badge { font-size: 11px; font-weight: 700; paint-order: stroke; stroke: #0b1020; stroke-width: 4px; }
+
+  @media (max-width: 1000px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    .bottom { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Reto 4 — Onboarding / Offboarding con eventos</h1>
+    <p>Elige una acción y sigue el recorrido: Gateway → servicio → base de datos → RabbitMQ → consumidores.</p>
+  </div>
+  <div class="controls">
+    <label>Velocidad <input id="vel" type="range" min="0.3" max="3" step="0.1" value="1"> <span id="velv">1.0×</span></label>
+    <button id="btnPausa">⏸ Pausar</button>
+    <button id="btnReset">↺ Reiniciar</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside>
+    <h2>Recorrido completo</h2>
+    <button class="sc primary" data-sc="todo"><b>▶ Correr todo en orden</b><span>Alta → actualizar → vacaciones → validación → retiro → deduplicación</span></button>
+
+    <h2>Flujos de negocio</h2>
+    <button class="sc" data-sc="alta"><b>1. Alta de empleado</b><span><span class="tag" style="background:#1e3a8a">POST /empleados</span> publica <code>empleado.creado</code> → 3 colas</span></button>
+    <button class="sc" data-sc="actualizar"><b>2. Actualizar empleado</b><span><span class="tag" style="background:#1e3a8a">PUT /empleados/E001</span> solo lo consume perfiles</span></button>
+    <button class="sc" data-sc="vacaciones"><b>3. Programar vacaciones</b><span><span class="tag" style="background:#1e3a8a">POST /vacaciones</span> valida con la réplica y publica <code>vacaciones.programadas</code></span></button>
+    <button class="sc" data-sc="invalida"><b>4. Vacaciones inválidas</b><span>Fecha en el pasado → 400, no se publica nada</span></button>
+    <button class="sc" data-sc="retirar"><b>5. Retirar empleado</b><span><span class="tag" style="background:#1e3a8a">DELETE /empleados/E001</span> baja lógica + <code>empleado.retirado</code></span></button>
+    <button class="sc" data-sc="consultar"><b>6. Consultar notificaciones</b><span><span class="tag" style="background:#1e3a8a">GET /notificaciones/E001</span> historial vía Gateway</span></button>
+
+    <h2>Resiliencia y garantías</h2>
+    <button class="sc" data-sc="dedup"><b>7. Deduplicación</b><span>Se publica el mismo <code>id</code> dos veces desde la consola de RabbitMQ: un solo efecto</span></button>
+    <button class="sc" data-sc="caido"><b>8. Consumidor caído</b><span>perfiles-service detenido: su copia espera en la cola, los demás siguen</span></button>
+    <button class="sc" data-sc="503"><b>9. Backend detenido → 503</b><span>El Gateway sigue UP y responde JSON descriptivo</span></button>
+
+    <h2>Estado del sistema</h2>
+    <div class="state-box" id="estado"></div>
+  </aside>
+
+  <main>
+    <div class="stage">
+      <div class="banner" id="banner">Selecciona una acción a la izquierda</div>
+      <svg id="svg" viewBox="0 0 1340 790" role="img" aria-label="Diagrama animado de los microservicios del Reto 4">
+        <defs>
+          <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="4" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g id="zones"></g>
+        <g id="edges"></g>
+        <g id="lits"></g>
+        <g id="nodes"></g>
+        <g id="badges"></g>
+        <g id="pkts"></g>
+      </svg>
+      <div class="legend">
+        <span><i style="background:var(--req)"></i>Petición HTTP</span>
+        <span><i style="background:var(--res)"></i>Respuesta OK</span>
+        <span><i style="background:var(--err)"></i>Error / rechazo</span>
+        <span><i style="background:var(--evt)"></i>Evento AMQP</span>
+        <span><i style="background:var(--db)"></i>SQL a su propia BD</span>
+        <span><i style="background:var(--mail)"></i>SMTP (Mailhog)</span>
+        <span><i style="background:var(--ack)"></i>ack manual</span>
+      </div>
+    </div>
+
+    <div class="bottom">
+      <div class="card">
+        <h3>Paso a paso</h3>
+        <ol id="log"></ol>
+      </div>
+      <div class="card">
+        <h3 id="evtTitle">Último evento publicado (envelope)</h3>
+        <pre id="evento">Todavía no se ha publicado ningún evento.</pre>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ---------- Topología ---------- */
+const NODES = [
+  { id: 'cliente', x: 80,   y: 440, w: 124, h: 64, kind: 'ext', t: 'Cliente', s: 'Postman' },
+  { id: 'gw',      x: 250,  y: 440, w: 160, h: 78, kind: 'svc', t: 'API Gateway', s: 'Node 22 · :8080 público' },
+  { id: 'emp',     x: 480,  y: 200, w: 170, h: 78, kind: 'svc', t: 'empleados', s: 'Java 21 · Spring Boot' },
+  { id: 'pgEmp',   x: 480,  y: 88,  w: 130, h: 46, kind: 'db',  t: 'PostgreSQL', s: 'empleados' },
+  { id: 'dep',     x: 480,  y: 410, w: 170, h: 78, kind: 'svc', t: 'departamentos', s: 'Go · chi' },
+  { id: 'mysql',   x: 655,  y: 410, w: 106, h: 46, kind: 'db',  t: 'MySQL', s: 'departamentos' },
+  { id: 'vac',     x: 480,  y: 620, w: 170, h: 78, kind: 'svc', t: 'vacaciones', s: 'Node 22 · Express' },
+  { id: 'pgVac',   x: 480,  y: 732, w: 150, h: 46, kind: 'db',  t: 'PostgreSQL', s: 'vacaciones + réplica' },
+  { id: 'admin',   x: 830,  y: 215, w: 170, h: 56, kind: 'ext', t: 'Consola RabbitMQ', s: ':15672 Publish message' },
+  { id: 'ex',      x: 830,  y: 410, w: 180, h: 84, kind: 'exchange', t: 'onboarding.eventos', s: 'exchange topic · RabbitMQ' },
+  { id: 'qp',      x: 1020, y: 210, w: 140, h: 42, kind: 'queue', t: 'q.perfiles' },
+  { id: 'qn',      x: 1020, y: 410, w: 140, h: 42, kind: 'queue', t: 'q.notificaciones' },
+  { id: 'qv',      x: 830,  y: 620, w: 150, h: 42, kind: 'queue', t: 'q.vacaciones' },
+  { id: 'perf',    x: 1195, y: 210, w: 160, h: 78, kind: 'svc', t: 'perfiles', s: 'Java 21 · Spring Boot' },
+  { id: 'pgPerf',  x: 1195, y: 95,  w: 130, h: 46, kind: 'db',  t: 'PostgreSQL', s: 'perfiles' },
+  { id: 'notif',   x: 1195, y: 410, w: 160, h: 78, kind: 'svc', t: 'notificaciones', s: 'Python 3.12 · FastAPI' },
+  { id: 'pgNotif', x: 1195, y: 528, w: 130, h: 46, kind: 'db',  t: 'PostgreSQL', s: 'notificaciones' },
+  { id: 'mail',    x: 1040, y: 668, w: 160, h: 60, kind: 'ext', t: 'Mailhog', s: 'bandeja :8025' },
+];
+const N = Object.fromEntries(NODES.map(n => [n.id, n]));
+
+const CUSTOM = {
+  'gw>perf':  'M264,440 L264,62 Q264,40 286,40 L1276,40 Q1298,40 1298,62 L1298,188 Q1298,210 1276,210 L1195,210',
+  'gw>notif': 'M236,440 L236,44 Q236,22 258,22 L1296,22 Q1318,22 1318,44 L1318,388 Q1318,410 1296,410 L1195,410',
+};
+const EDGES = [
+  'cliente>gw', 'gw>emp', 'gw>dep', 'gw>vac', 'gw>perf', 'gw>notif',
+  'emp>pgEmp', 'emp>dep', 'dep>mysql', 'vac>pgVac',
+  'emp>ex', 'vac>ex', 'admin>ex',
+  'ex>qp', 'ex>qn', 'ex>qv', 'qp>perf', 'qn>notif', 'qv>vac',
+  'perf>pgPerf', 'notif>pgNotif', 'notif>mail',
+];
+const DASHED = new Set(['gw>perf', 'gw>notif', 'gw>dep', 'admin>ex']);
+
+const COLOR = { req: '#60a5fa', res: '#34d399', err: '#f87171', evt: '#fbbf24', db: '#a78bfa', mail: '#f472b6', ack: '#94a3b8' };
+
+/* ---------- Dibujo ---------- */
+const SVGNS = 'http://www.w3.org/2000/svg';
+const $ = s => document.querySelector(s);
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function drawZones() {
+  const z = $('#zones');
+  const zonas = [
+    { x: 170, y: 50, w: 600, h: 725, t: 'Síncrono (HTTP)' },
+    { x: 725, y: 170, w: 390, h: 480, t: 'Broker (AMQP)' },
+    { x: 1105, y: 60, w: 185, h: 510, t: 'Consumidores' },
+  ];
+  for (const r of zonas) {
+    el('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 16, class: 'zone' }, z);
+    el('text', { x: r.x + 12, y: r.y + 16, class: 'zone-t' }, z).textContent = r.t;
+  }
+}
+
+const PATHS = {};
+function drawEdges() {
+  const g = $('#edges');
+  for (const key of EDGES) {
+    const [a, b] = key.split('>');
+    const d = CUSTOM[key] || `M${N[a].x},${N[a].y} L${N[b].x},${N[b].y}`;
+    PATHS[key] = el('path', { d, class: 'edge' + (DASHED.has(key) ? ' dashed' : '') }, g);
+  }
+}
+
+const NODE_EL = {};
+function drawNodes() {
+  const g = $('#nodes');
+  for (const n of NODES) {
+    const grp = el('g', { class: `node ${n.kind}`, id: 'n-' + n.id }, g);
+    const x = n.x - n.w / 2, y = n.y - n.h / 2;
+    if (n.kind === 'db') {
+      const rx = n.w / 2, ry = 7;
+      el('path', {
+        class: 'box',
+        d: `M${x},${y + ry} A${rx},${ry} 0 0 1 ${x + n.w},${y + ry} L${x + n.w},${y + n.h - ry} A${rx},${ry} 0 0 1 ${x},${y + n.h - ry} Z`
+      }, grp);
+      el('path', { d: `M${x},${y + ry} A${rx},${ry} 0 0 0 ${x + n.w},${y + ry}`, fill: 'none', stroke: '#54468f' }, grp);
+      el('text', { x: n.x, y: n.y + 3, 'text-anchor': 'middle', class: 't', style: 'font-size:12px' }, grp).textContent = n.t;
+      el('text', { x: n.x, y: n.y + 17, 'text-anchor': 'middle', class: 's', style: 'font-size:10px' }, grp).textContent = n.s;
+    } else if (n.kind === 'queue') {
+      el('rect', { class: 'box', x, y, width: n.w, height: n.h, rx: n.h / 2 }, grp);
+      el('text', { x: n.x, y: n.y - 1, 'text-anchor': 'middle', class: 't', style: 'font-size:12px' }, grp).textContent = n.t;
+      el('rect', { x: n.x - 40, y: n.y + 7, width: 80, height: 5, rx: 2.5, fill: '#3a2f14' }, grp);
+      el('rect', { class: 'qbar', id: 'qb-' + n.id, x: n.x - 40, y: n.y + 7, width: 0, height: 5, rx: 2.5 }, grp);
+      el('text', { x: n.x + n.w / 2 - 4, y: y - 5, 'text-anchor': 'end', class: 'st', id: 'st-' + n.id }, grp).textContent = '0 mensajes';
+    } else {
+      el('rect', { class: 'box', x, y, width: n.w, height: n.h, rx: 12 }, grp);
+      const hasState = n.kind === 'svc' || n.id === 'mail' || n.id === 'cliente';
+      el('text', { x: n.x, y: n.y - (hasState ? 12 : 4), 'text-anchor': 'middle', class: 't' }, grp).textContent = n.t;
+      el('text', { x: n.x, y: n.y + (hasState ? 4 : 13), 'text-anchor': 'middle', class: 's' }, grp).textContent = n.s;
+      if (hasState) el('text', { x: n.x, y: n.y + 22, 'text-anchor': 'middle', class: 'st', id: 'st-' + n.id }, grp).textContent = '';
+      el('text', { x: n.x, y: y - 6, 'text-anchor': 'middle', class: 'downtag' }, grp).textContent = '■ DETENIDO';
+    }
+    NODE_EL[n.id] = grp;
+  }
+}
+
+/* ---------- Motor de animación ---------- */
+let speed = 1, paused = false, running = false;
+
+function tick(ms) {
+  // espera "ms" de animación respetando pausa y velocidad
+  return new Promise(res => {
+    let acc = 0, last = performance.now();
+    function f(now) {
+      const dt = now - last; last = now;
+      if (!paused) acc += dt * speed;
+      if (acc >= ms) res(); else requestAnimationFrame(f);
+    }
+    requestAnimationFrame(f);
+  });
+}
+
+function travel(key, reverse, kind, label, dur) {
+  const path = PATHS[key];
+  const len = path.getTotalLength();
+  const color = COLOR[kind];
+  const lit = path.cloneNode();
+  lit.setAttribute('class', 'lit');
+  lit.style.stroke = color;
+  if (reverse) lit.style.animationDirection = 'reverse';
+  $('#lits').appendChild(lit);
+
+  const g = el('g', { class: 'pkt' }, $('#pkts'));
+  el('circle', { r: 15, fill: color, opacity: .18 }, g);
+  el('circle', { r: 7, fill: color, filter: 'url(#glow)' }, g);
+  if (label) el('text', { y: -14, 'text-anchor': 'middle', fill: color }, g).textContent = label;
+
+  return new Promise(res => {
+    let acc = 0, last = performance.now();
+    function f(now) {
+      const dt = now - last; last = now;
+      if (!paused) acc += dt * speed;
+      const t = Math.min(1, acc / dur);
+      const e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const p = path.getPointAtLength(reverse ? len * (1 - e) : len * e);
+      g.setAttribute('transform', `translate(${p.x},${p.y})`);
+      if (t < 1) requestAnimationFrame(f);
+      else { g.remove(); lit.remove(); res(); }
+    }
+    requestAnimationFrame(f);
+  });
+}
+
+function pulse(id, kind) {
+  const n = NODE_EL[id];
+  n.style.setProperty('--c', COLOR[kind]);
+  n.classList.remove('hit'); void n.getBBox(); n.classList.add('hit');
+  clearTimeout(n._t);
+  n._t = setTimeout(() => n.classList.remove('hit'), 750 / speed);
+}
+
+async function go(a, b, kind = 'req', label = '') {
+  let key = `${a}>${b}`, rev = false;
+  if (!PATHS[key]) { key = `${b}>${a}`; rev = true; }
+  if (!PATHS[key]) throw new Error('No hay arista ' + a + '-' + b);
+  pulse(a, kind);
+  const base = kind === 'ack' ? 520 : (CUSTOM[key] ? 1700 : 950);
+  await travel(key, rev, kind, label, base);
+  pulse(b, kind);
+}
+
+async function badge(id, text, kind) {
+  const n = N[id];
+  const t = el('text', { x: n.x, y: n.y - n.h / 2 - 8, 'text-anchor': 'middle', class: 'badge', fill: COLOR[kind] }, $('#badges'));
+  t.textContent = text;
+  t.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 250, fill: 'forwards' });
+  await tick(1300);
+  t.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(-10px)' }], { duration: 400, fill: 'forwards' }).onfinish = () => t.remove();
+}
+
+function setSt(id, text) { const t = $('#st-' + id); if (t) t.textContent = text; }
+function setDown(id, v) { NODE_EL[id].classList.toggle('down', v); }
+
+const Q = { qp: 0, qn: 0, qv: 0 };
+function qSet(id, d) {
+  Q[id] = Math.max(0, Q[id] + d);
+  setSt(id, `${Q[id]} mensaje${Q[id] === 1 ? '' : 's'}`);
+  $('#qb-' + id).setAttribute('width', Math.min(80, Q[id] * 26));
+}
+
+/* ---------- Panel de log / evento ---------- */
+function log(html, kind = 'req') {
+  const li = document.createElement('li');
+  li.innerHTML = `<i style="background:${COLOR[kind]}"></i><div>${html}</div>`;
+  $('#log').appendChild(li);
+  li.scrollIntoView({ block: 'nearest' });
+}
+function titulo(text) {
+  const li = document.createElement('li');
+  li.className = 'titulo'; li.textContent = text;
+  $('#log').appendChild(li);
+  li.scrollIntoView({ block: 'nearest' });
+  $('#banner').textContent = text;
+}
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+  });
+}
+function colorJson(obj) {
+  return JSON.stringify(obj, null, 2)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/("(?:[^"\\]|\\.)*")(\s*:)?|\b(-?\d+(?:\.\d+)?|true|false|null)\b/g, (m, s, colon, num) =>
+      s ? (colon ? `<span class="k">${s}</span>${colon}` : `<span class="s">${s}</span>`) : `<span class="n">${num}</span>`);
+}
+function evento(type, producer, data, id = uuid()) {
+  const env = { id, type, version: 1, occurredAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), producer, data };
+  $('#evtTitle').textContent = `Evento publicado: ${type} (routing key = type)`;
+  $('#evento').innerHTML = colorJson(env);
+  return env;
+}
+function respuesta(titulo, body) {
+  $('#evtTitle').textContent = titulo;
+  $('#evento').innerHTML = colorJson(body);
+}
+
+/* ---------- Estado del "mundo" ---------- */
+const E001 = { empleadoId: 'E001', nombre: 'Juan', apellido: 'Pérez', email: 'juan.perez@empresa.com' };
+let W;
+function resetWorld() {
+  W = { emp: {}, perfiles: {}, notifs: [], replica: {}, vacas: [], procesados: new Set(), mails: 0, seqVac: 0 };
+  for (const k of Object.keys(Q)) { Q[k] = 0; qSet(k, 0); }
+  for (const id of ['emp', 'dep', 'vac', 'perf', 'notif', 'gw', 'mail', 'cliente']) setSt(id, '');
+  setSt('gw', 'UP'); setSt('dep', 'IT existe'); setSt('cliente', '');
+  for (const n of NODES) setDown(n.id, false);
+  renderEstado();
+}
+function renderEstado() {
+  const e = W.emp.E001;
+  const rows = [
+    ['E001 en empleados', e ? `<code>${e.estado}</code>` : '—'],
+    ['Perfil E001', W.perfiles.E001 ? `<code>${W.perfiles.E001.archivado ? 'archivado' : 'activo'}</code>` : '—'],
+    ['Réplica en vacaciones', W.replica.E001 ? `<code>${W.replica.E001}</code>` : '—'],
+    ['Períodos programados', `<code>${W.vacas.filter(v => v.estado === 'PROGRAMADA').length}</code>`],
+    ['Notificaciones', `<code>${W.notifs.length}</code>`],
+    ['Correos en Mailhog', `<code>${W.mails}</code>`],
+    ['Eventos procesados (ids)', `<code>${W.procesados.size}</code>`],
+  ];
+  $('#estado').innerHTML = rows.map(([a, b]) => `<div><span>${a}</span>${b}</div>`).join('');
+}
+
+/* ---------- Bloques reutilizables ---------- */
+async function sql(svc, db, label, back = 'OK') {
+  await go(svc, db, 'db', label);
+  await go(db, svc, 'db', back);
+}
+async function responder(from, kind, label) {
+  await go(from, 'gw', kind, label);
+  await go('gw', 'cliente', kind, label);
+  setSt('cliente', label);
+}
+// Entrega de una cola a su consumidor, trabajo y ack manual
+async function consumir(q, svc, trabajo) {
+  while (NODE_EL[svc].classList.contains('down')) await tick(200);
+  await go(q, svc, 'evt', 'entrega');
+  await trabajo();
+  await go(svc, q, 'ack', 'ack');
+  qSet(q, -1);
+}
+async function fanout(env, colas) {
+  log(`El exchange <code>onboarding.eventos</code> copia el mensaje en cada cola ligada a <code>${env.type}</code>: ${colas.map(c => '<code>' + N[c].t + '</code>').join(', ')}. Cada cola tiene su copia y su propio ack.`, 'evt');
+  await Promise.all(colas.map(q => go('ex', q, 'evt', env.type).then(() => qSet(q, +1))));
+}
+// Deduplicación por id del envelope (tabla de eventos procesados de cada consumidor)
+async function dedup(svc, db, env) {
+  const clave = svc + ':' + env.id;
+  if (W.procesados.has(clave)) {
+    await sql(svc, db, '¿id procesado?', 'sí, ya existe');
+    badge(svc, 'duplicado → ack sin efecto', 'ack');
+    return false;
+  }
+  W.procesados.add(clave);
+  return true;
+}
+
+/* ---------- Escenarios ---------- */
+async function alta(emp = E001, silencioso = false) {
+  titulo(`Alta de empleado ${emp.empleadoId}`);
+  log(`Postman envía <code>POST /empleados</code> a <code>localhost:8080</code> con ${emp.empleadoId} y <code>departamentoId: IT</code>.`);
+  await go('cliente', 'gw', 'req', 'POST /empleados');
+  log('El Gateway enruta <code>/empleados</code> a <code>empleados-service:8080</code> (puerto sin publicar en el host).');
+  await go('gw', 'emp', 'req', 'POST /empleados');
+
+  if (W.emp[emp.empleadoId]) {
+    log(`${emp.empleadoId} ya existe: no se crea de nuevo y <b>no se publica evento</b>.`, 'err');
+    await sql('emp', 'pgEmp', 'SELECT id', 'ya existe');
+    await responder('emp', 'err', '400 ya existe');
+    return;
+  }
+  log('empleados valida el departamento por HTTP, protegido por el Circuit Breaker del Reto 3 (CLOSED).');
+  await go('emp', 'dep', 'req', 'GET /departamentos/IT');
+  await sql('dep', 'mysql', 'SELECT', 'IT');
+  await go('dep', 'emp', 'res', '200');
+  log('Guarda el empleado en <b>su propia</b> base Postgres con estado <code>ACTIVO</code>.', 'db');
+  await sql('emp', 'pgEmp', 'INSERT ACTIVO', 'COMMIT');
+  W.emp[emp.empleadoId] = { ...emp, estado: 'ACTIVO' };
+  setSt('emp', `${emp.empleadoId} · ACTIVO`);
+  renderEstado();
+
+  const env = evento('empleado.creado', 'empleados-service', {
+    ...emp, numeroEmpleado: 1001, cargo: 'Desarrollador', area: 'Tecnología',
+    departamentoId: 'IT', fechaIngreso: '2027-03-01', estado: 'ACTIVO'
+  });
+  log('Después del commit, en paralelo: responde <code>201</code> al cliente y publica <code>empleado.creado</code>. empleados <b>no conoce</b> a quién le llega.', 'evt');
+  await Promise.all([
+    responder('emp', 'res', '201 ACTIVO'),
+    go('emp', 'ex', 'evt', 'empleado.creado'),
+  ]);
+  await fanout(env, ['qp', 'qn', 'qv']);
+  await procesarCreado(env);
+}
+
+async function procesarCreado(env, opciones = {}) {
+  const id = env.data.empleadoId;
+  log('Cada consumidor recibe su copia (prefetch 1), revisa el <code>id</code> del evento, hace su trabajo y confirma con <b>ack manual</b>.', 'evt');
+  const tareas = {
+    qp: () => consumir('qp', 'perf', async () => {
+      if (!(await dedup('perf', 'pgPerf', env))) return;
+      await sql('perf', 'pgPerf', 'INSERT perfil');
+      W.perfiles[id] = { archivado: false, nombre: env.data.nombre };
+      setSt('perf', `${id} · perfil por defecto`);
+      log(`perfiles crea el perfil por defecto de ${id}.`, 'db');
+      renderEstado();
+    }),
+    qn: () => consumir('qn', 'notif', async () => {
+      if (!(await dedup('notif', 'pgNotif', env))) return;
+      await sql('notif', 'pgNotif', 'INSERT BIENVENIDA');
+      W.notifs.push({ id, tipo: 'BIENVENIDA' });
+      setSt('notif', `[NOTIFICACIÓN] BIENVENIDA`);
+      log(`notificaciones guarda <code>BIENVENIDA</code>, escribe el log <code>[NOTIFICACIÓN]</code> y envía el correo.`, 'mail');
+      await go('notif', 'mail', 'mail', 'SMTP Bienvenida');
+      W.mails++; setSt('mail', `✉ Bienvenida → ${env.data.email.split('@')[0]}`);
+      renderEstado();
+    }),
+    qv: () => consumir('qv', 'vac', async () => {
+      if (!(await dedup('vac', 'pgVac', env))) return;
+      await sql('vac', 'pgVac', 'UPSERT réplica');
+      W.replica[id] = 'ACTIVO';
+      setSt('vac', `réplica ${id} · ACTIVO`);
+      log(`vacaciones guarda <code>${id}</code> en <code>empleados_replica</code> (su propia BD) para validar después sin llamar a empleados.`, 'db');
+      renderEstado();
+    }),
+  };
+  await Promise.all(Object.entries(tareas).filter(([q]) => !(opciones.omitir || []).includes(q)).map(([, f]) => f()));
+}
+
+async function actualizar() {
+  titulo('Actualizar empleado E001');
+  log('Postman envía <code>PUT /empleados/E001</code> con un nombre nuevo.');
+  await go('cliente', 'gw', 'req', 'PUT /empleados/E001');
+  await go('gw', 'emp', 'req', 'PUT');
+  if (!W.emp.E001) {
+    await sql('emp', 'pgEmp', 'SELECT E001', 'no existe');
+    log('E001 no existe todavía: 404 y ningún evento. Haz primero el alta.', 'err');
+    await responder('emp', 'err', '404');
+    return;
+  }
+  await sql('emp', 'pgEmp', 'UPDATE nombre', 'COMMIT');
+  W.emp.E001.nombre = 'Juan Carlos';
+  const env = evento('empleado.actualizado', 'empleados-service', {
+    empleadoId: 'E001', nombre: 'Juan Carlos', apellido: 'Pérez', email: E001.email,
+    cargo: 'Desarrollador', area: 'Tecnología', departamentoId: 'IT'
+  });
+  log('Responde <code>200</code> y publica <code>empleado.actualizado</code>. El PUT <b>no</b> cambia el estado a RETIRADO.', 'evt');
+  await Promise.all([responder('emp', 'res', '200'), go('emp', 'ex', 'evt', 'empleado.actualizado')]);
+  log('Solo <code>q.perfiles</code> está ligada a <code>empleado.actualizado</code>: notificaciones y vacaciones no reciben copia.', 'evt');
+  await go('ex', 'qp', 'evt', 'empleado.actualizado'); qSet('qp', +1);
+  await consumir('qp', 'perf', async () => {
+    await dedup('perf', 'pgPerf', env);
+    await sql('perf', 'pgPerf', 'UPDATE nombre/email');
+    if (W.perfiles.E001) W.perfiles.E001.nombre = 'Juan Carlos';
+    setSt('perf', 'E001 · nombre sincronizado');
+    log('perfiles sincroniza nombre y email del perfil.', 'db');
+  });
+  renderEstado();
+}
+
+async function vacaciones() {
+  titulo('Programar vacaciones de E001 (2027-03-15 → 2027-03-30)');
+  log('Postman envía <code>POST /vacaciones</code> con <code>empleadoId: E001</code>.');
+  await go('cliente', 'gw', 'req', 'POST /vacaciones');
+  await go('gw', 'vac', 'req', 'POST /vacaciones');
+  log('Valida fechas coherentes y futuras en memoria. Luego consulta <b>su réplica local</b>: no llama a empleados por HTTP.', 'db');
+  const rep = W.replica.E001;
+  if (!rep) {
+    await sql('vac', 'pgVac', 'SELECT réplica', 'no está');
+    log('La réplica no tiene a E001 (no se ha hecho el alta o el evento no ha llegado): <code>400 El empleado con id E001 no existe</code>.', 'err');
+    await responder('vac', 'err', '400 no existe');
+    return;
+  }
+  if (rep === 'RETIRADO') {
+    await sql('vac', 'pgVac', 'SELECT réplica', 'RETIRADO');
+    log('La réplica dice que E001 está <code>RETIRADO</code>: no admite períodos nuevos → <code>400</code>.', 'err');
+    await responder('vac', 'err', '400 retirado');
+    return;
+  }
+  const solapa = W.vacas.find(v => v.estado === 'PROGRAMADA');
+  if (solapa) {
+    await sql('vac', 'pgVac', 'SELECT solapamiento', solapa.id);
+    log(`Ya hay un período en esas fechas (<code>${solapa.id}</code>): <code>400</code> con el período en conflicto. No se publica evento.`, 'err');
+    await responder('vac', 'err', '400 solapamiento');
+    return;
+  }
+  await sql('vac', 'pgVac', 'SELECT réplica + solapes', 'ACTIVO, libre');
+  const vid = `V-2027-${String(++W.seqVac).padStart(4, '0')}`;
+  await sql('vac', 'pgVac', 'INSERT PROGRAMADA', 'COMMIT');
+  W.vacas.push({ id: vid, estado: 'PROGRAMADA' });
+  setSt('vac', `${vid} · PROGRAMADA`);
+  renderEstado();
+  const env = evento('vacaciones.programadas', 'vacaciones-service', {
+    vacacionesId: vid, empleadoId: 'E001', email: E001.email,
+    fechaInicio: '2027-03-15', fechaFin: '2027-03-30', diasHabiles: 12
+  });
+  log('Responde <code>201</code> y publica <code>vacaciones.programadas</code> con <code>diasHabiles: 12</code> (lunes a viernes).', 'evt');
+  await Promise.all([responder('vac', 'res', '201 ' + vid), go('vac', 'ex', 'evt', 'vacaciones.programadas')]);
+  await fanout(env, ['qn']);
+  await consumir('qn', 'notif', async () => {
+    await dedup('notif', 'pgNotif', env);
+    await sql('notif', 'pgNotif', 'INSERT VACACIONES');
+    W.notifs.push({ id: 'E001', tipo: 'VACACIONES' });
+    setSt('notif', '[NOTIFICACIÓN] VACACIONES');
+    log('notificaciones registra el aviso <code>VACACIONES</code> y envía el correo "Vacaciones programadas".', 'mail');
+    await go('notif', 'mail', 'mail', 'SMTP Vacaciones');
+    W.mails++; setSt('mail', '✉ Vacaciones programadas');
+  });
+  renderEstado();
+}
+
+async function invalida() {
+  titulo('Vacaciones inválidas: fecha en el pasado');
+  log('Postman envía <code>POST /vacaciones</code> con <code>fechaInicio: 2026-06-01</code> (ya pasó).');
+  await go('cliente', 'gw', 'req', 'POST /vacaciones');
+  await go('gw', 'vac', 'req', 'POST /vacaciones');
+  badge('vac', 'fechaInicio < hoy', 'err');
+  log('La validación falla antes de tocar la base: <code>400</code>. <b>No</b> se guarda nada ni se publica evento.', 'err');
+  await tick(600);
+  await responder('vac', 'err', '400 fecha pasada');
+  respuesta('Respuesta del servicio', { status: 400, mensaje: 'La fecha de inicio no puede estar en el pasado' });
+}
+
+async function retirar() {
+  titulo('Retirar empleado E001 (baja lógica)');
+  log('Postman envía <code>DELETE /empleados/E001</code> sin cuerpo.');
+  await go('cliente', 'gw', 'req', 'DELETE /empleados/E001');
+  await go('gw', 'emp', 'req', 'DELETE');
+  const e = W.emp.E001;
+  if (!e) {
+    await sql('emp', 'pgEmp', 'SELECT E001', 'no existe');
+    log('E001 no existe: 404 sin evento.', 'err');
+    await responder('emp', 'err', '404');
+    return;
+  }
+  if (e.estado === 'RETIRADO') {
+    await sql('emp', 'pgEmp', 'SELECT E001', 'RETIRADO');
+    log('Ya estaba <code>RETIRADO</code>: segundo DELETE → <code>400</code> y <b>sin segundo evento</b>.', 'err');
+    await responder('emp', 'err', '400 ya retirado');
+    return;
+  }
+  log('No se borra la fila: pasa a <code>RETIRADO</code> con <code>fechaRetiro</code> en UTC (auditoría con <code>?estado=RETIRADO</code>).', 'db');
+  await sql('emp', 'pgEmp', 'UPDATE RETIRADO', 'COMMIT');
+  e.estado = 'RETIRADO';
+  setSt('emp', 'E001 · RETIRADO');
+  renderEstado();
+  const env = evento('empleado.retirado', 'empleados-service', {
+    empleadoId: 'E001', email: E001.email, fechaRetiro: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), motivo: 'RENUNCIA'
+  });
+  log('Responde <code>200</code> y publica <code>empleado.retirado</code> con <code>motivo: RENUNCIA</code> (por defecto al no traer cuerpo).', 'evt');
+  await Promise.all([responder('emp', 'res', '200 RETIRADO'), go('emp', 'ex', 'evt', 'empleado.retirado')]);
+  await fanout(env, ['qp', 'qn', 'qv']);
+  await Promise.all([
+    consumir('qp', 'perf', async () => {
+      await dedup('perf', 'pgPerf', env);
+      await sql('perf', 'pgPerf', 'UPDATE archivado');
+      if (W.perfiles.E001) W.perfiles.E001.archivado = true;
+      setSt('perf', 'E001 · archivado');
+      log('perfiles archiva el perfil (no lo borra).', 'db');
+      renderEstado();
+    }),
+    consumir('qn', 'notif', async () => {
+      await dedup('notif', 'pgNotif', env);
+      await sql('notif', 'pgNotif', 'INSERT DESVINCULACION');
+      W.notifs.push({ id: 'E001', tipo: 'DESVINCULACION' });
+      setSt('notif', '[NOTIFICACIÓN] DESVINCULACION');
+      log('notificaciones registra <code>DESVINCULACION</code> y envía el correo.', 'mail');
+      await go('notif', 'mail', 'mail', 'SMTP Desvinculación');
+      W.mails++; setSt('mail', '✉ Desvinculación');
+      renderEstado();
+    }),
+    consumir('qv', 'vac', async () => {
+      await dedup('vac', 'pgVac', env);
+      await sql('vac', 'pgVac', 'réplica → RETIRADO');
+      W.replica.E001 = 'RETIRADO';
+      setSt('vac', 'réplica E001 · RETIRADO');
+      log('vacaciones marca la réplica como <code>RETIRADO</code>: desde ahora rechaza períodos nuevos de E001.', 'db');
+      renderEstado();
+    }),
+  ]);
+}
+
+async function consultar() {
+  titulo('Consultar historial de notificaciones de E001');
+  log('Postman envía <code>GET /notificaciones/E001</code>. El Gateway es el único punto de entrada: <code>:8084</code> no está publicado.');
+  await go('cliente', 'gw', 'req', 'GET /notificaciones/E001');
+  await go('gw', 'notif', 'req', 'GET /notificaciones/E001');
+  await sql('notif', 'pgNotif', 'SELECT historial', `${W.notifs.filter(n => n.id === 'E001').length} filas`);
+  await go('notif', 'gw', 'res', '200');
+  await go('gw', 'cliente', 'res', '200');
+  const lista = W.notifs.filter(n => n.id === 'E001').map(n => ({ empleadoId: n.id, tipo: n.tipo, email: E001.email }));
+  respuesta('Respuesta GET /notificaciones/E001', lista);
+  log(`Respuesta <code>200</code> con ${lista.length} notificación(es): ${lista.map(l => '<code>' + l.tipo + '</code>').join(', ') || 'ninguna todavía'}.`, 'res');
+}
+
+async function dedupEsc() {
+  titulo('Deduplicación: el mismo evento publicado dos veces');
+  const emp = { empleadoId: 'E002', nombre: 'Ana', apellido: 'Gómez', email: 'ana.gomez@empresa.com' };
+  const id = '3f6c2b1e-9d4a-4e7b-8c21-5a0f7d9e2b44';
+  const data = { ...emp, numeroEmpleado: 1002, cargo: 'Analista', area: 'Finanzas', departamentoId: 'IT', fechaIngreso: '2027-03-01', estado: 'ACTIVO' };
+
+  for (const intento of [1, 2]) {
+    const env = evento('empleado.creado', 'empleados-service', data, id);
+    log(`<b>Publicación ${intento}</b>: desde la consola <code>:15672</code> → Exchange <code>onboarding.eventos</code> → Publish message, routing key <code>empleado.creado</code>, <b>mismo id</b> <code>${id.slice(0, 8)}…</code>.`, 'evt');
+    await go('admin', 'ex', 'evt', `publish #${intento}`);
+    await fanout(env, ['qp', 'qn', 'qv']);
+    if (intento === 2) log('Cada consumidor busca el <code>id</code> en su tabla de eventos procesados: ya existe → confirma el mensaje <b>sin repetir el efecto</b>.', 'ack');
+    await procesarCreado(env);
+  }
+  const n = W.notifs.filter(x => x.id === 'E002').length;
+  log(`Resultado: <code>GET /notificaciones/E002</code> trae <b>${n}</b> BIENVENIDA y <code>GET /perfiles/E002</code> <b>un solo</b> perfil. Un solo correo.`, 'res');
+  respuesta('Resultado tras publicar dos veces', {
+    'GET /notificaciones/E002': W.notifs.filter(x => x.id === 'E002').map(x => ({ tipo: x.tipo })),
+    'GET /perfiles/E002': W.perfiles.E002 ? [{ empleadoId: 'E002', archivado: false }] : [],
+  });
+}
+
+async function caido() {
+  titulo('Consumidor caído: perfiles-service detenido durante un alta');
+  setDown('perf', true);
+  setSt('perf', '');
+  log('Se detiene <code>perfiles-service</code> (Stop en Docker Desktop).', 'err');
+  await tick(500);
+  const emp = { empleadoId: 'E003', nombre: 'Luis', apellido: 'Rojas', email: 'luis.rojas@empresa.com' };
+  log('Se registra E003 normalmente: empleados no depende de perfiles.');
+  await go('cliente', 'gw', 'req', 'POST /empleados');
+  await go('gw', 'emp', 'req', 'POST /empleados');
+  await sql('emp', 'pgEmp', 'INSERT ACTIVO', 'COMMIT');
+  W.emp.E003 = { ...emp, estado: 'ACTIVO' };
+  const env = evento('empleado.creado', 'empleados-service', { ...emp, numeroEmpleado: 1003, cargo: 'Soporte', area: 'TI', departamentoId: 'IT', fechaIngreso: '2027-03-01', estado: 'ACTIVO' });
+  await Promise.all([responder('emp', 'res', '201 ACTIVO'), go('emp', 'ex', 'evt', 'empleado.creado')]);
+  await fanout(env, ['qp', 'qn', 'qv']);
+  log('notificaciones y vacaciones procesan su copia. La copia de <code>q.perfiles</code> <b>se queda en la cola</b> (durable) esperando.', 'evt');
+  const pendientePerfil = procesarCreado(env);
+  await tick(5200);
+  badge('qp', 'mensaje retenido', 'evt');
+  await tick(1600);
+  log('Se vuelve a iniciar <code>perfiles-service</code>: se conecta a su cola y recibe el mensaje pendiente.', 'res');
+  setDown('perf', false);
+  await pendientePerfil;
+  log('Ningún evento se perdió: cada cola tiene su copia y su propio ack; una cola no bloquea a las otras.', 'res');
+}
+
+async function caido503() {
+  titulo('Backend detenido: el Gateway responde 503 JSON');
+  setDown('notif', true);
+  log('Se detiene <code>notificaciones-service</code>.', 'err');
+  await tick(400);
+  log('Postman pide <code>GET /notificaciones/E001</code>.');
+  await go('cliente', 'gw', 'req', 'GET /notificaciones/E001');
+  await go('gw', 'notif', 'req', 'GET');
+  badge('notif', 'sin respuesta', 'err');
+  await tick(700);
+  log('El proxy no alcanza el destino. El Gateway <b>sigue UP</b> y devuelve un <code>503</code> descriptivo en JSON, no HTML.', 'err');
+  await go('gw', 'cliente', 'err', '503');
+  setSt('cliente', '503 JSON');
+  respuesta('Respuesta del Gateway', { mensaje: 'El servicio notificaciones no está disponible', servicio: 'notificaciones' });
+  log('<code>GET /health</code> del Gateway sigue en <code>200 UP</code>: no consulta a los backends.', 'res');
+  await go('cliente', 'gw', 'req', 'GET /health');
+  await go('gw', 'cliente', 'res', '200 UP');
+  await tick(500);
+  setDown('notif', false);
+  log('Se inicia de nuevo notificaciones-service. Los eventos que llegaron mientras estaba caído siguieron en <code>q.notificaciones</code>.', 'res');
+}
+
+async function todo() {
+  for (const f of [alta, actualizar, vacaciones, invalida, retirar, vacaciones, consultar, dedupEsc]) {
+    await f();
+    await tick(900);
+  }
+}
+
+const ESC = { todo, alta: () => alta(), actualizar, vacaciones, invalida, retirar, consultar, dedup: dedupEsc, caido, '503': caido503 };
+
+/* ---------- UI ---------- */
+const botones = [...document.querySelectorAll('[data-sc]')];
+function bloquear(v) { botones.forEach(b => b.disabled = v); $('#btnReset').disabled = v; }
+botones.forEach(b => b.addEventListener('click', async () => {
+  if (running) return;
+  running = true; bloquear(true);
+  try { await ESC[b.dataset.sc](); }
+  catch (e) { console.error(e); log('Error en la animación: ' + e.message, 'err'); }
+  finally {
+    running = false; bloquear(false);
+    $('#banner').textContent = 'Listo. Elige otra acción.';
+  }
+}));
+$('#vel').addEventListener('input', e => { speed = +e.target.value; $('#velv').textContent = speed.toFixed(1) + '×'; });
+$('#btnPausa').addEventListener('click', () => {
+  paused = !paused;
+  $('#btnPausa').textContent = paused ? '▶ Continuar' : '⏸ Pausar';
+  document.querySelectorAll('.lit').forEach(l => l.style.animationPlayState = paused ? 'paused' : 'running');
+});
+$('#btnReset').addEventListener('click', () => {
+  resetWorld();
+  $('#log').innerHTML = '';
+  $('#evento').textContent = 'Todavía no se ha publicado ningún evento.';
+  $('#evtTitle').textContent = 'Último evento publicado (envelope)';
+  $('#banner').textContent = 'Selecciona una acción a la izquierda';
+});
+
+drawZones(); drawEdges(); drawNodes(); resetWorld();
+</script>
+</body>
+</html>

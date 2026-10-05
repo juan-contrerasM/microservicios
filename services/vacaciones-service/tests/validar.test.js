@@ -5,7 +5,7 @@ import { evaluarAlta, periodoQueBloquea, puedeCancelar } from '../src/validar.js
 
 const HOY = '2026-09-29';
 
-test('fechaFin debe ser posterior a fechaInicio', () => {
+test('fechaFin no puede ser anterior a fechaInicio', () => {
 	const resultado = evaluarAlta({
 		empleadoId: 'E001',
 		fechaInicio: '2027-06-30',
@@ -15,7 +15,19 @@ test('fechaFin debe ser posterior a fechaInicio', () => {
 		conflicto: null,
 	});
 	assert.equal(resultado.ok, false);
-	assert.equal(resultado.body.mensaje, 'La fechaFin debe ser posterior a la fechaInicio');
+	assert.equal(resultado.body.mensaje, 'La fechaFin no puede ser anterior a la fechaInicio');
+});
+
+test('fechaFin igual a fechaInicio es un período de un día válido', () => {
+	const resultado = evaluarAlta({
+		empleadoId: 'E001',
+		fechaInicio: HOY,
+		fechaFin: HOY,
+		hoy: HOY,
+		empleado: { estado: 'ACTIVO' },
+		conflicto: null,
+	});
+	assert.equal(resultado.ok, true);
 });
 
 test('fechaInicio no puede ser anterior a hoy', () => {

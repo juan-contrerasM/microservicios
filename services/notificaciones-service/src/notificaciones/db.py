@@ -67,6 +67,13 @@ class SqlRepositorio:
             return None
         return Destinatario(fila.empleado_id, fila.email, fila.nombre, fila.apellido)
 
+    def buscar_destinatario_por_email(self, email: str) -> Destinatario | None:
+        consulta = select(DestinatarioRow).where(DestinatarioRow.email == email).limit(1)
+        fila = self._session.scalars(consulta).first()
+        if fila is None:
+            return None
+        return Destinatario(fila.empleado_id, fila.email, fila.nombre, fila.apellido)
+
     def guardar_notificacion(self, notificacion: Notificacion) -> None:
         self._session.add(
             NotificacionRow(

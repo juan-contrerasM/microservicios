@@ -23,23 +23,26 @@ export function crearPublicador(config) {
 		return canal;
 	}
 
+	async function publicarEvento(tipo, data) {
+		const abierto = await canalAbierto();
+		const envelope = {
+			id: randomUUID(),
+			type: tipo,
+			version: 1,
+			occurredAt: new Date().toISOString(),
+			producer: 'vacaciones-service',
+			data,
+		};
+		abierto.publish(
+			config.exchange,
+			tipo,
+			Buffer.from(JSON.stringify(envelope)),
+			{ contentType: 'application/json', persistent: true },
+		);
+	}
+
 	return {
-		async publicarProgramadas(data) {
-			const abierto = await canalAbierto();
-			const envelope = {
-				id: randomUUID(),
-				type: 'vacaciones.programadas',
-				version: 1,
-				occurredAt: new Date().toISOString(),
-				producer: 'vacaciones-service',
-				data,
-			};
-			abierto.publish(
-				config.exchange,
-				'vacaciones.programadas',
-				Buffer.from(JSON.stringify(envelope)),
-				{ contentType: 'application/json', persistent: true },
-			);
-		},
+		publicarEvento,
+		publicarProgramadas: (data) => publicarEvento('vacaciones.programadas', data),
 	};
 }

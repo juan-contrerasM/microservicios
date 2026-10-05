@@ -3,16 +3,26 @@
   "info": {
     "title": "vacaciones-service",
     "version": "1.0.0",
-    "description": "Períodos de vacaciones. El empleado se valida contra la réplica local (empleado.creado y empleado.retirado), no con un GET a empleados. POST publica vacaciones.programadas después del commit. DELETE cancela y no publica evento."
+    "description": "Períodos de vacaciones. El empleado se valida contra la réplica local (empleado.creado y empleado.retirado), no con un GET a empleados. POST publica vacaciones.programadas después del commit. DELETE cancela y no publica evento. Un scheduler (node-cron, VACACIONES_CRON) pasa PROGRAMADA → EN_CURSO al llegar fechaInicio y EN_CURSO → FINALIZADA cuando fechaFin ya pasó, publicando vacaciones.iniciadas y vacaciones.finalizadas."
   },
   "tags": [
-    { "name": "Vacaciones" },
-    { "name": "Salud" }
+    {
+      "name": "Vacaciones"
+    },
+    {
+      "name": "Desarrollo",
+      "description": "Endpoints de desarrollo para demostrar el scheduler sin esperar días. El Gateway los permite solo al rol ADMIN."
+    },
+    {
+      "name": "Salud"
+    }
   ],
   "paths": {
     "/vacaciones": {
       "get": {
-        "tags": ["Vacaciones"],
+        "tags": [
+          "Vacaciones"
+        ],
         "summary": "Listar períodos",
         "description": "Sin empleadoId devuelve todos. Con empleadoId, solo los de ese empleado. El arreglo vacío es 200.",
         "parameters": [
@@ -20,7 +30,10 @@
             "name": "empleadoId",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "example": "E001" }
+            "schema": {
+              "type": "string",
+              "example": "E001"
+            }
           }
         ],
         "responses": {
@@ -28,21 +41,30 @@
             "description": "Arreglo de períodos",
             "content": {
               "application/json": {
-                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Periodo" } }
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Periodo"
+                  }
+                }
               }
             }
           }
         }
       },
       "post": {
-        "tags": ["Vacaciones"],
+        "tags": [
+          "Vacaciones"
+        ],
         "summary": "Programar un período",
         "description": "Responde 201 con estado PROGRAMADA y publica vacaciones.programadas. Si el broker falla, el período queda.",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/ProgramarVacaciones" },
+              "schema": {
+                "$ref": "#/components/schemas/ProgramarVacaciones"
+              },
               "example": {
                 "empleadoId": "E001",
                 "fechaInicio": "2027-03-15",
@@ -55,13 +77,21 @@
           "201": {
             "description": "Período creado",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Periodo" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                }
+              }
             }
           },
           "400": {
-            "description": "Fecha inválida, solapamiento, empleado inexistente o retirado",
+            "description": "Fecha inválida, fechaFin anterior a fechaInicio, solapamiento, empleado inexistente o retirado. fechaFin igual a fechaInicio es válido (período de un día).",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorVacaciones" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVacaciones"
+                }
+              }
             }
           }
         }
@@ -69,50 +99,200 @@
     },
     "/vacaciones/{id}": {
       "get": {
-        "tags": ["Vacaciones"],
+        "tags": [
+          "Vacaciones"
+        ],
         "summary": "Consultar un período",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "example": "V-2027-0001" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "El período",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Periodo" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                }
+              }
             }
           },
           "404": {
             "description": "No existe",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorSimple" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
             }
           }
         }
       },
       "delete": {
-        "tags": ["Vacaciones"],
+        "tags": [
+          "Vacaciones"
+        ],
         "summary": "Cancelar un período PROGRAMADA que aún no inicia",
         "description": "Pasa el estado a CANCELADA. La fila sigue. No publica evento.",
         "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "example": "V-2027-0001" } }
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
         ],
         "responses": {
           "200": {
             "description": "Estado CANCELADA",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Periodo" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                }
+              }
             }
           },
           "400": {
             "description": "Solo se puede cancelar un PROGRAMADA con fechaInicio posterior a hoy",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorSimple" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
             }
           },
           "404": {
             "description": "No existe",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorSimple" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vacaciones/{id}/forzar-inicio": {
+      "post": {
+        "tags": [
+          "Desarrollo"
+        ],
+        "summary": "[DESARROLLO] Forzar el inicio de un período",
+        "description": "Endpoint de desarrollo, solo ADMIN (lo aplica el Gateway). Hace la misma transición que el scheduler al llegar fechaInicio: PROGRAMADA → EN_CURSO, y publica vacaciones.iniciadas después del commit.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Período con el estado nuevo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Solo se puede forzar el inicio de un período PROGRAMADA",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                },
+                "example": {
+                  "mensaje": "Solo se puede forzar el inicio de un período PROGRAMADA"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vacaciones/{id}/forzar-fin": {
+      "post": {
+        "tags": [
+          "Desarrollo"
+        ],
+        "summary": "[DESARROLLO] Forzar el fin de un período",
+        "description": "Endpoint de desarrollo, solo ADMIN (lo aplica el Gateway). Hace la misma transición que el scheduler cuando fechaFin ya pasó: EN_CURSO → FINALIZADA, y publica vacaciones.finalizadas después del commit.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Período con el estado nuevo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Solo se puede forzar el fin de un período EN_CURSO",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                },
+                "example": {
+                  "mensaje": "Solo se puede forzar el fin de un período EN_CURSO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
             }
           }
         }
@@ -120,19 +300,29 @@
     },
     "/health": {
       "get": {
-        "tags": ["Salud"],
+        "tags": [
+          "Salud"
+        ],
         "summary": "200 solo si PostgreSQL responde y el consumidor de la réplica está conectado",
         "responses": {
           "200": {
             "description": "UP",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Health" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
             }
           },
           "503": {
             "description": "DOWN",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/Health" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
             }
           }
         }
@@ -143,43 +333,97 @@
     "schemas": {
       "ProgramarVacaciones": {
         "type": "object",
-        "required": ["empleadoId", "fechaInicio", "fechaFin"],
+        "required": [
+          "empleadoId",
+          "fechaInicio",
+          "fechaFin"
+        ],
         "properties": {
-          "empleadoId": { "type": "string", "example": "E001" },
-          "fechaInicio": { "type": "string", "format": "date", "example": "2027-03-15" },
-          "fechaFin": { "type": "string", "format": "date", "example": "2027-03-30" }
+          "empleadoId": {
+            "type": "string",
+            "example": "E001"
+          },
+          "fechaInicio": {
+            "type": "string",
+            "format": "date",
+            "example": "2027-03-15"
+          },
+          "fechaFin": {
+            "type": "string",
+            "format": "date",
+            "example": "2027-03-30"
+          }
         }
       },
       "Periodo": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "example": "V-2027-0001" },
-          "empleadoId": { "type": "string", "example": "E001" },
-          "fechaInicio": { "type": "string", "format": "date" },
-          "fechaFin": { "type": "string", "format": "date" },
-          "estado": { "type": "string", "example": "PROGRAMADA" },
-          "fechaCreacion": { "type": "string", "format": "date-time" },
-          "diasHabiles": { "type": "integer", "example": 12 }
+          "id": {
+            "type": "string",
+            "example": "V-2027-0001"
+          },
+          "empleadoId": {
+            "type": "string",
+            "example": "E001"
+          },
+          "fechaInicio": {
+            "type": "string",
+            "format": "date"
+          },
+          "fechaFin": {
+            "type": "string",
+            "format": "date"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "PROGRAMADA",
+              "EN_CURSO",
+              "FINALIZADA",
+              "CANCELADA"
+            ],
+            "example": "PROGRAMADA"
+          },
+          "fechaCreacion": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "diasHabiles": {
+            "type": "integer",
+            "example": 12
+          }
         }
       },
       "ErrorSimple": {
         "type": "object",
         "properties": {
-          "mensaje": { "type": "string" }
+          "mensaje": {
+            "type": "string"
+          }
         }
       },
       "ErrorVacaciones": {
         "type": "object",
         "properties": {
-          "mensaje": { "type": "string" },
-          "periodoEnConflicto": { "$ref": "#/components/schemas/Periodo" }
+          "mensaje": {
+            "type": "string"
+          },
+          "periodoEnConflicto": {
+            "$ref": "#/components/schemas/Periodo"
+          }
         }
       },
       "Health": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "example": "UP" },
-          "service": { "type": "string", "example": "vacaciones-service" }
+          "status": {
+            "type": "string",
+            "example": "UP"
+          },
+          "service": {
+            "type": "string",
+            "example": "vacaciones-service"
+          }
         }
       }
     }

@@ -11,5 +11,7 @@ export function loadConfig(env = process.env) {
 		amqpUrl: destino.toString(),
 		exchange: env.BROKER_EXCHANGE || 'onboarding.eventos',
 		queue: env.BROKER_QUEUE || 'q.vacaciones',
+		// Por defecto cada minuto, para probar en desarrollo sin esperar un día.
+		cron: env.VACACIONES_CRON || '* * * * *',
 	};
 }

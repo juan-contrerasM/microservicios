@@ -12,7 +12,17 @@ from notificaciones.procesar import procesar
 
 logger = logging.getLogger("notificaciones")
 
-CLAVES = ("empleado.creado", "empleado.retirado", "vacaciones.programadas")
+CLAVES = (
+    "empleado.creado",
+    "empleado.retirado",
+    "vacaciones.programadas",
+    "vacaciones.iniciadas",
+    "vacaciones.finalizadas",
+    "usuario.creado",
+    "usuario.recuperacion",
+    "cuenta.activada",
+    "cuenta.desactivada",
+)
 
 
 def iniciar_consumidor(settings, sesiones) -> threading.Event:

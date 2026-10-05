@@ -1,8 +1,8 @@
 import { seSolapan } from './fechas.js';
 
 export function evaluarAlta({ empleadoId, fechaInicio, fechaFin, hoy, empleado, conflicto }) {
-	if (!fechaInicio || !fechaFin || fechaFin <= fechaInicio) {
-		return fallo('La fechaFin debe ser posterior a la fechaInicio');
+	if (!fechaInicio || !fechaFin || fechaFin < fechaInicio) {
+		return fallo('La fechaFin no puede ser anterior a la fechaInicio');
 	}
 	if (fechaInicio < hoy) {
 		return fallo('La fechaInicio no puede ser anterior a la fecha actual');

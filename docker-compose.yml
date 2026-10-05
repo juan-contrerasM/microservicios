@@ -302,6 +302,7 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
       BROKER_QUEUE: q.vacaciones
+      VACACIONES_CRON: "${VACACIONES_CRON:-* * * * *}"
     expose:
       - "8085"
     depends_on:

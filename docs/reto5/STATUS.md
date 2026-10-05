@@ -16,18 +16,22 @@ Leyenda: ✅ hecho · 🔄 en progreso · ⬜ pendiente
 | 1 | `auth-service` (Python 3.12 / FastAPI): semilla ADMIN, bcrypt, `POST /auth/login`, access JWT HS256, OpenAPI | ✅ | Criterio 1, sin la cola en el camino del login. Puerto interno `8086`. Alembic `001_inicial`. La semilla hashea `AUTH_ADMIN_PASSWORD`. |
 | 2 | Ciclo de vida: consume `empleado.creado`, `empleado.retirado`, `vacaciones.iniciadas`, `vacaciones.finalizadas`. Publica `usuario.creado`, `usuario.recuperacion`, `cuenta.activada`, `cuenta.desactivada`. Reset, recover y change-password | ✅ | Criterios 1 y 4 en el servicio. Cola `q.auth`, ack manual, prefetch 1. El commit va antes del publish. `vacaciones.finalizadas` no reactiva una `DESACTIVADA_PERMANENTE`. El contenedor y el broker en el compose siguen en la etapa 6. |
 | 3 | Gateway: verifica el JWT, 401 / 403, el USER lee, cambia su clave y edita solo su perfil. Ruta `/auth` | ✅ | Criterios 2 y 3. `JWT_SECRET` y `AUTH_URL` ya están en el servicio `api-gateway` del compose para que el borde arranque. Sin el contenedor de auth, `/auth` responde 503. Las rutas de negocio ya no son públicas. |
-| 4 | `notificaciones-service`: `SEGURIDAD` y `CUENTA`. Deja de insertar `BIENVENIDA` y `DESVINCULACION`. Consume inicio y fin de vacaciones | ⬜ | Parte del criterio 4. Las frases recortadas del PDF quedaron cerradas en el plan. |
-| 5 | Scheduler en `vacaciones-service` (`VACACIONES_CRON`) y `POST /vacaciones/{id}/forzar-inicio` y `forzar-fin` | ⬜ | Parte del criterio 4. `fechaFin` puede ser el mismo día que `fechaInicio`. |
+| 4 | `notificaciones-service`: `SEGURIDAD` y `CUENTA`. Deja de insertar `BIENVENIDA` y `DESVINCULACION`. Consume inicio y fin de vacaciones | ✅ | Parte del criterio 4. Seis bindings nuevos en `q.notificaciones`. `empleado.creado` solo guarda el destinatario; `empleado.retirado` se confirma sin fila. `usuario.recuperacion` busca el `empleadoId` por email (Alembic `002_destinatario_email` agrega el índice); sin destinatario previo se confirma sin fila. Asuntos SMTP `Seguridad`, `Cuenta`, `Vacaciones iniciadas` y `Vacaciones finalizadas`. 10 tests con pytest. |
+| 5 | Scheduler en `vacaciones-service` (`VACACIONES_CRON`) y `POST /vacaciones/{id}/forzar-inicio` y `forzar-fin` | ✅ | Parte del criterio 4. `node-cron` 4 con `noOverlap` y zona UTC; `VACACIONES_CRON` por defecto `* * * * *`, ya inyectada en el compose y en `.env.example`. Cada transición es un `UPDATE ... RETURNING` atómico y publica después del commit. `fechaFin` igual a `fechaInicio` es válido. Los `forzar-*` responden 200 con el período, 400 fuera de estado y 404 si no existe; tag `Desarrollo` en el OpenAPI. README con la limitación de N instancias. 18 tests con `node --test`. |
 | 6 | Compose de `auth-service` y `database-auth`, `JWT_SECRET` por entorno, BearerAuth en los OpenAPI, sin publicar `:8086` | ⬜ | Criterio 5. |
 | 7 | README (token, Gateway vs interceptores, diagrama, cron, N instancias), evidencias del caso borde, Newman | ⬜ | Criterio 6. El diagrama y `EVIDENCIAS.md` salen aquí, no en la etapa 0. |
 
 ## Estado de entrega
 
-Las etapas **0** a **3** están cerradas. `auth-service` firma tokens y consume la cola, y el
-Gateway ya exige el access JWT en las rutas de negocio. El contenedor de auth, su Postgres y
+Las etapas **0** a **5** están cerradas. `auth-service` firma tokens y consume la cola, el
+Gateway ya exige el access JWT en las rutas de negocio, notificaciones registra los avisos
+`SEGURIDAD` y `CUENTA`, y vacaciones inicia y finaliza los períodos con el scheduler o con los
+`forzar-*`. El contenedor de auth, su Postgres y
 el cableado `depends_on` siguen en la etapa 6: hasta entonces `POST /auth/login` por el
 Gateway responde 503 y no hay forma de obtener un token dentro de `docker compose`. Las
-pruebas del servicio corren con pytest, sin ese contenedor.
+pruebas del servicio corren con pytest, sin ese contenedor. Las etapas 4 y 5 se probaron con
+tests de unidad; la corrida de punta a punta con Newman queda para la etapa 7, cuando el
+contenedor de auth esté en el compose.
 
 ## Decisiones técnicas del enunciado
 

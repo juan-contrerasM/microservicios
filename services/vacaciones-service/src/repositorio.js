@@ -79,3 +79,37 @@ export async function marcarCancelada(client, id) {
 	);
 	return aPeriodo(resultado.rows[0]);
 }
+
+export async function iniciarVencidos(client, hoy) {
+	const resultado = await client.query(
+		`UPDATE vacaciones SET estado = 'EN_CURSO'
+		 WHERE estado = 'PROGRAMADA' AND fecha_inicio <= $1
+		 RETURNING *`,
+		[hoy],
+	);
+	return resultado.rows.map(aPeriodo);
+}
+
+// "Ya pasó" no incluye el día de fechaFin: un período de un solo día no nace y muere en el mismo tick.
+export async function finalizarVencidos(client, hoy) {
+	const resultado = await client.query(
+		`UPDATE vacaciones SET estado = 'FINALIZADA'
+		 WHERE estado = 'EN_CURSO' AND fecha_fin < $1
+		 RETURNING *`,
+		[hoy],
+	);
+	return resultado.rows.map(aPeriodo);
+}
+
+export async function bloquearPeriodo(client, id) {
+	const resultado = await client.query('SELECT * FROM vacaciones WHERE id = $1 FOR UPDATE', [id]);
+	return resultado.rowCount === 0 ? null : aPeriodo(resultado.rows[0]);
+}
+
+export async function cambiarEstado(client, id, estado) {
+	const resultado = await client.query(
+		'UPDATE vacaciones SET estado = $2 WHERE id = $1 RETURNING *',
+		[id, estado],
+	);
+	return aPeriodo(resultado.rows[0]);
+}

@@ -1,3 +1,4 @@
+import { ErrorApi } from './errores.js';
 import { diasHabiles, hoyUtc, parseFecha } from './fechas.js';
 import {
 	buscarConflicto,
@@ -8,22 +9,21 @@ import {
 	obtenerPeriodo,
 	siguienteNumero,
 } from './repositorio.js';
+import { crearTransiciones } from './transiciones.js';
 import { evaluarAlta, puedeCancelar } from './validar.js';
 
-export class ErrorApi extends Error {
-	constructor(status, body) {
-		super(body.mensaje);
-		this.status = status;
-		this.body = body;
-	}
-}
+export { ErrorApi };
 
 export function crearServicio({ pool, publicar, ahora = () => new Date() }) {
+	const transiciones = crearTransiciones({ pool, publicar, ahora });
 	return {
 		programar: (body) => programar(pool, publicar, ahora, body),
 		obtener: (id) => conCliente(pool, (client) => obtenerOFallar(client, id)),
 		listar: (empleadoId) => conCliente(pool, (client) => listarPeriodos(client, empleadoId)),
 		cancelar: (id) => cancelar(pool, ahora, id),
+		forzarInicio: transiciones.forzarInicio,
+		forzarFin: transiciones.forzarFin,
+		ejecutarCiclo: transiciones.ejecutarCiclo,
 	};
 }
 
@@ -32,8 +32,8 @@ async function programar(pool, publicar, ahora, body) {
 	const fechaInicio = parseFecha(body?.fechaInicio);
 	const fechaFin = parseFecha(body?.fechaFin);
 	const hoy = hoyUtc(ahora());
-	if (!fechaInicio || !fechaFin || fechaFin <= fechaInicio) {
-		throw new ErrorApi(400, { mensaje: 'La fechaFin debe ser posterior a la fechaInicio' });
+	if (!fechaInicio || !fechaFin || fechaFin < fechaInicio) {
+		throw new ErrorApi(400, { mensaje: 'La fechaFin no puede ser anterior a la fechaInicio' });
 	}
 	if (fechaInicio < hoy) {
 		throw new ErrorApi(400, { mensaje: 'La fechaInicio no puede ser anterior a la fecha actual' });

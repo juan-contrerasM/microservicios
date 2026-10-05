@@ -2,7 +2,7 @@ import express from 'express';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ErrorApi } from './servicio.js';
+import { ErrorApi } from './errores.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const openapi = readFileSync(join(dir, 'openapi.json'), 'utf8');
@@ -54,6 +54,24 @@ export function createApp({ servicio, estaSano }) {
 	app.get('/vacaciones/:id', async (req, res, next) => {
 		try {
 			res.status(200).json(await servicio.obtener(req.params.id));
+		} catch (error) {
+			next(error);
+		}
+	});
+
+	// Endpoints de desarrollo: disparan a mano la misma transición y el mismo evento que el cron.
+	// El Gateway los deja solo al rol ADMIN; el servicio no repite el RBAC.
+	app.post('/vacaciones/:id/forzar-inicio', async (req, res, next) => {
+		try {
+			res.status(200).json(await servicio.forzarInicio(req.params.id));
+		} catch (error) {
+			next(error);
+		}
+	});
+
+	app.post('/vacaciones/:id/forzar-fin', async (req, res, next) => {
+		try {
+			res.status(200).json(await servicio.forzarFin(req.params.id));
 		} catch (error) {
 			next(error);
 		}

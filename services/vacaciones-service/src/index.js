@@ -6,6 +6,7 @@ import { loadConfig } from './config.js';
 import { crearConsumidor } from './consumidor.js';
 import { baseResponde, crearPool } from './db.js';
 import { crearPublicador } from './publicar.js';
+import { iniciarScheduler } from './scheduler.js';
 import { crearServicio } from './servicio.js';
 
 const config = loadConfig();
@@ -22,6 +23,7 @@ await migrate({
 let consumidorConectado = false;
 const publicar = crearPublicador(config);
 const servicio = crearServicio({ pool, publicar });
+iniciarScheduler({ expresion: config.cron, ejecutarCiclo: servicio.ejecutarCiclo });
 crearConsumidor({
 	config,
 	pool,
