@@ -5,6 +5,11 @@
     "version": "1.0.0",
     "description": "Períodos de vacaciones. El empleado se valida contra la réplica local (empleado.creado y empleado.retirado), no con un GET a empleados. POST publica vacaciones.programadas después del commit. DELETE cancela y no publica evento. Un scheduler (node-cron, VACACIONES_CRON) pasa PROGRAMADA → EN_CURSO al llegar fechaInicio y EN_CURSO → FINALIZADA cuando fechaFin ya pasó, publicando vacaciones.iniciadas y vacaciones.finalizadas."
   },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
   "tags": [
     {
       "name": "Vacaciones"
@@ -300,6 +305,7 @@
     },
     "/health": {
       "get": {
+        "security": [],
         "tags": [
           "Salud"
         ],
@@ -330,6 +336,14 @@
     }
   },
   "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Access JWT emitido por auth-service y validado por el API Gateway"
+      }
+    },
     "schemas": {
       "ProgramarVacaciones": {
         "type": "object",

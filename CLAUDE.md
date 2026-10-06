@@ -14,7 +14,7 @@ datos entre servicios.
 
 Documentos de referencia que SIEMPRE hay que leer antes de tocar código:
 
-- Reto 5 (activo): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md),
+- Reto 5 (cerrado): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md),
   [`docs/reto5/STATUS.md`](docs/reto5/STATUS.md), [`docs/reto5/reto5.pdf`](docs/reto5/reto5.pdf).
   **Actualiza `docs/reto5/STATUS.md` en el mismo commit/PR que cierra o avanza una etapa.**
 - Reto 4 (cerrado): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md),
@@ -35,7 +35,7 @@ micro/
 │   ├── reto2/                   # plan, STATUS, colección y PDF del Reto 2 (cerrado)
 │   ├── reto3/                   # plan, STATUS, colección y PDF del Reto 3 (cerrado)
 │   ├── reto4/                   # plan, STATUS, colección y PDF del Reto 4 (cerrado)
-│   └── reto5/                   # plan, STATUS, colección y PDF del Reto 5 (activo)
+│   └── reto5/                   # plan, STATUS, colección y PDF del Reto 5 (cerrado)
 └── services/
     ├── empleados-service/       # Reto 1, Java 21 + Spring Boot + PostgreSQL
     ├── departamentos-service/   # Reto 2, Go + chi + MySQL

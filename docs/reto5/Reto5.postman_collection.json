@@ -302,6 +302,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/perfiles/E001';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let found = null;",
@@ -316,7 +317,8 @@
                   "pm.test('Perfil creado por empleado.creado', () => {",
                   "    pm.expect(found, 'sin perfil tras 20s').to.be.an('object');",
                   "    pm.expect(found.archivado).to.eql(false);",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -341,6 +343,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let found = null;",
@@ -363,7 +366,8 @@
                   "    pm.expect(match, 'el mensaje no trae el token').to.not.eql(null);",
                   "    pm.collectionVariables.set('reset_token', match[1]);",
                   "    pm.expect(seg[0].mensaje).to.include('Para establecer o restablecer su contraseña ingrese a https://app.empresa.com/reset?token=');",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -388,6 +392,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E002';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let found = null;",
@@ -410,7 +415,8 @@
                   "    pm.expect(match, 'el mensaje no trae el token').to.not.eql(null);",
                   "    pm.collectionVariables.set('reset_token_e002', match[1]);",
                   "    pm.expect(seg[0].mensaje).to.include('Para establecer o restablecer su contraseña ingrese a https://app.empresa.com/reset?token=');",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -623,6 +629,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let found = null;",
@@ -639,7 +646,8 @@
                   "    const fila = found.find((n) => n.tipo === 'CUENTA' && String(n.mensaje).includes('Bienvenido de regreso. Su cuenta ha sido reactivada'));",
                   "    pm.expect(fila).to.be.an('object');",
                   "    pm.expect(fila.empleadoId).to.eql('E001');",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -740,6 +748,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "const anterior = pm.collectionVariables.get('reset_token');",
@@ -760,7 +769,8 @@
                   "    const nuevo = tokens.find((t) => t !== anterior);",
                   "    pm.expect(nuevo, 'no hay un token distinto').to.be.a('string');",
                   "    pm.collectionVariables.set('reset_token', nuevo);",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -963,6 +973,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/perfiles/E002';",
                   "const token = pm.collectionVariables.get('user_token');",
                   "let found = null;",
@@ -977,7 +988,8 @@
                   "pm.test('USER puede leer el perfil de otro', () => {",
                   "    pm.expect(found, 'sin perfil de E002 tras 20s').to.be.an('object');",
                   "    pm.expect(found.empleadoId).to.eql('E002');",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -1340,6 +1352,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let found = null;",
@@ -1356,7 +1369,8 @@
                   "    const fila = found.find((n) => n.tipo === 'VACACIONES' && String(n.mensaje).includes('han sido programadas'));",
                   "    pm.expect(fila).to.be.an('object');",
                   "    pm.expect(fila.empleadoId).to.eql('E001');",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -1407,6 +1421,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let found = null;",
@@ -1423,7 +1438,8 @@
                   "    pm.expect(found, 'sin los dos avisos tras 20s').to.be.an('array');",
                   "    pm.expect(found.some((n) => n.tipo === 'CUENTA' && n.mensaje === 'Su cuenta fue desactivada')).to.eql(true);",
                   "    pm.expect(found.some((n) => n.tipo === 'VACACIONES' && String(n.mensaje).includes('han iniciado'))).to.eql(true);",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -1457,6 +1473,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/auth/login';",
                   "let last = null;",
                   "for (let i = 0; i < 20; i++) {",
@@ -1470,7 +1487,8 @@
                   "pm.test('401 cuenta no activa', () => {",
                   "    pm.expect(last.code).to.eql(401);",
                   "    pm.expect(last.json().mensaje).to.eql('La cuenta no está activa');",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -1530,6 +1548,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/auth/login';",
                   "let last = null;",
                   "for (let i = 0; i < 20; i++) {",
@@ -1544,7 +1563,8 @@
                   "    pm.expect(last.code).to.eql(200);",
                   "    pm.expect(last.json().role).to.eql('USER');",
                   "});",
-                  "pm.collectionVariables.set('user_token', last.json().token);"
+                  "pm.collectionVariables.set('user_token', last.json().token);",
+                  "})();"
                 ]
               }
             }
@@ -1569,6 +1589,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let found = null;",
@@ -1585,7 +1606,8 @@
                   "    const fila = found.find((n) => n.tipo === 'CUENTA' && String(n.mensaje).includes('Bienvenido de regreso. Su cuenta ha sido reactivada'));",
                   "    pm.expect(fila).to.be.an('object');",
                   "    pm.expect(fila.empleadoId).to.eql('E001');",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -1759,6 +1781,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/auth/login';",
                   "let last = null;",
                   "for (let i = 0; i < 20; i++) {",
@@ -1769,7 +1792,8 @@
                   "    if (res.code === 401) break;",
                   "    await new Promise((r) => setTimeout(r, 1000));",
                   "}",
-                  "pm.test('401', () => pm.expect(last.code).to.eql(401));"
+                  "pm.test('401', () => pm.expect(last.code).to.eql(401));",
+                  "})();"
                 ]
               }
             }
@@ -1821,6 +1845,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E002';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let body = null;",
@@ -1835,7 +1860,8 @@
                   "}",
                   "const n = (Array.isArray(body) ? body : []).filter((n) => String(n.mensaje).includes('Bienvenido de regreso')).length;",
                   "pm.collectionVariables.set('regreso_e002', String(n));",
-                  "pm.test('la suspensión ya avisó', () => pm.expect(body.some((n) => n.mensaje === 'Su cuenta fue desactivada')).to.eql(true));"
+                  "pm.test('la suspensión ya avisó', () => pm.expect(body.some((n) => n.mensaje === 'Su cuenta fue desactivada')).to.eql(true));",
+                  "})();"
                 ]
               }
             }
@@ -1895,6 +1921,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/auth/login';",
                   "let visto200 = false;",
                   "let last = null;",
@@ -1908,7 +1935,8 @@
                   "}",
                   "pm.test('nunca vuelve a 200', () => pm.expect(visto200).to.eql(false));",
                   "pm.test('sigue 401', () => pm.expect(last.code).to.eql(401));",
-                  "pm.test('cuenta no activa', () => pm.expect(last.json().mensaje).to.eql('La cuenta no está activa'));"
+                  "pm.test('cuenta no activa', () => pm.expect(last.json().mensaje).to.eql('La cuenta no está activa'));",
+                  "})();"
                 ]
               }
             }
@@ -1933,6 +1961,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E002';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "const antes = Number(pm.collectionVariables.get('regreso_e002') || '0');",
@@ -1946,7 +1975,8 @@
                   "    pm.expect(body).to.be.an('array');",
                   "    const ahora = body.filter((n) => String(n.mensaje).includes('Bienvenido de regreso')).length;",
                   "    pm.expect(ahora).to.eql(antes);",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -2013,6 +2043,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/auth/login';",
                   "let last = null;",
                   "for (let i = 0; i < 20; i++) {",
@@ -2026,7 +2057,8 @@
                   "pm.test('401 cuenta no activa', () => {",
                   "    pm.expect(last.code).to.eql(401);",
                   "    pm.expect(last.json().mensaje).to.eql('La cuenta no está activa');",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -2081,6 +2113,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/notificaciones/E001';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let found = null;",
@@ -2097,7 +2130,8 @@
                   "    pm.expect(found, 'sin la segunda desactivación tras 20s').to.be.an('array');",
                   "    pm.expect(found.filter((n) => n.tipo === 'DESVINCULACION')).to.have.lengthOf(0);",
                   "    pm.expect(found.filter((n) => n.mensaje === 'Su cuenta fue desactivada').length).to.be.at.least(2);",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }
@@ -2122,6 +2156,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "void (async () => {",
                   "const target = pm.variables.get('gateway_url') + '/perfiles/E001';",
                   "const token = pm.collectionVariables.get('admin_token');",
                   "let found = null;",
@@ -2137,7 +2172,8 @@
                   "    pm.expect(found, 'el perfil no se archivó en 20s').to.be.an('object');",
                   "    pm.expect(found.archivado).to.eql(true);",
                   "    pm.expect(found.telefono).to.eql('3001234567');",
-                  "});"
+                  "});",
+                  "})();"
                 ]
               }
             }

@@ -5,8 +5,9 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 logging.getLogger("notificaciones").setLevel(logging.INFO)
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Security
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,11 @@ logging.getLogger("pika").setLevel(logging.WARNING)
 settings = load_settings()
 motor = crear_motor(settings.database_url)
 sesiones = crear_sesiones(motor)
+bearer_auth = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth",
+    description="Access JWT validado por el API Gateway",
+)
 
 
 class NotificacionRespuesta(BaseModel):
@@ -86,7 +92,10 @@ def health():
     response_model=list[NotificacionRespuesta],
     summary="Listar notificaciones. Arreglo vacío si no hay.",
 )
-def listar(sesion: Session = Depends(obtener_sesion)):
+def listar(
+    sesion: Session = Depends(obtener_sesion),
+    _credenciales: HTTPAuthorizationCredentials | None = Security(bearer_auth),
+):
     return SqlRepositorio(sesion).listar()
 
 
@@ -95,5 +104,9 @@ def listar(sesion: Session = Depends(obtener_sesion)):
     response_model=list[NotificacionRespuesta],
     summary="Listar las notificaciones de un empleado. Vacío no es 404.",
 )
-def listar_de_empleado(empleado_id: str, sesion: Session = Depends(obtener_sesion)):
+def listar_de_empleado(
+    empleado_id: str,
+    sesion: Session = Depends(obtener_sesion),
+    _credenciales: HTTPAuthorizationCredentials | None = Security(bearer_auth),
+):
     return SqlRepositorio(sesion).listar(empleado_id)

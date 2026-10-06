@@ -14,6 +14,7 @@ def test_la_semilla_guarda_hash_y_el_login_firma_admin():
     with TestClient(app) as cliente:
         mal = cliente.post("/auth/login", json={"usuario": "admin", "contrasena": "no-es"})
         bien = cliente.post("/auth/login", json={"usuario": "admin", "contrasena": "Admin1234!"})
+        openapi = cliente.get("/openapi.json").json()
 
     assert mal.status_code == 401
     assert mal.json()["mensaje"] == "Credenciales inválidas"
@@ -36,3 +37,6 @@ def test_la_semilla_guarda_hash_y_el_login_firma_admin():
     assert guardada.password_hash != "Admin1234!"
     assert guardada.password_hash.startswith("$2")
     assert verifica_clave("Admin1234!", guardada.password_hash)
+    assert openapi["components"]["securitySchemes"]["BearerAuth"]["scheme"] == "bearer"
+    assert openapi["paths"]["/auth/change-password"]["post"]["security"] == [{"BearerAuth": []}]
+    assert "security" not in openapi["paths"]["/auth/login"]["post"]

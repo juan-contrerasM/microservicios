@@ -5,15 +5,117 @@
     "version": "1.0.0",
     "description": "Puerta pública del sistema. Reenvía el path, el query, el cuerpo y el código de estado. GET /health no consulta backends. Si un destino no responde, el borde responde 503 JSON. El Swagger de cada servicio vive en su red interna; este documento es el contrato que se llama desde el host."
   },
+  "security": [{ "BearerAuth": [] }],
   "paths": {
     "/health": {
       "get": {
+        "security": [],
         "summary": "Salud del Gateway",
         "responses": {
           "200": {
             "description": "UP aunque un backend esté caído",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthGateway" } } }
           }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "security": [],
+        "summary": "Autenticar y obtener un access JWT",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["usuario", "contrasena"],
+                "properties": {
+                  "usuario": { "type": "string", "example": "admin" },
+                  "contrasena": { "type": "string", "format": "password", "example": "Admin1234!" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "JWT de acceso" },
+          "401": { "description": "Credenciales inválidas o cuenta inactiva" },
+          "503": { "$ref": "#/components/responses/NoDisponible" }
+        }
+      }
+    },
+    "/auth/recover-password": {
+      "post": {
+        "security": [],
+        "summary": "Solicitar recuperación de contraseña",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": { "email": { "type": "string", "format": "email" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Respuesta neutra exista o no el correo" },
+          "503": { "$ref": "#/components/responses/NoDisponible" }
+        }
+      }
+    },
+    "/auth/reset-password": {
+      "post": {
+        "security": [],
+        "summary": "Establecer contraseña con un reset token",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["token", "contrasena"],
+                "properties": {
+                  "token": { "type": "string" },
+                  "contrasena": { "type": "string", "format": "password" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Contraseña actualizada" },
+          "400": { "description": "Token, política o estado inválido" },
+          "503": { "$ref": "#/components/responses/NoDisponible" }
+        }
+      }
+    },
+    "/auth/change-password": {
+      "post": {
+        "summary": "Cambiar la contraseña del usuario autenticado",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["contrasenaActual", "contrasenaNueva"],
+                "properties": {
+                  "contrasenaActual": { "type": "string", "format": "password" },
+                  "contrasenaNueva": { "type": "string", "format": "password" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Contraseña actualizada" },
+          "400": { "description": "Contraseña actual o política inválida" },
+          "401": { "description": "JWT ausente o inválido" },
+          "503": { "$ref": "#/components/responses/NoDisponible" }
         }
       }
     },
@@ -132,9 +234,45 @@
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": { "200": { "description": "CANCELADA" }, "400": { "description": "No se puede cancelar" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
       }
+    },
+    "/vacaciones/{id}/forzar-inicio": {
+      "post": {
+        "summary": "Forzar PROGRAMADA → EN_CURSO (desarrollo, ADMIN)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "EN_CURSO; publica vacaciones.iniciadas" },
+          "400": { "description": "El período no está PROGRAMADA" },
+          "401": { "description": "JWT ausente o inválido" },
+          "403": { "description": "Solo ADMIN" },
+          "404": { "description": "No existe" },
+          "503": { "$ref": "#/components/responses/NoDisponible" }
+        }
+      }
+    },
+    "/vacaciones/{id}/forzar-fin": {
+      "post": {
+        "summary": "Forzar EN_CURSO → FINALIZADA (desarrollo, ADMIN)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "FINALIZADA; publica vacaciones.finalizadas" },
+          "400": { "description": "El período no está EN_CURSO" },
+          "401": { "description": "JWT ausente o inválido" },
+          "403": { "description": "Solo ADMIN" },
+          "404": { "description": "No existe" },
+          "503": { "$ref": "#/components/responses/NoDisponible" }
+        }
+      }
     }
   },
   "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Access JWT retornado por POST /auth/login"
+      }
+    },
     "responses": {
       "NoDisponible": {
         "description": "El backend no respondió",

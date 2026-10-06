@@ -5,7 +5,7 @@ propio lenguaje, base de datos y Dockerfile, orquestados desde un único `docker
 la raíz.
 
 > Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo).
-> Reto 5 (activo): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md) y
+> Reto 5 (cerrado): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md) y
 > [`docs/reto5/STATUS.md`](docs/reto5/STATUS.md).
 > Reto 4 (cerrado): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md) y
 > [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md).
@@ -25,14 +25,15 @@ la raíz.
 | `notificaciones-service` | Python 3.12 / FastAPI | PostgreSQL 16 | *no publicado* (`expose: 8084`) | [`services/notificaciones-service`](services/notificaciones-service) |
 | `perfiles-service` | Java 21 / Spring Boot | PostgreSQL 16 | *no publicado* (`expose: 8083`) | [`services/perfiles-service`](services/perfiles-service) |
 | `vacaciones-service` | Node.js 22 / Express | PostgreSQL 16 | *no publicado* (`expose: 8085`) | [`services/vacaciones-service`](services/vacaciones-service) |
+| `auth-service` | Python 3.12 / FastAPI | PostgreSQL 16 | *no publicado* (`expose: 8086`) | [`services/auth-service`](services/auth-service) |
 
 URL base del sistema: **`http://localhost:8080`**. Todo el tráfico de negocio pasa por el Gateway:
-`/empleados`, `/departamentos`, `/perfiles`, `/notificaciones`, `/vacaciones` y `/health`.
-Los puertos `8081`, `8082`, `8083`, `8084` y `8085` no están publicados: desde el host la conexión
+`/auth`, `/empleados`, `/departamentos`, `/perfiles`, `/notificaciones`, `/vacaciones` y `/health`.
+Los puertos `8081`, `8082`, `8083`, `8084`, `8085` y `8086` no están publicados: desde el host la conexión
 se rechaza. `5672` y `15672` son del broker, no una segunda API de negocio.
 
 Hay cuatro lenguajes: Java (empleados y perfiles), Go (departamentos), Node.js (Gateway y
-vacaciones) y Python (notificaciones). El Gateway no es Spring Cloud Gateway.
+vacaciones) y Python (notificaciones y autenticación). El Gateway no es Spring Cloud Gateway.
 
 ## Arranque desde cero
 
@@ -84,6 +85,10 @@ Los otros Swagger no tienen puerto publicado. La URL es la del contenedor; el ar
 | perfiles | `http://perfiles-service:8083/swagger-ui.html` | `http://perfiles-service:8083/v3/api-docs` |
 | notificaciones | `http://notificaciones-service:8084/docs` | `http://notificaciones-service:8084/openapi.json` |
 | vacaciones | `http://vacaciones-service:8085/swagger/index.html` | [`openapi.json`](services/vacaciones-service/src/openapi.json) |
+| autenticación | `http://auth-service:8086/docs` | `http://auth-service:8086/openapi.json` |
+
+El botón **Authorize** usa el esquema `BearerAuth`. Pega solamente el access JWT retornado por
+`POST /auth/login`; Swagger agrega el prefijo `Bearer`.
 
 ## Colección de Postman (Reto 3)
 
@@ -411,9 +416,10 @@ El envelope no cambia entre tipos:
 `empleado.retirado` usa `motivo` `RENUNCIA` cuando el `DELETE` no trae cuerpo. `diasHabiles`
 cuenta lunes a viernes, inclusive, sin festivos. Del 15 al 30 de marzo de 2027 son 12.
 
-El alta y el retiro de este reto disparan `BIENVENIDA` y `DESVINCULACION`. El catálogo reserva
-`usuario.creado` y `cuenta.desactivada` para el reto de autenticación, que todavía no existe.
-`vacaciones.iniciadas` y `vacaciones.finalizadas` tampoco se publican aquí.
+En el Reto 4 el alta y el retiro disparaban `BIENVENIDA` y `DESVINCULACION`. Desde el Reto 5,
+`empleado.creado` solo prepara el destinatario: `usuario.creado` lleva el token y produce la
+notificación `SEGURIDAD`; `cuenta.desactivada` produce el aviso `CUENTA`. El scheduler ya publica
+`vacaciones.iniciadas` y `vacaciones.finalizadas`.
 
 ## Réplica de empleados en vacaciones
 
@@ -452,3 +458,130 @@ npx newman run docs/reto4/Reto4.postman_collection.json \
 
 Swagger de cada servicio responde dentro de la red Docker. Desde el navegador se abre el del
 Gateway: [http://127.0.0.1:8080/swagger](http://127.0.0.1:8080/swagger).
+
+## Reto 5 — JWT, RBAC y ciclo de vida de la cuenta
+
+El Reto 5 agrega `auth-service`, protege el borde con JWT HS256 y conecta la cuenta con el alta,
+las vacaciones y el retiro. La única URL de negocio sigue siendo `http://localhost:8080`.
+
+### Obtener y usar un token
+
+1. Copia `.env.example` a `.env` y levanta el sistema.
+2. Inicia sesión con la semilla `admin` / `Admin1234!`:
+
+   ```bash
+   curl -X POST http://localhost:8080/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"usuario":"admin","contrasena":"Admin1234!"}'
+   ```
+
+3. Usa `token` como `Authorization: Bearer <token>` para crear el departamento y los empleados.
+4. El alta publica `empleado.creado`; auth crea una cuenta `PENDIENTE_ACTIVACION` y publica
+   `usuario.creado`. Consulta `GET /notificaciones/{empleadoId}` y extrae el token del aviso
+   `SEGURIDAD`.
+5. Envía ese valor a `POST /auth/reset-password`, inicia sesión con el email del empleado y usa
+   el nuevo access JWT.
+
+La colección [`docs/reto5/Reto5.postman_collection.json`](docs/reto5/Reto5.postman_collection.json)
+automatiza el flujo completo y guarda `admin_token`, `reset_token` y `user_token`.
+
+### Autenticación y autorización
+
+El Gateway valida firma, expiración, `sub` y `role` una sola vez. Centralizarlo evita mantener
+librerías JWT en Java, Go, Node y Python, y simplifica la futura migración a JWKS. La excepción
+es `POST /auth/change-password`: auth vuelve a validar el token porque necesita el `sub` para
+cambiar la clave de su dueño y debe rechazar un reset token usado como access token.
+
+- `ADMIN`: lectura y escritura total.
+- `USER`: lectura; puede cambiar su propia clave y editar solamente `PUT /perfiles/{sub}`.
+- Token ausente, alterado, expirado o de reset usado como Bearer: `401`.
+- Access JWT válido sin permiso o sin propiedad del perfil: `403`.
+
+`JWT_SECRET` se define en `.env` y Docker Compose inyecta exactamente el mismo valor al Gateway
+y a auth. No se incluye en la imagen ni en el código fuente.
+
+### Scheduler de vacaciones
+
+`vacaciones-service` ejecuta `node-cron` en UTC con `VACACIONES_CRON` (cada minuto por defecto):
+
+- `PROGRAMADA` con `fechaInicio <= hoy` → `EN_CURSO` + `vacaciones.iniciadas`.
+- `EN_CURSO` con `fechaFin < hoy` → `FINALIZADA` + `vacaciones.finalizadas`.
+
+Para una demostración inmediata existen `POST /vacaciones/{id}/forzar-inicio` y
+`POST /vacaciones/{id}/forzar-fin`, documentados como desarrollo y autorizados solo para
+`ADMIN`. Newman programa las fechas para mañana y usa esos endpoints para evitar competir con
+el cron.
+
+La versión actual acepta una sola instancia de vacaciones. Con N instancias, las N ejecutan el
+cron; las transiciones SQL atómicas reducen la duplicación y los consumidores deduplican por id,
+pero eso no sustituye la coordinación del productor. El Reto 31 debe resolverlo con un lock
+distribuido como ShedLock.
+
+### Secuencia del ciclo de vida
+
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant GW as API Gateway
+    participant Emp as empleados-service
+    participant MQ as RabbitMQ
+    participant Auth as auth-service
+    participant Notif as notificaciones-service
+    participant Vac as vacaciones-service
+
+    Admin->>GW: POST /empleados + JWT ADMIN
+    GW->>Emp: POST /empleados
+    Emp-->>MQ: empleado.creado
+    MQ-->>Auth: empleado.creado
+    Auth->>Auth: cuenta PENDIENTE_ACTIVACION
+    Auth-->>MQ: usuario.creado + tokenActivacion
+    MQ-->>Notif: usuario.creado
+    Notif->>Notif: aviso SEGURIDAD
+    Admin->>GW: POST /auth/reset-password
+    GW->>Auth: reset token + nueva clave
+    Auth->>Auth: cuenta ACTIVA
+    Auth-->>MQ: cuenta.activada
+    Admin->>GW: POST /vacaciones/{id}/forzar-inicio
+    GW->>Vac: iniciar período
+    Vac-->>MQ: vacaciones.iniciadas
+    MQ-->>Auth: vacaciones.iniciadas
+    Auth->>Auth: SUSPENDIDA_TEMPORAL
+    Auth-->>MQ: cuenta.desactivada(VACACIONES)
+    Admin->>GW: POST /vacaciones/{id}/forzar-fin
+    GW->>Vac: finalizar período
+    Vac-->>MQ: vacaciones.finalizadas
+    MQ-->>Auth: vacaciones.finalizadas
+    Auth->>Auth: ACTIVA si no fue retirada
+    Auth-->>MQ: cuenta.activada(FIN_VACACIONES)
+    Admin->>GW: DELETE /empleados/{id}
+    GW->>Emp: retiro lógico
+    Emp-->>MQ: empleado.retirado
+    MQ-->>Auth: empleado.retirado
+    Auth->>Auth: DESACTIVADA_PERMANENTE
+    Note over Auth: Un vacaciones.finalizadas posterior no reactiva la cuenta
+```
+
+### Ejecutar la validación
+
+Con datos limpios:
+
+```bash
+docker compose down -v
+docker compose up --build -d
+npx newman run docs/reto5/Reto5.postman_collection.json \
+  --folder "0. Salud y login de admin" \
+  --folder "1. Alta con JWT de admin" \
+  --folder "2. Petición denegada" \
+  --folder "3. Activar E001 y leer" \
+  --folder "4. Recuperar contraseña" \
+  --folder "5. Escritura denegada y propiedad" \
+  --folder "6. Cambio de contraseña" \
+  --folder "7. Vacaciones: suspensión y reactivación" \
+  --folder "8. Caso borde: retiro durante las vacaciones" \
+  --folder "9. Offboarding de E001" \
+  --folder "10. Reglas que el USER no salta" \
+  --env-var "gateway_url=http://127.0.0.1:8080"
+```
+
+La evidencia reproducible se registra en
+[`docs/reto5/EVIDENCIAS.md`](docs/reto5/EVIDENCIAS.md).

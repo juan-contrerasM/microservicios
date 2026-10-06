@@ -17,10 +17,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 @RestController
 @Tag(name = "Perfiles", description = "Perfil de empleado replicado por eventos")
+@SecurityRequirement(name = "BearerAuth")
 public class PerfilController {
 
 	private final PerfilConsultaService perfiles;

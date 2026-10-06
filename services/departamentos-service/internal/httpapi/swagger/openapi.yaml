@@ -9,6 +9,8 @@ info:
 servers:
   - url: http://departamentos-service:8081
     description: Red de Docker. El puerto no está publicado; el tráfico público entra por el Gateway en /departamentos.
+security:
+  - BearerAuth: []
 tags:
   - name: Departamentos
     description: Registro y consulta de departamentos
@@ -115,6 +117,7 @@ paths:
                 $ref: "#/components/schemas/Error"
   /health:
     get:
+      security: []
       tags: [Salud]
       summary: Health check
       description: Hace PING a MySQL. No basta con que el proceso HTTP responda.
@@ -133,6 +136,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthDown"
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access JWT emitido por auth-service y validado por el API Gateway
   schemas:
     Departamento:
       type: object

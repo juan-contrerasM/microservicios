@@ -144,6 +144,12 @@ describe('api-gateway', () => {
 		const spec = await request(app).get('/openapi.json').expect(200);
 		assert.equal(spec.body.info.title, 'api-gateway');
 		assert.ok(spec.body.paths['/vacaciones']);
+		assert.ok(spec.body.paths['/auth/login']);
+		assert.ok(spec.body.paths['/auth/change-password']);
+		assert.ok(spec.body.paths['/vacaciones/{id}/forzar-inicio']);
+		assert.equal(spec.body.components.securitySchemes.BearerAuth.scheme, 'bearer');
+		assert.deepEqual(spec.body.paths['/health'].get.security, []);
+		assert.deepEqual(spec.body.paths['/auth/login'].post.security, []);
 		const ui = await request(app).get('/swagger/index.html').expect(200);
 		assert.match(ui.headers['content-type'], /html/);
 	});

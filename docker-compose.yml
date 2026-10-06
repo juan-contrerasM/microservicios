@@ -147,7 +147,7 @@ services:
       PERFILES_URL: http://perfiles-service:8083
       VACACIONES_URL: http://vacaciones-service:8085
       AUTH_URL: http://auth-service:8086
-      JWT_SECRET: ${JWT_SECRET:-cambia-esta-clave-academica}
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en .env}
       PROXY_TIMEOUT_MS: ${PROXY_TIMEOUT_MS}
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
@@ -164,6 +164,8 @@ services:
       perfiles-service:
         condition: service_started
       vacaciones-service:
+        condition: service_started
+      auth-service:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -291,6 +293,24 @@ services:
     networks:
       - microservices-network
 
+  # --- PostgreSQL propio de auth-service ---
+  database-auth:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${AUTH_DB_NAME:-auth_db}
+      POSTGRES_USER: ${AUTH_DB_USER:-auth}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-auth}
+    volumes:
+      - vol-auth:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USER:-auth} -d ${AUTH_DB_NAME:-auth_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
   # --- Productor Node. Solo expose: el tráfico entra por el Gateway. ---
   vacaciones-service:
     build: ./services/vacaciones-service
@@ -319,6 +339,39 @@ services:
     networks:
       - microservices-network
 
+  # --- Identidad y seguridad. Solo expose: el tráfico entra por el Gateway. ---
+  auth-service:
+    build: ./services/auth-service
+    environment:
+      PORT: 8086
+      DATABASE_URL: postgresql+psycopg://${AUTH_DB_USER:-auth}:${AUTH_DB_PASSWORD:-auth}@database-auth:5432/${AUTH_DB_NAME:-auth_db}
+      BROKER_URL: amqp://message-broker:5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-onboarding}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
+      BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
+      BROKER_QUEUE: q.auth
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en .env}
+      JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-60}
+      RESET_TOKEN_MINUTES: ${RESET_TOKEN_MINUTES:-60}
+      AUTH_ADMIN_USUARIO: ${AUTH_ADMIN_USUARIO:-admin}
+      AUTH_ADMIN_EMAIL: ${AUTH_ADMIN_EMAIL:-admin@empresa.com}
+      AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:?Defina AUTH_ADMIN_PASSWORD en .env}
+    expose:
+      - "8086"
+    depends_on:
+      database-auth:
+        condition: service_healthy
+      message-broker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+    networks:
+      - microservices-network
+
 networks:
   microservices-network:
     driver: bridge
@@ -330,3 +383,4 @@ volumes:
   vol-notificaciones:
   vol-perfiles:
   vol-vacaciones:
+  vol-auth:

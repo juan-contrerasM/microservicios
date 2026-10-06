@@ -62,7 +62,7 @@ Nunca se hardcodean hosts. En Compose las inyecta el `docker-compose.yml` raíz 
 | `NOTIFICACIONES_URL` | *(opcional)* | `http://notificaciones-service:8084`. Si falta, `/notificaciones` no se publica. |
 | `PERFILES_URL` | *(opcional)* | `http://perfiles-service:8083` |
 | `VACACIONES_URL` | *(opcional)* | `http://vacaciones-service:8085` |
-| `AUTH_URL` | *(obligatoria)* | `http://auth-service:8086`. El contenedor entra en la etapa 6; hasta entonces `/auth` responde 503. |
+| `AUTH_URL` | *(obligatoria)* | `http://auth-service:8086`, nombre interno del contenedor de autenticación |
 | `JWT_SECRET` | *(obligatoria)* | Secreto HS256 compartido con `auth-service`. No se loguea. |
 | `PROXY_TIMEOUT_MS` | `35000` | Timeout del proxy hacia cada backend. Supera el peor caso de empleados (4×5s + backoff 1s→2s→4s ≈ 27s) para no cortar el fallback antes de tiempo. |
 

@@ -33,6 +33,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
@@ -42,6 +43,7 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/empleados")
 @Tag(name = "Empleados", description = "Registro y consulta de empleados")
+@SecurityRequirement(name = "BearerAuth")
 public class EmpleadoController {
 
 	private static final String JSON = "application/json";

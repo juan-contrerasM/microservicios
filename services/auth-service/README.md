@@ -82,8 +82,8 @@ log. Un `id` de evento ya visto se confirma sin repetir el efecto.
 
 El esquema lo crea Alembic al arrancar (`alembic upgrade head`). El downgrade borra las dos tablas.
 
-El contenedor en `docker-compose.yml` es la etapa 6. Hasta entonces el Gateway ya apunta a
-`http://auth-service:8086` y `/auth` responde 503.
+El contenedor vive en `docker-compose.yml` junto a `database-auth`. Solo declara `expose: 8086`;
+desde el host se usa `http://localhost:8080/auth` a través del Gateway.
 
 ## Pruebas
 

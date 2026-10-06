@@ -6,8 +6,9 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message
 logging.getLogger("auth").setLevel(logging.INFO)
 logging.getLogger("pika").setLevel(logging.WARNING)
 
-from fastapi import FastAPI, Header
+from fastapi import FastAPI, Header, Security
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from auth_service.casos import (
@@ -24,6 +25,11 @@ from auth_service.repositorio import SqlRepositorio, base_responde, crear_motor,
 from auth_service.seguridad import Tokens
 
 logger = logging.getLogger("auth")
+bearer_auth = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth",
+    description="Access JWT emitido por POST /auth/login",
+)
 
 
 class LoginCuerpo(BaseModel):
@@ -118,7 +124,11 @@ def crear_app(
         return _aplicar(respuesta, eventos if respuesta.status == 200 else [])
 
     @app.post("/auth/change-password", summary="Cambia la contraseña del sujeto del access token")
-    def change(cuerpo: CambioCuerpo, authorization: str | None = Header(default=None)):
+    def change(
+        cuerpo: CambioCuerpo,
+        authorization: str | None = Header(default=None),
+        _credenciales: HTTPAuthorizationCredentials | None = Security(bearer_auth),
+    ):
         with abrir_repo() as (repo, sesion):
             respuesta = cambiar_clave(repo, tokens, authorization, cuerpo.contrasenaActual, cuerpo.contrasenaNueva)
             if respuesta.status == 200:
