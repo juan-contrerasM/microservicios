@@ -39,5 +39,9 @@ __pycache__/
 .pytest_cache/
 .venv/
 
+# --- Reportes de pruebas (Reto 6): se generan, no se versionan ---
+reports/
+.coverage
+
 # --- Docker / infra ---
 *.pid

@@ -142,13 +142,53 @@ instancia ejecute el job (ShedLock, Reto 31). Este reto acepta una sola instanci
 
 El esquema lo aplica node-pg-migrate al arrancar (`migrations/001_inicial.cjs`). El archivo es CommonJS porque el migrador carga las revisiones con `require`. El `down` borra las cuatro tablas.
 
-## Pruebas
+## Pruebas (Reto 6)
+
+Todas son unitarias: corren con el runner de Node 22 (`node --test`), sin Docker, sin Postgres
+y sin RabbitMQ. El repositorio, el pool y el publicador se sustituyen por dobles en memoria
+(`crearServicio` y `crearTransiciones` reciben `repo` por parámetro).
 
 ```bash
+npm install   # una vez
 npm test
 ```
 
-`tests/transiciones.test.js` cubre el scheduler con un repositorio en memoria: un `PROGRAMADA`
-que inicia hoy pasa a `EN_CURSO` y publica una sola vez aunque el job corra dos veces; un
-`EN_CURSO` cuya `fechaFin` es hoy no finaliza; un `CANCELADA` no se toca; `forzar-fin` publica
-`vacaciones.finalizadas`; y un broker caído no revierte el cambio de estado.
+| Reporte | Ruta | Formato |
+|---|---|---|
+| Resultados | `services/vacaciones-service/reports/junit.xml` | JUnit XML |
+| Cobertura | `services/vacaciones-service/reports/lcov.info` | LCOV (lo lee SonarQube en el Reto 7) |
+
+`npm test` crea `reports/`, imprime el resumen en consola y sale con código distinto de cero si
+falla una prueba **o** si la cobertura de líneas baja del 70 % (`--test-coverage-lines=70`).
+
+| Archivo | Qué cubre |
+|---|---|
+| `tests/validar.test.js` | Tabla de reglas de fechas de `evaluarAlta` (orden, pasado, hoy, mismo día), empleado inexistente o retirado, conflicto, cancelación |
+| `tests/fechas.test.js` | Tabla de **solapamiento** (empieza dentro, termina dentro, contiene, contenido, idéntico, se toca por un día, adyacente), qué estados bloquean, tabla de días hábiles, `parseFecha`, `hoyUtc` |
+| `tests/servicio.test.js` | `programar` y `cancelar` con dobles: el camino feliz publica; solapamiento, retirado, inexistente y fechas inválidas responden 400, hacen `ROLLBACK` o ni abren transacción, y **no publican** |
+| `tests/transiciones.test.js` | Scheduler y `forzar-*`: inicia una sola vez aunque el job corra dos veces, no finaliza el día de `fechaFin`, no toca `CANCELADA`, 400/404 fuera de estado, broker caído no revierte |
+| `tests/openapi.test.js` | El contrato declara `BearerAuth` y deja `/health` público |
+
+**Qué se mide y qué no.** La cobertura se limita a la lógica de dominio: `validar.js`,
+`fechas.js`, `servicio.js` y `transiciones.js`. Quedan fuera, a propósito, `app.js` (cableado
+de Express: rutas → servicio), `db.js`, `config.js`, `index.js`, `scheduler.js` (solo programa
+`node-cron` y llama a `ejecutarCiclo`, que sí está probado), `consumidor.js`, `publicar.js` y
+`repositorio.js`. Son código de integración: probarlos con dobles solo comprobaría que el doble
+responde lo que se le dijo. Su lugar es una prueba de integración o la suite BDD.
+
+**Cobertura alta no es la meta.** Cada prueba afirma el mensaje, el código o el evento exacto,
+no solo que «no explotó». Para comprobarlo se invirtió a propósito la regla
+`fechaFin < fechaInicio` de `validar.js`: 17 pruebas fallaron, entre ellas
+`fechas: fin un día antes del inicio se rechaza`, con el mensaje
+`evaluarAlta(2027-06-15 → 2027-06-14, hoy 2026-09-29) debía rechazar con «La fechaFin no puede
+ser anterior a la fechaInicio»`, y `npm test` salió con código 1.
+
+**`fechaFin` igual a `fechaInicio`.** El PDF del Reto 6 escribe `fechaFin > fechaInicio`; este
+servicio acepta el período de un día desde el Reto 5 (el paso 12 de ese PDF lo exige). Las
+pruebas fijan el comportamiento real: igual se acepta, anterior se rechaza.
+
+**Riesgo conocido: el solapamiento se decide en SQL.** En producción el conflicto lo devuelve
+`buscarConflicto` (`fecha_inicio <= $fin AND fecha_fin >= $inicio`, solo `PROGRAMADA` y
+`EN_CURSO`). La tabla de casos prueba `seSolapan` y `periodoQueBloquea`, que hoy replican esa
+condición. Si alguien cambia una sin la otra, las unitarias siguen en verde. Solo una prueba de
+integración contra Postgres (o la BDD) detecta esa divergencia.

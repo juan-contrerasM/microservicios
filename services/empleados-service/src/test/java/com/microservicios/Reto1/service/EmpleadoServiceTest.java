@@ -131,6 +131,9 @@ class EmpleadoServiceTest {
 		assertThatThrownBy(() -> empleadoService.registrar(empleado))
 				.isInstanceOf(ConflictException.class)
 				.hasMessageContaining("email");
+		verify(empleadoRepository, never()).save(any(Empleado.class));
+		verify(departamentoClient, never()).validarExistencia(any());
+		verify(eventPublisher, never()).publicarCreado(any());
 	}
 
 	@Test
@@ -143,6 +146,8 @@ class EmpleadoServiceTest {
 		assertThatThrownBy(() -> empleadoService.registrar(empleado))
 				.isInstanceOf(ConflictException.class)
 				.hasMessageContaining("numeroEmpleado");
+		verify(empleadoRepository, never()).save(any(Empleado.class));
+		verify(eventPublisher, never()).publicarCreado(any());
 	}
 
 	@Test
@@ -452,6 +457,106 @@ class EmpleadoServiceTest {
 				EstadoEmpleado.RETIRADO, LocalDate.of(2026, 9, 26), LocalDate.of(2026, 9, 26));
 
 		assertThat(encontrados).containsExactly(dentro);
+	}
+
+	@Test
+	void actualizarNumeroEmpleadoDeOtroEmpleadoRespondeConflicto() {
+		Empleado empleado = nuevoEmpleado();
+		Empleado otro = nuevoEmpleado();
+		otro.setId("E002");
+		when(empleadoRepository.findById("E001")).thenReturn(java.util.Optional.of(empleado));
+		when(empleadoRepository.findByNumeroEmpleado("EMP-2026-002")).thenReturn(java.util.Optional.of(otro));
+		ActualizarEmpleadoRequest cambios = new ActualizarEmpleadoRequest();
+		cambios.setNumeroEmpleado("EMP-2026-002");
+
+		assertThatThrownBy(() -> empleadoService.actualizar("E001", cambios))
+				.isInstanceOf(ConflictException.class)
+				.hasMessage("Ya existe un empleado registrado con ese numeroEmpleado");
+		verify(empleadoRepository, never()).save(any());
+	}
+
+	@Test
+	void actualizarConSuPropioEmailNoEsConflicto() {
+		Empleado empleado = nuevoEmpleado();
+		when(empleadoRepository.findById("E001")).thenReturn(java.util.Optional.of(empleado));
+		when(empleadoRepository.findByEmail("juan.perez@empresa.com")).thenReturn(java.util.Optional.of(empleado));
+		ActualizarEmpleadoRequest cambios = new ActualizarEmpleadoRequest();
+		cambios.setEmail("juan.perez@empresa.com");
+
+		Empleado actualizado = empleadoService.actualizar("E001", cambios);
+
+		assertThat(actualizado.getEmail()).isEqualTo("juan.perez@empresa.com");
+		verify(empleadoRepository).save(empleado);
+	}
+
+	@Test
+	void actualizarConNombreEnBlancoResponde400() {
+		when(empleadoRepository.findById("E001")).thenReturn(java.util.Optional.of(nuevoEmpleado()));
+		ActualizarEmpleadoRequest cambios = new ActualizarEmpleadoRequest();
+		cambios.setNombre("   ");
+
+		assertThatThrownBy(() -> empleadoService.actualizar("E001", cambios))
+				.isInstanceOf(BadRequestException.class)
+				.hasMessage("El nombre es obligatorio");
+		verify(empleadoRepository, never()).save(any());
+	}
+
+	@Test
+	void actualizarDepartamentoDeUnRetiradoNoLoReactiva() {
+		Empleado empleado = nuevoEmpleado();
+		empleado.setEstado(EstadoEmpleado.RETIRADO);
+		when(empleadoRepository.findById("E001")).thenReturn(java.util.Optional.of(empleado));
+		ActualizarEmpleadoRequest cambios = new ActualizarEmpleadoRequest();
+		cambios.setDepartamentoId("RRHH");
+
+		Empleado actualizado = empleadoService.actualizar("E001", cambios);
+
+		assertThat(actualizado.getDepartamentoId()).isEqualTo("RRHH");
+		assertThat(actualizado.getEstado()).isEqualTo(EstadoEmpleado.RETIRADO);
+	}
+
+	@Test
+	void retirarInexistenteResponde404YNoPublica() {
+		when(empleadoRepository.findById("E999")).thenReturn(java.util.Optional.empty());
+
+		assertThatThrownBy(() -> empleadoService.retirar("E999", "DESPIDO"))
+				.isInstanceOf(EmpleadoNoEncontradoException.class);
+		verify(eventPublisher, never()).publicarRetirado(any(), any());
+	}
+
+	@Test
+	void retirarConMotivoExplicitoLoPropagaAlEvento() {
+		Empleado empleado = nuevoEmpleado();
+		when(empleadoRepository.findById("E001")).thenReturn(java.util.Optional.of(empleado));
+
+		Empleado retirado = empleadoService.retirar("E001", "DESPIDO");
+
+		assertThat(retirado.getEstado()).isEqualTo(EstadoEmpleado.RETIRADO);
+		verify(eventPublisher).publicarRetirado(retirado, "DESPIDO");
+	}
+
+	@Test
+	void listarConDesdeSinHastaResponde400() {
+		assertThatThrownBy(() -> empleadoService.listar(EstadoEmpleado.RETIRADO, LocalDate.of(2026, 9, 1), null))
+				.isInstanceOf(BadRequestException.class)
+				.hasMessage("Los parámetros desde y hasta deben enviarse juntos");
+	}
+
+	@Test
+	void listarConDesdePosteriorAHastaResponde400() {
+		assertThatThrownBy(() -> empleadoService.listar(null, LocalDate.of(2026, 9, 30), LocalDate.of(2026, 9, 1)))
+				.isInstanceOf(BadRequestException.class)
+				.hasMessage("El parámetro desde no puede ser posterior a hasta");
+	}
+
+	@Test
+	void listarPorEstadoUsaElFiltroDelRepositorio() {
+		Empleado retirado = nuevoEmpleado();
+		retirado.setEstado(EstadoEmpleado.RETIRADO);
+		when(empleadoRepository.findByEstado(EstadoEmpleado.RETIRADO)).thenReturn(java.util.List.of(retirado));
+
+		assertThat(empleadoService.listar(EstadoEmpleado.RETIRADO, null, null)).containsExactly(retirado);
+		verify(empleadoRepository, never()).findAll();
 	}
 
 	private Empleado prepararAlta() {

@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test tests/*.test.js"
+    "pretest": "node -e \"require('node:fs').mkdirSync('reports',{recursive:true})\"",
+    "test": "node --test --experimental-test-coverage --test-coverage-include=src/validar.js --test-coverage-include=src/fechas.js --test-coverage-include=src/transiciones.js --test-coverage-include=src/servicio.js --test-coverage-lines=70 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
   },
   "dependencies": {
     "amqplib": "^0.10.5",

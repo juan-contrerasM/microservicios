@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flujo Reto 5</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121a30;
+    --panel-2: #18223d;
+    --line: #2a3658;
+    --text: #e6ebf5;
+    --muted: #8f9bb8;
+    --req: #60a5fa;
+    --res: #34d399;
+    --err: #f87171;
+    --evt: #fbbf24;
+    --db: #a78bfa;
+    --mail: #f472b6;
+    --ack: #94a3b8;
+    --jwt: #22d3ee;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding: 14px 20px; border-bottom: 1px solid var(--line); background: #0e152a;
+  }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .controls label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  button {
+    font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 12px; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--req); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: #1d4ed8; border-color: #2563eb; }
+
+  .layout { display: grid; grid-template-columns: 290px 1fr; min-height: calc(100vh - 66px); }
+  aside { border-right: 1px solid var(--line); padding: 14px; overflow-y: auto; background: #0e152a; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 14px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+  .sc {
+    display: block; width: 100%; text-align: left; margin-bottom: 8px; padding: 10px 12px;
+    background: var(--panel); border-radius: 10px;
+  }
+  .sc b { display: block; font-size: 14px; }
+  .sc span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .sc .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 5px; margin-right: 4px; font-family: ui-monospace, Consolas, monospace; }
+  .state-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+  .state-box div { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .state-box code { color: var(--evt); }
+
+  main { padding: 14px; display: grid; grid-template-rows: auto 1fr; gap: 14px; min-width: 0; }
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px; position: relative; }
+  svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 6px 10px 4px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  .banner {
+    position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+    background: rgba(18,26,48,.92); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 16px; font-size: 13px; max-width: 80%; text-align: center; transition: opacity .3s;
+  }
+
+  .bottom { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; min-height: 260px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; min-height: 0; }
+  .card h3 { margin: 0; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 600; }
+  #log { list-style: none; margin: 0; padding: 8px 10px; overflow-y: auto; max-height: 300px; counter-reset: paso; }
+  #log li { display: grid; grid-template-columns: 26px 10px 1fr; gap: 8px; align-items: start; padding: 5px 4px; border-bottom: 1px dashed #212c49; animation: aparece .35s ease; }
+  #log li::before { counter-increment: paso; content: counter(paso); color: var(--muted); font-size: 12px; text-align: right; }
+  #log li i { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
+  #log li.titulo { grid-template-columns: 1fr; background: #1a2544; border-radius: 6px; font-weight: 600; border: 0; margin: 6px 0 2px; }
+  #log li.titulo::before { content: none; counter-increment: none; }
+  #log code { color: var(--evt); font-size: 12.5px; }
+  @keyframes aparece { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+  pre#evento {
+    margin: 0; padding: 12px 14px; overflow: auto; font: 12.5px/1.5 ui-monospace, Consolas, monospace; color: #cbd5e1; max-height: 300px;
+  }
+  pre#evento .k { color: #93c5fd; } pre#evento .s { color: #fcd34d; } pre#evento .n { color: #86efac; }
+
+  /* SVG */
+  .edge { fill: none; stroke: #2c3a5f; stroke-width: 2; }
+  .edge.dashed { stroke-dasharray: 5 6; }
+  .lit { fill: none; stroke-width: 3.5; stroke-dasharray: 8 8; animation: fluye .6s linear infinite; opacity: .95; }
+  @keyframes fluye { to { stroke-dashoffset: -16; } }
+  .node rect.box, .node path.box { fill: #16203b; stroke: #33436d; stroke-width: 1.5; transition: stroke .25s, fill .25s; }
+  .node .t { font-size: 14px; font-weight: 700; fill: var(--text); }
+  .node .s { font-size: 11px; fill: var(--muted); }
+  .node .st { font-size: 11px; fill: #fcd34d; font-family: ui-monospace, Consolas, monospace; }
+  .node.hit rect.box, .node.hit path.box { stroke: var(--c, #fff); stroke-width: 3; fill: #1d2a4d; }
+  .node.hit { animation: late .5s ease; }
+  @keyframes late { 50% { transform: scale(1.05); } }
+  .node { transform-box: fill-box; transform-origin: center; }
+  .node.down rect.box { stroke: var(--err); stroke-dasharray: 5 4; fill: #2a1520; }
+  .node.down .t, .node.down .s { opacity: .55; }
+  .node .downtag { display: none; font-size: 11px; font-weight: 700; fill: var(--err); }
+  .node.down .downtag { display: block; }
+  .node.queue rect.box { fill: #221c0e; stroke: #6b5520; }
+  .node.exchange rect.box { fill: #2a1f0a; stroke: #b7791f; }
+  .node.db path.box { fill: #1c1733; stroke: #54468f; }
+  .qbar { fill: var(--evt); transition: width .3s; }
+  .pkt text { font-size: 11.5px; font-weight: 700; paint-order: stroke; stroke: #0b1020; stroke-width: 4px; }
+  .zone { fill: none; stroke: #26314f; stroke-dasharray: 3 5; }
+  .zone-t { font-size: 11px; fill: #56648a; letter-spacing: .08em; text-transform: uppercase; }
+  .badge { font-size: 11px; font-weight: 700; paint-order: stroke; stroke: #0b1020; stroke-width: 4px; }
+
+  @media (max-width: 1000px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { border-right: 0; border-bottom: 1px solid var(--line); }
+    .bottom { grid-template-columns: 1fr; }
+  }
+
+  .edge.nueva { stroke: #1f4f5c; }
+  .node.nuevo rect.box, .node.nuevo path.box { stroke: #0e7490; }
+  .node .newtag { font-size: 9px; font-weight: 700; fill: #22d3ee; letter-spacing: .05em; }
+  .node.cron rect.box { fill: #10262b; stroke: #0e7490; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Reto 5 — Seguridad con JWT y ciclo de vida de la cuenta</h1>
+    <p>Sobre el flujo del Reto 4: el Gateway valida el token, auth-service emite JWT y escucha eventos, el scheduler suspende y reactiva cuentas.</p>
+  </div>
+  <div class="controls">
+    <label>Velocidad <input id="vel" type="range" min="0.3" max="3" step="0.1" value="1"> <span id="velv">1.0×</span></label>
+    <button id="btnPausa">⏸ Pausar</button>
+    <button id="btnReset">↺ Reiniciar</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside>
+    <h2>Recorrido completo</h2>
+    <button class="sc primary" data-sc="todo"><b>▶ Correr todo en orden</b><span>Login → alta → activación → permisos → vacaciones → caso borde → retiro</span></button>
+
+    <h2>Identidad</h2>
+    <button class="sc" data-sc="login"><b>1. Login de admin</b><span><span class="tag" style="background:#1e3a8a">POST /auth/login</span> ruta pública → JWT HS256</span></button>
+    <button class="sc" data-sc="denegada"><b>2. Petición sin token / alterada</b><span>El Gateway corta con <code>401</code>, el backend ni se entera</span></button>
+    <button class="sc" data-sc="alta"><b>3. Alta de empleado E001</b><span><code>empleado.creado</code> → 4 colas; auth crea cuenta <code>PENDIENTE_ACTIVACION</code></span></button>
+    <button class="sc" data-sc="activar"><b>4. Activar cuenta (reset)</b><span>Token del correo → <code>ACTIVA</code> + <code>cuenta.activada</code></span></button>
+    <button class="sc" data-sc="permisos"><b>5. RBAC y propiedad</b><span>USER: GET sí, DELETE <code>403</code>, solo SU perfil</span></button>
+    <button class="sc" data-sc="recover"><b>6. Recuperar contraseña</b><span>Siempre <code>200</code>; publica <code>usuario.recuperacion</code></span></button>
+
+    <h2>Ciclo de vida</h2>
+    <button class="sc" data-sc="vacaciones"><b>7. Vacaciones: suspender y reactivar</b><span>Scheduler → <code>vacaciones.iniciadas/finalizadas</code> → auth</span></button>
+    <button class="sc" data-sc="borde"><b>8. Caso borde: retiro en vacaciones</b><span>E002 queda <code>DESACTIVADA_PERMANENTE</code> y no revive</span></button>
+    <button class="sc" data-sc="retirar"><b>9. Retiro de E001</b><span><code>empleado.retirado</code> → cuenta cerrada, perfil archivado</span></button>
+
+    <h2>Resiliencia</h2>
+    <button class="sc" data-sc="authcaido"><b>10. auth-service detenido</b><span>Login <code>503</code>, pero un token vigente sigue entrando</span></button>
+
+    <h2>Estado del sistema</h2>
+    <div class="state-box" id="estado"></div>
+  </aside>
+
+  <main>
+    <div class="stage">
+      <div class="banner" id="banner">Selecciona una acción a la izquierda</div>
+      <svg id="svg" viewBox="0 0 1480 880" role="img" aria-label="Diagrama animado de los microservicios del Reto 5">
+        <defs>
+          <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="4" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g id="zones"></g>
+        <g id="edges"></g>
+        <g id="lits"></g>
+        <g id="nodes"></g>
+        <g id="badges"></g>
+        <g id="pkts"></g>
+      </svg>
+      <div class="legend">
+        <span><i style="background:var(--req)"></i>Petición HTTP</span>
+        <span><i style="background:var(--res)"></i>Respuesta OK</span>
+        <span><i style="background:var(--err)"></i>401 / 403 / error</span>
+        <span><i style="background:var(--evt)"></i>Evento AMQP</span>
+        <span><i style="background:var(--db)"></i>SQL a su propia BD</span>
+        <span><i style="background:var(--mail)"></i>SMTP (Mailhog)</span>
+        <span><i style="background:var(--ack)"></i>ack manual</span>
+        <span><i style="background:var(--jwt)"></i>JWT</span>
+      </div>
+    </div>
+
+    <div class="bottom">
+      <div class="card">
+        <h3>Paso a paso</h3>
+        <ol id="log"></ol>
+      </div>
+      <div class="card">
+        <h3 id="evtTitle">Último evento / token</h3>
+        <pre id="evento">Todavía no se ha publicado ningún evento.</pre>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ---------- Topología (Reto 4 + auth, q.auth y scheduler) ---------- */
+const NODES = [
+  { id: 'cliente', x: 80,   y: 440, w: 124, h: 64, kind: 'ext', t: 'Cliente', s: 'Postman' },
+  { id: 'gw',      x: 250,  y: 440, w: 160, h: 78, kind: 'svc', t: 'API Gateway', s: 'Node 22 · valida JWT' },
+  { id: 'emp',     x: 480,  y: 200, w: 170, h: 78, kind: 'svc', t: 'empleados', s: 'Java 21 · Spring Boot' },
+  { id: 'pgEmp',   x: 480,  y: 88,  w: 130, h: 46, kind: 'db',  t: 'PostgreSQL', s: 'empleados' },
+  { id: 'dep',     x: 480,  y: 410, w: 170, h: 78, kind: 'svc', t: 'departamentos', s: 'Go · chi' },
+  { id: 'mysql',   x: 655,  y: 410, w: 106, h: 46, kind: 'db',  t: 'MySQL', s: 'departamentos' },
+  { id: 'vac',     x: 480,  y: 620, w: 170, h: 78, kind: 'svc', t: 'vacaciones', s: 'Node 22 · Express' },
+  { id: 'pgVac',   x: 480,  y: 740, w: 150, h: 46, kind: 'db',  t: 'PostgreSQL', s: 'vacaciones + réplica' },
+  { id: 'cron',    x: 300,  y: 740, w: 150, h: 50, kind: 'cron', t: '⏰ Scheduler', s: 'node-cron · cada minuto' },
+  { id: 'ex',      x: 830,  y: 410, w: 180, h: 84, kind: 'exchange', t: 'onboarding.eventos', s: 'exchange topic · RabbitMQ' },
+  { id: 'qp',      x: 1020, y: 210, w: 140, h: 42, kind: 'queue', t: 'q.perfiles' },
+  { id: 'qn',      x: 1020, y: 410, w: 140, h: 42, kind: 'queue', t: 'q.notificaciones' },
+  { id: 'qv',      x: 830,  y: 620, w: 150, h: 42, kind: 'queue', t: 'q.vacaciones' },
+  { id: 'qa',      x: 1020, y: 620, w: 140, h: 42, kind: 'queue', t: 'q.auth', nuevo: true },
+  { id: 'perf',    x: 1195, y: 210, w: 160, h: 78, kind: 'svc', t: 'perfiles', s: 'Java 21 · Spring Boot' },
+  { id: 'pgPerf',  x: 1370, y: 210, w: 130, h: 46, kind: 'db',  t: 'PostgreSQL', s: 'perfiles' },
+  { id: 'notif',   x: 1195, y: 410, w: 160, h: 78, kind: 'svc', t: 'notificaciones', s: 'Python 3.12 · FastAPI' },
+  { id: 'pgNotif', x: 1370, y: 410, w: 130, h: 46, kind: 'db',  t: 'PostgreSQL', s: 'notificaciones' },
+  { id: 'mail',    x: 1385, y: 520, w: 140, h: 56, kind: 'ext', t: 'Mailhog', s: 'bandeja :8025' },
+  { id: 'auth',    x: 1195, y: 620, w: 160, h: 78, kind: 'svc', t: 'auth', s: 'Python 3.12 · :8086 interno', nuevo: true },
+  { id: 'pgAuth',  x: 1370, y: 620, w: 130, h: 46, kind: 'db',  t: 'PostgreSQL', s: 'auth (cuentas)', nuevo: true },
+];
+const N = Object.fromEntries(NODES.map(n => [n.id, n]));
+
+const CUSTOM = {
+  'gw>perf':  'M264,401 L264,62 Q264,40 286,40 L1173,40 Q1195,40 1195,62 L1195,171',
+  'gw>notif': 'M236,401 L236,44 Q236,22 258,22 L1268,22 Q1290,22 1290,44 L1290,318 Q1290,340 1268,340 L1240,340 L1240,371',
+  'gw>auth':  'M250,479 L250,828 Q250,850 272,850 L1173,850 Q1195,850 1195,828 L1195,659',
+};
+const EDGES = [
+  'cliente>gw', 'gw>emp', 'gw>dep', 'gw>vac', 'gw>perf', 'gw>notif', 'gw>auth',
+  'emp>pgEmp', 'emp>dep', 'dep>mysql', 'vac>pgVac', 'cron>vac',
+  'emp>ex', 'vac>ex', 'auth>ex',
+  'ex>qp', 'ex>qn', 'ex>qv', 'ex>qa', 'qp>perf', 'qn>notif', 'qv>vac', 'qa>auth',
+  'perf>pgPerf', 'notif>pgNotif', 'notif>mail', 'auth>pgAuth',
+];
+const DASHED = new Set(['gw>perf', 'gw>notif', 'gw>dep', 'gw>auth', 'cron>vac']);
+const NUEVAS = new Set(['gw>auth', 'auth>ex', 'ex>qa', 'qa>auth', 'auth>pgAuth', 'cron>vac']);
+
+const COLOR = { req: '#60a5fa', res: '#34d399', err: '#f87171', evt: '#fbbf24', db: '#a78bfa', mail: '#f472b6', ack: '#94a3b8', jwt: '#22d3ee' };
+
+/* ---------- Dibujo ---------- */
+const SVGNS = 'http://www.w3.org/2000/svg';
+const $ = s => document.querySelector(s);
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+function drawZones() {
+  const z = $('#zones');
+  const zonas = [
+    { x: 170, y: 50, w: 600, h: 725, t: 'Síncrono (HTTP)' },
+    { x: 725, y: 170, w: 385, h: 490, t: 'Broker (AMQP)' },
+    { x: 1105, y: 150, w: 345, h: 530, t: 'Consumidores + su BD' },
+  ];
+  for (const r of zonas) {
+    el('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 16, class: 'zone' }, z);
+    el('text', { x: r.x + 12, y: r.y + 16, class: 'zone-t' }, z).textContent = r.t;
+  }
+  el('text', { x: 720, y: 842, 'text-anchor': 'middle', class: 'zone-t' }, z).textContent = 'Gateway → auth: solo /auth/* (login, recover, reset, change-password)';
+}
+
+const PATHS = {};
+function drawEdges() {
+  const g = $('#edges');
+  for (const key of EDGES) {
+    const [a, b] = key.split('>');
+    const d = CUSTOM[key] || `M${N[a].x},${N[a].y} L${N[b].x},${N[b].y}`;
+    PATHS[key] = el('path', { d, class: 'edge' + (DASHED.has(key) ? ' dashed' : '') + (NUEVAS.has(key) ? ' nueva' : '') }, g);
+  }
+}
+
+const NODE_EL = {};
+function drawNodes() {
+  const g = $('#nodes');
+  for (const n of NODES) {
+    const grp = el('g', { class: `node ${n.kind}${n.nuevo ? ' nuevo' : ''}`, id: 'n-' + n.id }, g);
+    const x = n.x - n.w / 2, y = n.y - n.h / 2;
+    if (n.kind === 'db') {
+      const rx = n.w / 2, ry = 7;
+      el('path', {
+        class: 'box',
+        d: `M${x},${y + ry} A${rx},${ry} 0 0 1 ${x + n.w},${y + ry} L${x + n.w},${y + n.h - ry} A${rx},${ry} 0 0 1 ${x},${y + n.h - ry} Z`
+      }, grp);
+      el('path', { d: `M${x},${y + ry} A${rx},${ry} 0 0 0 ${x + n.w},${y + ry}`, fill: 'none', stroke: '#54468f' }, grp);
+      el('text', { x: n.x, y: n.y + 3, 'text-anchor': 'middle', class: 't', style: 'font-size:12px' }, grp).textContent = n.t;
+      el('text', { x: n.x, y: n.y + 17, 'text-anchor': 'middle', class: 's', style: 'font-size:10px' }, grp).textContent = n.s;
+    } else if (n.kind === 'queue') {
+      el('rect', { class: 'box', x, y, width: n.w, height: n.h, rx: n.h / 2 }, grp);
+      el('text', { x: n.x, y: n.y - 1, 'text-anchor': 'middle', class: 't', style: 'font-size:12px' }, grp).textContent = n.t;
+      el('rect', { x: n.x - 40, y: n.y + 7, width: 80, height: 5, rx: 2.5, fill: '#3a2f14' }, grp);
+      el('rect', { class: 'qbar', id: 'qb-' + n.id, x: n.x - 40, y: n.y + 7, width: 0, height: 5, rx: 2.5 }, grp);
+      el('text', { x: n.x + n.w / 2 - 4, y: y - 5, 'text-anchor': 'end', class: 'st', id: 'st-' + n.id }, grp).textContent = '0 mensajes';
+    } else {
+      el('rect', { class: 'box', x, y, width: n.w, height: n.h, rx: 12 }, grp);
+      const hasState = n.kind === 'svc' || n.id === 'mail' || n.id === 'cliente';
+      el('text', { x: n.x, y: n.y - (hasState ? 12 : 4), 'text-anchor': 'middle', class: 't' }, grp).textContent = n.t;
+      el('text', { x: n.x, y: n.y + (hasState ? 4 : 13), 'text-anchor': 'middle', class: 's' }, grp).textContent = n.s;
+      if (hasState) el('text', { x: n.x, y: n.y + 22, 'text-anchor': 'middle', class: 'st', id: 'st-' + n.id }, grp).textContent = '';
+      el('text', { x: n.x, y: y - 6, 'text-anchor': 'middle', class: 'downtag' }, grp).textContent = '■ DETENIDO';
+    }
+    if (n.nuevo) el('text', { x: x + n.w - 4, y: y + 11, 'text-anchor': 'end', class: 'newtag' }, grp).textContent = 'RETO 5';
+    NODE_EL[n.id] = grp;
+  }
+}
+
+/* ---------- Motor de animación (igual al del Reto 4) ---------- */
+let speed = 1, paused = false, running = false;
+
+function tick(ms) {
+  return new Promise(res => {
+    let acc = 0, last = performance.now();
+    function f(now) {
+      const dt = now - last; last = now;
+      if (!paused) acc += dt * speed;
+      if (acc >= ms) res(); else requestAnimationFrame(f);
+    }
+    requestAnimationFrame(f);
+  });
+}
+
+function travel(key, reverse, kind, label, dur) {
+  const path = PATHS[key];
+  const len = path.getTotalLength();
+  const color = COLOR[kind];
+  const lit = path.cloneNode();
+  lit.setAttribute('class', 'lit');
+  lit.style.stroke = color;
+  if (reverse) lit.style.animationDirection = 'reverse';
+  $('#lits').appendChild(lit);
+
+  const g = el('g', { class: 'pkt' }, $('#pkts'));
+  el('circle', { r: 15, fill: color, opacity: .18 }, g);
+  el('circle', { r: 7, fill: color, filter: 'url(#glow)' }, g);
+  if (label) el('text', { y: -14, 'text-anchor': 'middle', fill: color }, g).textContent = label;
+
+  return new Promise(res => {
+    let acc = 0, last = performance.now();
+    function f(now) {
+      const dt = now - last; last = now;
+      if (!paused) acc += dt * speed;
+      const t = Math.min(1, acc / dur);
+      const e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const p = path.getPointAtLength(reverse ? len * (1 - e) : len * e);
+      g.setAttribute('transform', `translate(${p.x},${p.y})`);
+      if (t < 1) requestAnimationFrame(f);
+      else { g.remove(); lit.remove(); res(); }
+    }
+    requestAnimationFrame(f);
+  });
+}
+
+function pulse(id, kind) {
+  const n = NODE_EL[id];
+  n.style.setProperty('--c', COLOR[kind]);
+  n.classList.remove('hit'); void n.getBBox(); n.classList.add('hit');
+  clearTimeout(n._t);
+  n._t = setTimeout(() => n.classList.remove('hit'), 750 / speed);
+}
+
+async function go(a, b, kind = 'req', label = '') {
+  let key = `${a}>${b}`, rev = false;
+  if (!PATHS[key]) { key = `${b}>${a}`; rev = true; }
+  if (!PATHS[key]) throw new Error('No hay arista ' + a + '-' + b);
+  pulse(a, kind);
+  const base = kind === 'ack' ? 520 : (CUSTOM[key] ? 1700 : 950);
+  await travel(key, rev, kind, label, base);
+  pulse(b, kind);
+}
+
+async function badge(id, text, kind) {
+  const n = N[id];
+  const t = el('text', { x: n.x, y: n.y - n.h / 2 - 8, 'text-anchor': 'middle', class: 'badge', fill: COLOR[kind] }, $('#badges'));
+  t.textContent = text;
+  t.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 250, fill: 'forwards' });
+  await tick(1300);
+  t.animate([{ opacity: 1 }, { opacity: 0, transform: 'translateY(-10px)' }], { duration: 400, fill: 'forwards' }).onfinish = () => t.remove();
+}
+
+function setSt(id, text) { const t = $('#st-' + id); if (t) t.textContent = text; }
+function setDown(id, v) { NODE_EL[id].classList.toggle('down', v); }
+
+const Q = { qp: 0, qn: 0, qv: 0, qa: 0 };
+function qSet(id, d) {
+  Q[id] = Math.max(0, Q[id] + d);
+  setSt(id, `${Q[id]} mensaje${Q[id] === 1 ? '' : 's'}`);
+  $('#qb-' + id).setAttribute('width', Math.min(80, Q[id] * 26));
+}
+
+/* ---------- Panel de log / evento ---------- */
+function log(html, kind = 'req') {
+  const li = document.createElement('li');
+  li.innerHTML = `<i style="background:${COLOR[kind]}"></i><div>${html}</div>`;
+  $('#log').appendChild(li);
+  li.scrollIntoView({ block: 'nearest' });
+}
+function titulo(text) {
+  const li = document.createElement('li');
+  li.className = 'titulo'; li.textContent = text;
+  $('#log').appendChild(li);
+  li.scrollIntoView({ block: 'nearest' });
+  $('#banner').textContent = text;
+}
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+  });
+}
+function colorJson(obj) {
+  return JSON.stringify(obj, null, 2)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/("(?:[^"\\]|\\.)*")(\s*:)?|\b(-?\d+(?:\.\d+)?|true|false|null)\b/g, (m, s, colon, num) =>
+      s ? (colon ? `<span class="k">${s}</span>${colon}` : `<span class="s">${s}</span>`) : `<span class="n">${num}</span>`);
+}
+const isoZ = d => d.toISOString().replace(/\.\d+Z$/, 'Z');
+function evento(type, producer, data, id = uuid()) {
+  const env = { id, type, version: 1, occurredAt: isoZ(new Date()), producer, data };
+  $('#evtTitle').textContent = `Evento publicado: ${type} (routing key = type)`;
+  $('#evento').innerHTML = colorJson(env);
+  return env;
+}
+function respuesta(titulo, body) {
+  $('#evtTitle').textContent = titulo;
+  $('#evento').innerHTML = colorJson(body);
+}
+function mostrarJwt(titulo, payload) {
+  $('#evtTitle').textContent = titulo;
+  $('#evento').innerHTML = '<span class="k">// header</span>\n' + colorJson({ alg: 'HS256', typ: 'JWT' }) +
+    '\n<span class="k">// payload (Base64URL, se lee pero no se puede alterar)</span>\n' + colorJson(payload) +
+    '\n<span class="k">// firma = HMAC-SHA256(header.payload, JWT_SECRET)</span>';
+}
+const ahora = () => Math.floor(Date.now() / 1000);
+const tok = (sub, role) => ({ sub, role, iat: ahora(), exp: ahora() + 3600 });
+
+/* ---------- Estado del "mundo" ---------- */
+const PERSONAS = {
+  E001: { empleadoId: 'E001', nombre: 'Juan', apellido: 'Pérez', email: 'juan.perez@empresa.com' },
+  E002: { empleadoId: 'E002', nombre: 'Ana', apellido: 'Gómez', email: 'ana.gomez@empresa.com' },
+};
+let W;
+function resetWorld() {
+  W = { emp: {}, cuentas: { admin: 'ACTIVA' }, perfiles: {}, vacas: {}, replica: {}, notifs: [], mails: 0, tokens: {}, seqVac: 0 };
+  for (const k of Object.keys(Q)) { Q[k] = 0; qSet(k, 0); }
+  for (const id of ['emp', 'dep', 'vac', 'perf', 'notif', 'gw', 'mail', 'cliente', 'auth']) setSt(id, '');
+  setSt('gw', 'UP · JWT_SECRET'); setSt('dep', 'IT existe'); setSt('auth', 'admin · ACTIVA');
+  for (const n of NODES) setDown(n.id, false);
+  renderEstado();
+}
+function renderEstado() {
+  const c = id => W.cuentas[id] ? `<code>${W.cuentas[id]}</code>` : '—';
+  const rows = [
+    ['Token admin', W.tokens.admin ? '<code>ADMIN ✓</code>' : '—'],
+    ['Token E001', W.tokens.E001 ? '<code>USER ✓</code>' : '—'],
+    ['E001 empleado', W.emp.E001 ? `<code>${W.emp.E001.estado}</code>` : '—'],
+    ['E001 cuenta', c('E001')],
+    ['E002 empleado', W.emp.E002 ? `<code>${W.emp.E002.estado}</code>` : '—'],
+    ['E002 cuenta', c('E002')],
+    ['Vacaciones', Object.entries(W.vacas).map(([k, v]) => `<code>${k}:${v.estado}</code>`).join(' ') || '—'],
+    ['Notificaciones', `<code>${W.notifs.length}</code>`],
+    ['Correos en Mailhog', `<code>${W.mails}</code>`],
+  ];
+  $('#estado').innerHTML = rows.map(([a, b]) => `<div><span>${a}</span>${b}</div>`).join('');
+}
+
+/* ---------- Bloques reutilizables ---------- */
+async function sql(svc, db, label, back = 'OK') {
+  await go(svc, db, 'db', label);
+  await go(db, svc, 'db', back);
+}
+async function responder(from, kind, label) {
+  if (from !== 'gw') await go(from, 'gw', kind, label);
+  await go('gw', 'cliente', kind, label);
+  setSt('cliente', label);
+}
+async function consumir(q, svc, trabajo) {
+  while (NODE_EL[svc].classList.contains('down')) await tick(200);
+  await go(q, svc, 'evt', 'entrega');
+  await trabajo();
+  await go(svc, q, 'ack', 'ack');
+  qSet(q, -1);
+}
+async function fanout(env, colas) {
+  log(`El exchange copia <code>${env.type}</code> en: ${colas.map(c => '<code>' + N[c].t + '</code>').join(', ')}.`, 'evt');
+  await Promise.all(colas.map(q => go('ex', q, 'evt', env.type).then(() => qSet(q, +1))));
+}
+async function correo(tipo, asunto, quien) {
+  W.notifs.push({ tipo, quien });
+  setSt('notif', `[NOTIFICACIÓN] ${tipo}`);
+  await sql('notif', 'pgNotif', 'INSERT ' + tipo);
+  await go('notif', 'mail', 'mail', 'SMTP ' + asunto);
+  W.mails++; setSt('mail', `✉ ${asunto}`);
+  renderEstado();
+}
+function cuenta(id, estado) {
+  W.cuentas[id] = estado;
+  setSt('auth', `${id} · ${estado}`);
+  renderEstado();
+}
+
+/*
+ * Filtro del Gateway (api-gateway/src/auth.js):
+ *  - rutas públicas: login, recover-password, reset-password
+ *  - sin Bearer / firma mala / type=RESET_PASSWORD → 401
+ *  - ADMIN todo; USER: GET, change-password y PUT /perfiles/{su sub} → si no, 403
+ */
+const PUBLICAS = new Set(['POST /auth/login', 'POST /auth/recover-password', 'POST /auth/reset-password']);
+async function gateway(method, path, quien, opciones = {}) {
+  const ruta = `${method} ${path}`;
+  await go('cliente', 'gw', 'req', ruta.length > 26 ? method + ' ' + path.split('/').slice(0, 3).join('/') : ruta);
+  if (PUBLICAS.has(ruta)) {
+    badge('gw', 'ruta pública', 'jwt');
+    log(`<code>${ruta}</code> es una de las 3 rutas públicas: el Gateway no pide token.`, 'jwt');
+    return true;
+  }
+  if (!quien || opciones.tokenMalo) {
+    const motivo = opciones.tokenMalo || 'sin header Authorization';
+    badge('gw', '401 ' + motivo, 'err');
+    log(`El Gateway verifica el JWT con <code>JWT_SECRET</code> (HS256): <b>${motivo}</b> → <code>401 No autenticado</code>. La petición <b>no llega</b> al servicio.`, 'err');
+    await tick(500);
+    await responder('gw', 'err', '401');
+    respuesta('Respuesta del Gateway', { status: 401, mensaje: 'No autenticado' });
+    return false;
+  }
+  const rol = quien === 'admin' ? 'ADMIN' : 'USER';
+  badge('gw', `JWT ✓ sub=${quien} role=${rol}`, 'jwt');
+  let ok = rol === 'ADMIN' || method === 'GET' || ruta === 'POST /auth/change-password';
+  const perfil = /^\/perfiles\/([^/]+)$/.exec(path);
+  if (!ok && method === 'PUT' && perfil && perfil[1] === quien) ok = true;
+  if (!ok) {
+    await tick(700);
+    badge('gw', '403 sin permiso', 'err');
+    log(`Firma válida (<code>sub=${quien}</code>, <code>role=${rol}</code>), pero la regla RBAC no lo permite${perfil ? ': el perfil no es el suyo' : ''} → <code>403</code>.`, 'err');
+    await responder('gw', 'err', '403');
+    respuesta('Respuesta del Gateway', { status: 403, mensaje: 'No tiene permisos para realizar esta operación' });
+    return false;
+  }
+  log(`Firma y <code>exp</code> válidos, <code>role=${rol}</code> puede hacer <code>${method}</code> aquí → el Gateway reenvía.`, 'jwt');
+  return true;
+}
+
+async function login(usuario, quien, clave = '••••') {
+  log(`<code>POST /auth/login</code> con <code>{"usuario":"${usuario}","contrasena":"${clave}"}</code>.`);
+  if (!(await gateway('POST', '/auth/login'))) return false;
+  if (NODE_EL.auth.classList.contains('down')) {
+    await go('gw', 'auth', 'req', 'POST /auth/login');
+    badge('auth', 'sin respuesta', 'err');
+    log('auth-service no responde: el Gateway devuelve <code>503</code> JSON y sigue UP.', 'err');
+    await responder('gw', 'err', '503');
+    respuesta('Respuesta del Gateway', { status: 503, mensaje: 'El servicio de auth no está disponible', servicio: 'auth-service' });
+    return false;
+  }
+  await go('gw', 'auth', 'req', 'POST /auth/login');
+  const estado = W.cuentas[quien];
+  await sql('auth', 'pgAuth', 'SELECT cuenta', estado || 'no existe');
+  if (!estado || estado === 'PENDIENTE_ACTIVACION' && !W.claves?.[quien]) {
+    log('No hay cuenta o aún no tiene contraseña → <code>401 Credenciales inválidas</code>.', 'err');
+    await responder('auth', 'err', '401');
+    return false;
+  }
+  badge('auth', 'bcrypt.verify ✓', 'db');
+  if (estado !== 'ACTIVA') {
+    log(`La clave es correcta, pero la cuenta está <code>${estado}</code> → <code>401 La cuenta no está activa</code>. No se emite token.`, 'err');
+    await responder('auth', 'err', '401 no activa');
+    respuesta('Respuesta de auth', { mensaje: 'La cuenta no está activa' });
+    return false;
+  }
+  const rol = quien === 'admin' ? 'ADMIN' : 'USER';
+  log(`bcrypt valida el hash y la cuenta está <code>ACTIVA</code>: auth firma un access JWT HS256 de 60 min con <code>sub=${quien}</code> y <code>role=${rol}</code>. La contraseña <b>nunca</b> va en el token.`, 'jwt');
+  await go('auth', 'gw', 'jwt', '200 token');
+  await go('gw', 'cliente', 'jwt', '200 token');
+  setSt('cliente', `token ${rol}`);
+  W.tokens[quien] = true; renderEstado();
+  mostrarJwt(`Access token de ${quien} → { token, tokenType: "Bearer", expiresIn: 3600, role: "${rol}" }`, tok(quien, rol));
+  return true;
+}
+
+/* ---------- Escenarios ---------- */
+async function escLogin() {
+  titulo('Login de admin (semilla creada desde AUTH_ADMIN_* al arrancar)');
+  await login('admin', 'admin', 'Admin1234!');
+}
+
+async function escDenegada() {
+  titulo('Peticiones sin permiso de entrada');
+  log('<b>a)</b> <code>GET /empleados</code> sin header Authorization.');
+  await gateway('GET', '/empleados', null);
+  await tick(500);
+  log('<b>b)</b> Mismo GET con un token al que se le cambió el payload (role=ADMIN a mano).');
+  await gateway('GET', '/empleados', 'E001', { tokenMalo: 'firma no coincide' });
+  await tick(500);
+  log('<b>c)</b> Mismo GET usando como Bearer el token de reset del correo.');
+  await gateway('GET', '/empleados', 'E001', { tokenMalo: 'type=RESET_PASSWORD' });
+}
+
+async function requiereAdmin() {
+  if (!W.tokens.admin) { log('Primero hace falta el token de admin.', 'jwt'); await escLogin(); await tick(500); }
+}
+
+async function alta(id = 'E001') {
+  await requiereAdmin();
+  const p = PERSONAS[id];
+  titulo(`Alta de empleado ${id} con JWT de admin`);
+  if (W.emp[id]) { log(`${id} ya existe: reinicia el diagrama para repetir el alta.`, 'err'); return; }
+  if (!(await gateway('POST', '/empleados', 'admin'))) return;
+  await go('gw', 'emp', 'req', 'POST /empleados');
+  log('Igual que en el Reto 4: valida el departamento por HTTP (Circuit Breaker) y guarda en su propia BD.');
+  await go('emp', 'dep', 'req', 'GET /departamentos/IT');
+  await go('dep', 'emp', 'res', '200');
+  await sql('emp', 'pgEmp', 'INSERT ACTIVO', 'COMMIT');
+  W.emp[id] = { estado: 'ACTIVO' }; setSt('emp', `${id} · ACTIVO`); renderEstado();
+  const env = evento('empleado.creado', 'empleados-service', { ...p, departamentoId: 'IT', fechaIngreso: '2026-03-01', estado: 'ACTIVO' });
+  await Promise.all([responder('emp', 'res', '201 ACTIVO'), go('emp', 'ex', 'evt', 'empleado.creado')]);
+  log('<b>Nuevo en el Reto 5:</b> <code>q.auth</code> también está ligada a <code>empleado.creado</code>.', 'evt');
+  await fanout(env, ['qp', 'qn', 'qv', 'qa']);
+  let salida;
+  await Promise.all([
+    consumir('qp', 'perf', async () => {
+      await sql('perf', 'pgPerf', 'INSERT perfil');
+      W.perfiles[id] = 'activo'; setSt('perf', `${id} · perfil por defecto`);
+    }),
+    consumir('qv', 'vac', async () => {
+      await sql('vac', 'pgVac', 'UPSERT réplica');
+      W.replica[id] = 'ACTIVO'; setSt('vac', `réplica ${id} · ACTIVO`);
+    }),
+    consumir('qn', 'notif', async () => {
+      await sql('notif', 'pgNotif', 'guarda destinatario');
+      log('notificaciones <b>ya no</b> manda BIENVENIDA aquí: solo guarda <code>empleadoId ↔ email</code> para eventos futuros.', 'db');
+    }),
+    consumir('qa', 'auth', async () => {
+      await sql('auth', 'pgAuth', '¿id procesado?', 'no');
+      await sql('auth', 'pgAuth', 'INSERT cuenta', 'COMMIT');
+      cuenta(id, 'PENDIENTE_ACTIVACION');
+      log(`auth crea la cuenta <code>${id}</code> con rol <code>USER</code>, sin contraseña, en <code>PENDIENTE_ACTIVACION</code>, y genera un token de activación (JWT <code>type=RESET_PASSWORD</code>, 60 min).`, 'db');
+      salida = evento('usuario.creado', 'auth-service', { empleadoId: id, email: p.email, tokenActivacion: 'eyJhbGciOiJIUzI1NiJ9.…', expiraEn: isoZ(new Date(Date.now() + 3600e3)) });
+      log('Commit <b>antes</b> del publish: publica <code>usuario.creado</code>.', 'evt');
+      await go('auth', 'ex', 'evt', 'usuario.creado');
+    }),
+  ]);
+  await fanout(salida, ['qn']);
+  await consumir('qn', 'notif', async () => {
+    log('notificaciones registra <code>SEGURIDAD</code> y envía el correo con el token de activación.', 'mail');
+    await correo('SEGURIDAD', 'Seguridad (activar)', p.email.split('@')[0]);
+  });
+}
+
+async function activar(id = 'E001') {
+  if (!W.cuentas[id]) { log(`${id} no tiene cuenta todavía; se hace el alta primero.`, 'jwt'); await alta(id); await tick(500); }
+  titulo(`Activar la cuenta de ${id} con el token del correo`);
+  if (W.cuentas[id] !== 'PENDIENTE_ACTIVACION') { log(`La cuenta ya está <code>${W.cuentas[id]}</code>.`, 'err'); return; }
+  log('Se copia el token del correo SEGURIDAD (Mailhog) y se envía <code>POST /auth/reset-password</code> con <code>{"token":"…","contrasena":"Usuario123!"}</code>.');
+  await gateway('POST', '/auth/reset-password');
+  await go('gw', 'auth', 'req', 'POST /auth/reset-password');
+  badge('auth', 'type=RESET_PASSWORD ✓ · política ✓', 'jwt');
+  log('auth verifica la firma, que <code>type=RESET_PASSWORD</code> y no haya expirado, y que la clave cumpla la política. Guarda el hash bcrypt.', 'jwt');
+  await sql('auth', 'pgAuth', 'UPDATE hash + ACTIVA', 'COMMIT');
+  W.claves = { ...(W.claves || {}), [id]: true };
+  cuenta(id, 'ACTIVA');
+  const env = evento('cuenta.activada', 'auth-service', { empleadoId: id, email: PERSONAS[id].email, motivo: 'ACTIVACION_INICIAL' });
+  await Promise.all([responder('auth', 'res', '200'), go('auth', 'ex', 'evt', 'cuenta.activada')]);
+  await fanout(env, ['qn']);
+  await consumir('qn', 'notif', () => correo('CUENTA', 'Cuenta activada', PERSONAS[id].email.split('@')[0]));
+  await tick(400);
+  log('Ya puede iniciar sesión con su email.');
+  await login(PERSONAS[id].email, id, 'Usuario123!');
+}
+
+async function permisos() {
+  if (W.cuentas.E001 !== 'ACTIVA' || !W.tokens.E001) {
+    log('Hace falta E001 activo y con token.', 'jwt');
+    if (!W.cuentas.E001) await alta('E001');
+    if (W.cuentas.E001 === 'PENDIENTE_ACTIVACION') await activar('E001');
+    if (W.cuentas.E001 !== 'ACTIVA') { log('E001 no está ACTIVA: reinicia el diagrama.', 'err'); return; }
+    await tick(500);
+  }
+  titulo('RBAC + propiedad del recurso con el token USER de E001');
+  log('<b>a)</b> <code>GET /empleados</code>: el USER puede leer todo.');
+  if (await gateway('GET', '/empleados', 'E001')) {
+    await go('gw', 'emp', 'req', 'GET');
+    await sql('emp', 'pgEmp', 'SELECT', 'filas');
+    await responder('emp', 'res', '200');
+  }
+  await tick(400);
+  log('<b>b)</b> <code>DELETE /empleados/E001</code>: escribir sobre empleados es solo ADMIN.');
+  await gateway('DELETE', '/empleados/E001', 'E001');
+  await tick(400);
+  log('<b>c)</b> <code>PUT /perfiles/E002</code>: el perfil de <b>otro</b> empleado.');
+  await gateway('PUT', '/perfiles/E002', 'E001');
+  await tick(400);
+  log('<b>d)</b> <code>PUT /perfiles/E001</code>: el path coincide con <code>sub</code> del token.');
+  if (await gateway('PUT', '/perfiles/E001', 'E001')) {
+    await go('gw', 'perf', 'req', 'PUT /perfiles/E001');
+    await sql('perf', 'pgPerf', 'UPDATE perfil');
+    await responder('perf', 'res', '200');
+  }
+}
+
+async function recover() {
+  if (W.cuentas.E001 !== 'ACTIVA') { log('Hace falta E001 activa.', 'jwt'); await permisos(); await tick(400); }
+  titulo('Recuperar contraseña de E001');
+  log('<code>POST /auth/recover-password</code> con <code>{"email":"juan.perez@empresa.com"}</code>.');
+  await gateway('POST', '/auth/recover-password');
+  await go('gw', 'auth', 'req', 'POST recover');
+  await sql('auth', 'pgAuth', 'SELECT por email', 'ACTIVA');
+  log('Responde <b>siempre</b> <code>200 "Si el correo existe…"</code>, exista o no, para no revelar qué correos están registrados.', 'res');
+  const env = evento('usuario.recuperacion', 'auth-service', { email: PERSONAS.E001.email, tokenRecuperacion: 'eyJhbGciOiJIUzI1NiJ9.…', expiraEn: isoZ(new Date(Date.now() + 3600e3)) });
+  await Promise.all([responder('auth', 'res', '200'), go('auth', 'ex', 'evt', 'usuario.recuperacion')]);
+  await fanout(env, ['qn']);
+  await consumir('qn', 'notif', async () => {
+    log('El evento trae solo el email: notificaciones busca el <code>empleadoId</code> en sus destinatarios guardados.', 'db');
+    await correo('SEGURIDAD', 'Seguridad (recuperar)', 'juan.perez');
+  });
+  log('Con ese token se hace <code>reset-password</code> igual que en la activación; como la cuenta ya está ACTIVA, <b>no</b> se publica <code>cuenta.activada</code>.', 'jwt');
+}
+
+async function programar(id) {
+  if (!(await gateway('POST', '/vacaciones', 'admin'))) return null;
+  await go('gw', 'vac', 'req', 'POST /vacaciones');
+  await sql('vac', 'pgVac', 'réplica + solapes', 'ACTIVO, libre');
+  const vid = `V-${String(++W.seqVac).padStart(3, '0')}`;
+  await sql('vac', 'pgVac', 'INSERT PROGRAMADA', 'COMMIT');
+  W.vacas[id] = { id: vid, estado: 'PROGRAMADA' }; setSt('vac', `${vid} · PROGRAMADA`); renderEstado();
+  const env = evento('vacaciones.programadas', 'vacaciones-service', { vacacionesId: vid, empleadoId: id, email: PERSONAS[id].email, fechaInicio: 'mañana', fechaFin: 'mañana' });
+  await Promise.all([responder('vac', 'res', '201 ' + vid), go('vac', 'ex', 'evt', 'vacaciones.programadas')]);
+  await fanout(env, ['qn']);
+  await consumir('qn', 'notif', () => correo('VACACIONES', 'Vacaciones programadas', PERSONAS[id].email.split('@')[0]));
+  return vid;
+}
+
+// Transición del scheduler: UPDATE ... RETURNING atómico y publish después del commit.
+async function transicion(id, tipo, forzado) {
+  const v = W.vacas[id];
+  const inicia = tipo === 'vacaciones.iniciadas';
+  if (forzado) {
+    log(`<code>POST /vacaciones/${v.id}/forzar-${inicia ? 'inicio' : 'fin'}</code> (solo ADMIN, para la demo) hace lo mismo que el cron sin esperar la fecha.`);
+    await gateway('POST', `/vacaciones/${v.id}/forzar-${inicia ? 'inicio' : 'fin'}`, 'admin');
+    await go('gw', 'vac', 'req', 'forzar-' + (inicia ? 'inicio' : 'fin'));
+  } else {
+    log(`El <b>scheduler</b> (<code>VACACIONES_CRON="* * * * *"</code>) despierta y busca períodos cuya fecha ${inicia ? 'de inicio' : 'de fin'} ya llegó.`, 'evt');
+    await go('cron', 'vac', 'evt', '⏰ tick');
+  }
+  await sql('vac', 'pgVac', `UPDATE → ${inicia ? 'EN_CURSO' : 'FINALIZADA'} RETURNING`, 'COMMIT');
+  v.estado = inicia ? 'EN_CURSO' : 'FINALIZADA'; setSt('vac', `${v.id} · ${v.estado}`); renderEstado();
+  const env = evento(tipo, 'vacaciones-service', { vacacionesId: v.id, empleadoId: id, email: PERSONAS[id].email });
+  const pasos = [go('vac', 'ex', 'evt', tipo)];
+  if (forzado) pasos.push(responder('vac', 'res', '200 ' + v.estado));
+  await Promise.all(pasos);
+  await fanout(env, ['qn', 'qa']);
+  let salida = null;
+  await Promise.all([
+    consumir('qn', 'notif', () => correo('VACACIONES', inicia ? 'Vacaciones iniciadas' : 'Vacaciones finalizadas', PERSONAS[id].email.split('@')[0])),
+    consumir('qa', 'auth', async () => {
+      const est = W.cuentas[id];
+      await sql('auth', 'pgAuth', 'SELECT cuenta', est);
+      if (inicia && est === 'ACTIVA') {
+        await sql('auth', 'pgAuth', 'UPDATE SUSPENDIDA_TEMPORAL', 'COMMIT');
+        cuenta(id, 'SUSPENDIDA_TEMPORAL');
+        log(`auth: <code>ACTIVA → SUSPENDIDA_TEMPORAL</code>.`, 'db');
+        salida = evento('cuenta.desactivada', 'auth-service', { empleadoId: id, email: PERSONAS[id].email, motivo: 'VACACIONES', permanente: false });
+      } else if (!inicia && est === 'SUSPENDIDA_TEMPORAL') {
+        await sql('auth', 'pgAuth', 'UPDATE ACTIVA', 'COMMIT');
+        cuenta(id, 'ACTIVA');
+        log(`auth: <code>SUSPENDIDA_TEMPORAL → ACTIVA</code>.`, 'db');
+        salida = evento('cuenta.activada', 'auth-service', { empleadoId: id, email: PERSONAS[id].email, motivo: 'FIN_VACACIONES' });
+      } else {
+        badge('auth', `${est}: no se toca`, 'ack');
+        log(`auth ve la cuenta en <code>${est}</code>: ${inicia ? 'no se suspende' : '<b>no se reactiva</b>, solo una SUSPENDIDA_TEMPORAL vuelve a ACTIVA'}. Ack sin publicar nada.`, 'ack');
+        return;
+      }
+      await go('auth', 'ex', 'evt', salida.type);
+    }),
+  ]);
+  if (salida) {
+    await fanout(salida, ['qn']);
+    await consumir('qn', 'notif', () => correo('CUENTA', salida.type === 'cuenta.activada' ? 'Bienvenido de regreso' : 'Cuenta suspendida', PERSONAS[id].email.split('@')[0]));
+  }
+}
+
+async function vacaciones() {
+  if (W.cuentas.E001 !== 'ACTIVA') { log('Hace falta E001 activa.', 'jwt'); await permisos(); await tick(400); }
+  titulo('Vacaciones de E001: la cuenta se suspende y se reactiva');
+  if (W.vacas.E001) { log('E001 ya tuvo vacaciones en esta corrida: reinicia el diagrama.', 'err'); return; }
+  await programar('E001');
+  await tick(500);
+  titulo('Llega la fecha de inicio → vacaciones.iniciadas');
+  await transicion('E001', 'vacaciones.iniciadas', false);
+  await tick(400);
+  log('E001 intenta entrar mientras está de vacaciones.');
+  await login(PERSONAS.E001.email, 'E001', 'Usuario123!');
+  await tick(500);
+  titulo('Llega la fecha de fin → vacaciones.finalizadas');
+  await transicion('E001', 'vacaciones.finalizadas', true);
+  await tick(400);
+  await login(PERSONAS.E001.email, 'E001', 'Usuario123!');
+}
+
+async function retiro(id) {
+  if (!(await gateway('DELETE', `/empleados/${id}`, 'admin'))) return;
+  await go('gw', 'emp', 'req', 'DELETE /empleados/' + id);
+  await sql('emp', 'pgEmp', 'UPDATE RETIRADO', 'COMMIT');
+  W.emp[id].estado = 'RETIRADO'; setSt('emp', `${id} · RETIRADO`); renderEstado();
+  const env = evento('empleado.retirado', 'empleados-service', { empleadoId: id, email: PERSONAS[id].email, fechaRetiro: isoZ(new Date()), motivo: 'RENUNCIA' });
+  await Promise.all([responder('emp', 'res', '200 RETIRADO'), go('emp', 'ex', 'evt', 'empleado.retirado')]);
+  await fanout(env, ['qp', 'qn', 'qv', 'qa']);
+  let salida = null;
+  await Promise.all([
+    consumir('qp', 'perf', async () => { await sql('perf', 'pgPerf', 'UPDATE archivado'); W.perfiles[id] = 'archivado'; setSt('perf', `${id} · archivado`); }),
+    consumir('qv', 'vac', async () => { await sql('vac', 'pgVac', 'réplica → RETIRADO'); W.replica[id] = 'RETIRADO'; setSt('vac', `réplica ${id} · RETIRADO`); }),
+    consumir('qn', 'notif', async () => {
+      badge('notif', 'sin fila (ya no DESVINCULACION)', 'ack');
+      log('notificaciones confirma <code>empleado.retirado</code> <b>sin</b> crear fila: el aviso de salida lo da <code>cuenta.desactivada</code>.', 'ack');
+      await tick(600);
+    }),
+    consumir('qa', 'auth', async () => {
+      const antes = W.cuentas[id];
+      await sql('auth', 'pgAuth', 'SELECT cuenta', antes);
+      await sql('auth', 'pgAuth', 'UPDATE DESACTIVADA_PERMANENTE', 'COMMIT');
+      cuenta(id, 'DESACTIVADA_PERMANENTE');
+      log(`auth: <code>${antes} → DESACTIVADA_PERMANENTE</code> (estado final, sin vuelta atrás).`, 'db');
+      salida = evento('cuenta.desactivada', 'auth-service', { empleadoId: id, email: PERSONAS[id].email, motivo: 'RETIRO', permanente: true });
+      await go('auth', 'ex', 'evt', 'cuenta.desactivada');
+    }),
+  ]);
+  await fanout(salida, ['qn']);
+  await consumir('qn', 'notif', () => correo('CUENTA', 'Cuenta desactivada', PERSONAS[id].email.split('@')[0]));
+}
+
+async function borde() {
+  if (W.vacas.E002) { log('El caso borde ya corrió: reinicia el diagrama.', 'err'); return; }
+  if (!W.cuentas.E002) await alta('E002');
+  if (W.cuentas.E002 === 'PENDIENTE_ACTIVACION') { await activar('E002'); }
+  titulo('Caso borde: E002 se retira durante sus vacaciones');
+  await programar('E002');
+  await tick(400);
+  await transicion('E002', 'vacaciones.iniciadas', true);
+  await tick(400);
+  titulo('ADMIN retira a E002 mientras está SUSPENDIDA_TEMPORAL');
+  await retiro('E002');
+  await tick(500);
+  titulo('Termina el período de E002 → vacaciones.finalizadas');
+  await transicion('E002', 'vacaciones.finalizadas', true);
+  await tick(400);
+  log('Login de E002: sigue en 401. Con un booleano <code>activo</code> esto no se podría distinguir; por eso hay 4 estados.', 'err');
+  await login(PERSONAS.E002.email, 'E002', 'Usuario123!');
+}
+
+async function retirar() {
+  if (!W.emp.E001) { await alta('E001'); await tick(400); }
+  titulo('Retiro (offboarding) de E001');
+  if (W.emp.E001.estado === 'RETIRADO') { log('E001 ya está RETIRADO.', 'err'); return; }
+  await retiro('E001');
+  await tick(400);
+  await login(PERSONAS.E001.email, 'E001', 'Usuario123!');
+}
+
+async function authCaido() {
+  titulo('auth-service detenido');
+  if (!W.tokens.admin) { await escLogin(); await tick(400); }
+  setDown('auth', true);
+  log('<code>docker compose stop auth-service</code>', 'err');
+  await tick(500);
+  log('<b>a)</b> Login nuevo:');
+  await login('admin', 'admin', 'Admin1234!');
+  await tick(500);
+  log('<b>b)</b> <code>GET /empleados</code> con el token que ya se tenía: el Gateway valida la firma <b>localmente</b> con <code>JWT_SECRET</code>, no le pregunta a auth.');
+  if (await gateway('GET', '/empleados', 'admin')) {
+    await go('gw', 'emp', 'req', 'GET');
+    await sql('emp', 'pgEmp', 'SELECT', 'filas');
+    await responder('emp', 'res', '200');
+  }
+  log('Consecuencia: un token emitido antes de una suspensión sigue sirviendo hasta su <code>exp</code> (JWT stateless).', 'jwt');
+  await tick(600);
+  setDown('auth', false);
+  log('<code>docker compose start auth-service</code>: los eventos que llegaron a <code>q.auth</code> mientras estaba abajo se procesan al volver.', 'res');
+}
+
+async function todo() {
+  for (const f of [escLogin, escDenegada, () => alta('E001'), () => activar('E001'), permisos, recover, vacaciones, borde, retirar]) {
+    await f();
+    await tick(900);
+  }
+}
+
+const ESC = { todo, login: escLogin, denegada: escDenegada, alta: () => alta('E001'), activar: () => activar('E001'), permisos, recover, vacaciones, borde, retirar, authcaido: authCaido };
+
+/* ---------- UI ---------- */
+const botones = [...document.querySelectorAll('[data-sc]')];
+function bloquear(v) { botones.forEach(b => b.disabled = v); $('#btnReset').disabled = v; }
+botones.forEach(b => b.addEventListener('click', async () => {
+  if (running) return;
+  running = true; bloquear(true);
+  try { await ESC[b.dataset.sc](); }
+  catch (e) { console.error(e); log('Error en la animación: ' + e.message, 'err'); }
+  finally {
+    running = false; bloquear(false);
+    $('#banner').textContent = 'Listo. Elige otra acción.';
+  }
+}));
+$('#vel').addEventListener('input', e => { speed = +e.target.value; $('#velv').textContent = speed.toFixed(1) + '×'; });
+$('#btnPausa').addEventListener('click', () => {
+  paused = !paused;
+  $('#btnPausa').textContent = paused ? '▶ Continuar' : '⏸ Pausar';
+  document.querySelectorAll('.lit').forEach(l => l.style.animationPlayState = paused ? 'paused' : 'running');
+});
+$('#btnReset').addEventListener('click', () => {
+  resetWorld();
+  $('#log').innerHTML = '';
+  $('#evento').textContent = 'Todavía no se ha publicado ningún evento.';
+  $('#evtTitle').textContent = 'Último evento / token';
+  $('#banner').textContent = 'Selecciona una acción a la izquierda';
+});
+
+drawZones(); drawEdges(); drawNodes(); resetWorld();
+</script>
+</body>
+</html>

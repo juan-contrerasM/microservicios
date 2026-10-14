@@ -518,43 +518,78 @@ curl http://localhost:8080/empleados/circuit-breaker
 # { "name": "departamentos", "state": "CLOSED" }
 ```
 
-### Ejecutar las pruebas automatizadas
+### Pruebas (Reto 6)
 
-La suite cubre:
+Las pruebas viven en `src/test/java` y se separan por sufijo, para que «ninguna unitaria
+requiere Docker» se pueda comprobar con un comando:
 
-- Registro y consulta desde el controlador.
-- Asignación de `ACTIVO` o `PENDIENTE_VALIDACION` según la disponibilidad del departamento.
-- Conflictos por `id`, `email` y `numeroEmpleado` duplicados.
-- Validación del departamento y política de reintentos.
-- Health check real contra PostgreSQL.
-- Estados `CLOSED`, `OPEN`, `HALF_OPEN`, fallback y reconciliación.
-- Consulta de empleados inexistentes.
-- Validaciones de todos los campos del modelo.
-- Manejo global de respuestas `400`, `404` y `503`.
-- Carga del contexto de Spring Boot.
+| Tipo | Sufijo | Plugin | Comando | Necesita Docker |
+|---|---|---|---|---|
+| Unitarias | `*Test.java` | Surefire | `./mvnw test` | No |
+| Integración | `*IT.java` | Failsafe | `./mvnw verify` (corre también las unitarias) | Sí (Testcontainers) |
 
-Como la prueba de contexto inicializa JPA, debe estar disponible PostgreSQL en el puerto local
-por defecto de pruebas (`5433`). Una forma aislada es:
+En Windows, `.\mvnw.cmd test` y `.\mvnw.cmd verify`. Ambos comandos devuelven un código
+distinto de cero si una prueba falla.
+
+**Unitarias.** Prueban las reglas de `EmpleadoService` con Mockito: `EmpleadoRepository`,
+`DepartamentoClient` y `EmpleadoEventPublisher` son dobles, así que no se abre PostgreSQL, no se
+llama a departamentos ni se publica nada. Cubren la unicidad de `id`, `email` y
+`numeroEmpleado` en el alta y en la edición, que un conflicto no guarde ni publique, la
+transición a `RETIRADO` con `fechaRetiro` en UTC, que un segundo retiro dé 400, el filtro
+`estado` / `desde` / `hasta` de la auditoría, y el Circuit Breaker con su fallback. Las demás
+clases unitarias cubren el controlador, el cliente HTTP con reintentos, el publicador, el
+handler global y las validaciones del modelo.
+
+**Integración.** `Reto1ApplicationIT` levanta el contexto completo y `EmpleadoRepositoryIT`
+prueba la persistencia. Las dos corren contra `postgres:16-alpine` en Testcontainers
+(`PostgresTestcontainersConfig`, conectado con `@ServiceConnection`). Liquibase aplica los
+changelogs reales y Hibernate valida el esquema (`ddl-auto=validate`). Verifican que las
+restricciones `uk_empleados_email` y `uk_empleados_numero_empleado` existen en el esquema y
+tienen el nombre que busca `traducirViolacionDeUnicidad`. También verifican que un retirado
+persiste su `fechaRetiro` y aparece en `findByEstado(RETIRADO)`.
+
+**Por qué Testcontainers y no H2 ni una instancia dedicada.** Lo que esta prueba quiere atrapar
+depende del motor: los nombres de las restricciones, el tipo `TIMESTAMP` de `fecha_retiro` y los
+changelogs de Liquibase. H2 en modo PostgreSQL puede pasar y fallar en producción (por eso la
+prueba de contexto anterior apagaba Liquibase y usaba `create-drop`). Una base dedicada en el
+Compose obliga a limpiar estado entre corridas. Testcontainers usa el mismo motor que el Compose
+y descarta el contenedor al terminar. El costo es más lentitud y depender de Docker. Spring
+reutiliza el contexto entre clases IT, así que el contenedor arranca una sola vez. H2 se retiró
+del `pom.xml`.
+
+**Sin Docker.** Las clases IT llevan `@Testcontainers(disabledWithoutDocker = true)`. En una
+máquina sin Docker, `mvn verify` las marca como *skipped* en lugar de fallar, y las unitarias y
+el reporte de cobertura se generan igual. En Windows con Docker solo dentro de WSL, se corre
+desde WSL:
 
 ```bash
-docker run --rm --name empleados-test-db -d -p 5433:5432 \
-  -e POSTGRES_DB=hr_management \
-  -e POSTGRES_USER=empleados \
-  -e POSTGRES_PASSWORD=empleados postgres:16-alpine
+cd /mnt/c/.../services/empleados-service && ./mvnw -B clean verify
 ```
 
-En Windows:
+**Reportes** (contrato con el pipeline del Reto 7):
 
-```bash
-.\mvnw.cmd test
-docker stop empleados-test-db
-```
+| Reporte | Ruta |
+|---|---|
+| Resultados de unitarias (JUnit XML) | `target/surefire-reports/TEST-*.xml` |
+| Resultados de integración (JUnit XML) | `target/failsafe-reports/TEST-*.xml` |
+| Cobertura (JaCoCo XML, unitarias + integración) | `target/site/jacoco/jacoco.xml` |
+| Cobertura navegable | `target/site/jacoco/index.html` |
 
-En Linux o macOS:
+JaCoCo instrumenta las dos fases (`jacoco.exec` y `jacoco-it.exec`), las une en
+`jacoco-merged.exec` y genera el reporte en `verify`. `mvn test` deja `target/jacoco.exec`,
+pero no genera el XML.
 
-```bash
-./mvnw test
-```
+**Qué no se mide y por qué.** Están excluidos de la cobertura los DTOs (`dto/**`), las cargas
+de evento (`EventEnvelope`, `Empleado*Data`), la entidad JPA `Empleado` (getters y setters),
+`config/**` y `Reto1Application`. Probar getters infla el porcentaje sin proteger ninguna regla.
+Las validaciones de la entidad se prueban igual en `EmpleadoValidationTest`. Las excepciones de
+dominio sí cuentan, porque las ejercita `GlobalExceptionHandlerTest`.
+
+**Que las pruebas fallen cuando deben.** Si se quita la comprobación de `existsByEmail` en
+`registrar`, `./mvnw test` falla en
+`EmpleadoServiceTest.registrarConEmailExistenteLanzaConflictException` con
+`Expecting code to raise a throwable`. La cobertura sola no lo garantiza: cada prueba comprueba
+la excepción, el mensaje y que no se guardó ni se publicó.
 
 Para compilar el archivo JAR sin ejecutar las pruebas:
 

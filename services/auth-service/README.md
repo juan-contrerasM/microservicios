@@ -85,9 +85,68 @@ El esquema lo crea Alembic al arrancar (`alembic upgrade head`). El downgrade bo
 El contenedor vive en `docker-compose.yml` junto a `database-auth`. Solo declara `expose: 8086`;
 desde el host se usa `http://localhost:8080/auth` a través del Gateway.
 
-## Pruebas
+## Pruebas (Reto 6)
+
+Son pruebas unitarias: no levantan Postgres, RabbitMQ ni Docker. `tests/soporte.py` sustituye
+el repositorio por `Memoria` (diccionarios), el publicador por `PublicadorMemoria` (una lista)
+y la sesión de base por `SesionNula`. Los casos de uso de `casos.py` reciben esos dobles igual
+que reciben los reales.
 
 ```bash
-pip install -r requirements.txt pytest httpx
+cd services/auth-service
+python -m venv .venv
+.venv/Scripts/activate        # Windows (Git Bash); en Linux/macOS: source .venv/bin/activate
+pip install -r requirements-dev.txt
 pytest
+```
+
+`pytest` es el único comando: las opciones de reporte viven en `addopts` de `pyproject.toml`.
+Sale con código distinto de cero si una prueba falla.
+
+| Reporte | Ruta | Formato |
+|---|---|---|
+| Resultados | `services/auth-service/reports/junit.xml` | JUnit XML |
+| Cobertura | `services/auth-service/reports/coverage.xml` | Cobertura XML (coverage.py, con ramas) |
+
+`reports/` está en el `.gitignore` raíz: se genera, no se versiona.
+
+**Por qué `requirements-dev.txt` va aparte.** La imagen instala solo `requirements.txt`.
+pytest, pytest-cov y httpx no hacen falta en producción. Meterlos en la imagen la haría más
+pesada y le daría más superficie de ataque sin que el servicio los use.
+
+**Qué cubren.** Las reglas delicadas del Reto 5 están en `casos.py` y `seguridad.py` (89 % y
+97 % de cobertura):
+
+- **Un retirado no se reactiva.** Primero llega `vacaciones.iniciadas`, después
+  `empleado.retirado`, después `vacaciones.finalizadas`. La cuenta sigue
+  `DESACTIVADA_PERMANENTE`, no se publica `cuenta.activada` y el login sigue en 401.
+- **Fin de vacaciones.** `vacaciones.finalizadas` solo reactiva desde `SUSPENDIDA_TEMPORAL`.
+- **Tokens.**
+  - Un token de reset vencido es 400.
+  - Un access token usado como reset es 400, y un reset usado como access es inválido.
+  - Un token firmado con otro secreto es inválido.
+- **Reset sobre cuentas no activas.** Sobre una cuenta `SUSPENDIDA_TEMPORAL` o
+  `DESACTIVADA_PERMANENTE` responde 400.
+- **Recuperación de un retirado.** Responde el mismo 200, pero no publica nada.
+- **Contraseñas.** Se guarda el hash bcrypt, no la clave en claro. La política se prueba con
+  una tabla de casos.
+- **Eventos que se confirman sin efecto.** Sin `id`, incompletos, de un tipo ajeno o sin
+  cuenta.
+
+**Qué no se prueba unitariamente, y por qué.**
+
+- `consumidor.py`, `publicar.py` y `repositorio.py` son pika y SQLAlchemy contra
+  infraestructura real. Probarlos con mocks solo probaría el mock. Les toca una prueba de
+  integración o la suite BDD de `e2e-tests/`.
+- `config.py` es lectura de variables de entorno.
+
+Por eso el total del servicio queda en 70 % aunque la lógica de dominio esté cerca del 90 %.
+
+**Las pruebas fallan cuando deben.** Se rompió a propósito `_vacaciones_finalizadas` para que
+reactivara cualquier estado, y fallaron exactamente estas dos:
+
+```
+FAILED tests/test_ciclo.py::test_retiro_durante_vacaciones_no_reactiva_y_el_id_repetido_no_publica
+FAILED tests/test_reglas.py::test_fin_de_vacaciones_sobre_una_cuenta_activa_no_publica
+E  Left contains one more item: EventoSaliente(tipo='cuenta.activada', ... 'motivo': 'FIN_VACACIONES')
 ```

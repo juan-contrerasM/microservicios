@@ -109,3 +109,42 @@ test('solo se cancela un PROGRAMADA cuya fechaInicio es posterior a hoy', () => 
 	assert.equal(puedeCancelar({ estado: 'PROGRAMADA', fechaInicio: HOY }, HOY), false);
 	assert.equal(puedeCancelar({ estado: 'CANCELADA', fechaInicio: '2027-03-15' }, HOY), false);
 });
+
+const ALTA_BASE = { empleadoId: 'E001', hoy: HOY, empleado: { estado: 'ACTIVO' }, conflicto: null };
+const MENSAJE_ORDEN = 'La fechaFin no puede ser anterior a la fechaInicio';
+const MENSAJE_PASADO = 'La fechaInicio no puede ser anterior a la fecha actual';
+
+// Reglas de fechas de evaluarAlta: orden de las fechas y no programar en el pasado.
+const FECHAS = [
+	{ caso: 'fin un día antes del inicio', fechaInicio: '2027-06-15', fechaFin: '2027-06-14', mensaje: MENSAJE_ORDEN },
+	{ caso: 'fin un año antes del inicio', fechaInicio: '2027-06-15', fechaFin: '2026-06-15', mensaje: MENSAJE_ORDEN },
+	{ caso: 'sin fechaInicio', fechaInicio: null, fechaFin: '2027-06-15', mensaje: MENSAJE_ORDEN },
+	{ caso: 'sin fechaFin', fechaInicio: '2027-06-15', fechaFin: null, mensaje: MENSAJE_ORDEN },
+	{ caso: 'inicio ayer', fechaInicio: '2026-09-28', fechaFin: '2026-10-05', mensaje: MENSAJE_PASADO },
+	{ caso: 'inicio y fin en el pasado', fechaInicio: '2026-01-01', fechaFin: '2026-01-02', mensaje: MENSAJE_PASADO },
+	{ caso: 'inicio hoy', fechaInicio: HOY, fechaFin: '2026-10-02', mensaje: null },
+	{ caso: 'inicio y fin el mismo día futuro', fechaInicio: '2027-06-15', fechaFin: '2027-06-15', mensaje: null },
+	{ caso: 'fin un día después del inicio', fechaInicio: '2027-06-15', fechaFin: '2027-06-16', mensaje: null },
+];
+
+for (const { caso, fechaInicio, fechaFin, mensaje } of FECHAS) {
+	test(`fechas: ${caso} ${mensaje ? 'se rechaza' : 'se acepta'}`, () => {
+		const resultado = evaluarAlta({ ...ALTA_BASE, fechaInicio, fechaFin });
+		assert.equal(
+			resultado.body?.mensaje ?? null,
+			mensaje,
+			`evaluarAlta(${fechaInicio} → ${fechaFin}, hoy ${HOY}) debía ${mensaje ? `rechazar con «${mensaje}»` : 'aceptar'}`,
+		);
+		assert.equal(resultado.ok, mensaje === null);
+	});
+}
+
+test('las fechas se validan antes que el empleado: un retirado con fechas al revés recibe el error de fechas', () => {
+	const resultado = evaluarAlta({
+		...ALTA_BASE,
+		empleado: { estado: 'RETIRADO' },
+		fechaInicio: '2027-06-15',
+		fechaFin: '2027-06-01',
+	});
+	assert.equal(resultado.body.mensaje, MENSAJE_ORDEN);
+});

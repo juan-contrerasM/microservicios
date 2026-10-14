@@ -1,33 +1,25 @@
 import { ErrorApi } from './errores.js';
 import { diasHabiles, hoyUtc, parseFecha } from './fechas.js';
-import {
-	buscarConflicto,
-	insertarPeriodo,
-	listarPeriodos,
-	marcarCancelada,
-	obtenerEmpleado,
-	obtenerPeriodo,
-	siguienteNumero,
-} from './repositorio.js';
+import * as repositorio from './repositorio.js';
 import { crearTransiciones } from './transiciones.js';
 import { evaluarAlta, puedeCancelar } from './validar.js';
 
 export { ErrorApi };
 
-export function crearServicio({ pool, publicar, ahora = () => new Date() }) {
-	const transiciones = crearTransiciones({ pool, publicar, ahora });
+export function crearServicio({ pool, publicar, ahora = () => new Date(), repo = repositorio }) {
+	const transiciones = crearTransiciones({ pool, publicar, ahora, repo });
 	return {
-		programar: (body) => programar(pool, publicar, ahora, body),
-		obtener: (id) => conCliente(pool, (client) => obtenerOFallar(client, id)),
-		listar: (empleadoId) => conCliente(pool, (client) => listarPeriodos(client, empleadoId)),
-		cancelar: (id) => cancelar(pool, ahora, id),
+		programar: (body) => programar(pool, publicar, ahora, repo, body),
+		obtener: (id) => conCliente(pool, (client) => obtenerOFallar(repo, client, id)),
+		listar: (empleadoId) => conCliente(pool, (client) => repo.listarPeriodos(client, empleadoId)),
+		cancelar: (id) => cancelar(pool, ahora, repo, id),
 		forzarInicio: transiciones.forzarInicio,
 		forzarFin: transiciones.forzarFin,
 		ejecutarCiclo: transiciones.ejecutarCiclo,
 	};
 }
 
-async function programar(pool, publicar, ahora, body) {
+async function programar(pool, publicar, ahora, repo, body) {
 	const empleadoId = typeof body?.empleadoId === 'string' ? body.empleadoId.trim() : '';
 	const fechaInicio = parseFecha(body?.fechaInicio);
 	const fechaFin = parseFecha(body?.fechaFin);
@@ -44,9 +36,9 @@ async function programar(pool, publicar, ahora, body) {
 	let email;
 	try {
 		await client.query('BEGIN');
-		const empleado = empleadoId ? await obtenerEmpleado(client, empleadoId) : null;
+		const empleado = empleadoId ? await repo.obtenerEmpleado(client, empleadoId) : null;
 		const conflicto = empleado
-			? await buscarConflicto(client, empleadoId, fechaInicio, fechaFin)
+			? await repo.buscarConflicto(client, empleadoId, fechaInicio, fechaFin)
 			: null;
 		const decision = evaluarAlta({
 			empleadoId,
@@ -60,8 +52,8 @@ async function programar(pool, publicar, ahora, body) {
 			throw new ErrorApi(400, decision.body);
 		}
 		const anio = Number(fechaInicio.slice(0, 4));
-		const numero = await siguienteNumero(client, anio);
-		periodo = await insertarPeriodo(client, {
+		const numero = await repo.siguienteNumero(client, anio);
+		periodo = await repo.insertarPeriodo(client, {
 			id: `V-${anio}-${String(numero).padStart(4, '0')}`,
 			empleadoId,
 			fechaInicio,
@@ -92,17 +84,17 @@ async function programar(pool, publicar, ahora, body) {
 	return periodo;
 }
 
-async function cancelar(pool, ahora, id) {
+async function cancelar(pool, ahora, repo, id) {
 	const client = await pool.connect();
 	try {
 		await client.query('BEGIN');
-		const periodo = await obtenerOFallar(client, id);
+		const periodo = await obtenerOFallar(repo, client, id);
 		if (!puedeCancelar(periodo, hoyUtc(ahora()))) {
 			throw new ErrorApi(400, {
 				mensaje: 'Solo se puede cancelar un período PROGRAMADA que aún no ha iniciado',
 			});
 		}
-		const cancelado = await marcarCancelada(client, id);
+		const cancelado = await repo.marcarCancelada(client, id);
 		await client.query('COMMIT');
 		return cancelado;
 	} catch (error) {
@@ -113,8 +105,8 @@ async function cancelar(pool, ahora, id) {
 	}
 }
 
-async function obtenerOFallar(client, id) {
-	const periodo = await obtenerPeriodo(client, id);
+async function obtenerOFallar(repo, client, id) {
+	const periodo = await repo.obtenerPeriodo(client, id);
 	if (!periodo) {
 		throw new ErrorApi(404, { mensaje: `El período de vacaciones con id ${id} no existe` });
 	}

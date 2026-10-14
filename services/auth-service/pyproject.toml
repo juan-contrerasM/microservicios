@@ -1,2 +1,11 @@
 [tool.pytest.ini_options]
 pythonpath = ["src", "tests"]
+addopts = [
+    "--junitxml=reports/junit.xml",
+    "--cov=auth_service",
+    "--cov-report=xml:reports/coverage.xml",
+    "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+branch = true
