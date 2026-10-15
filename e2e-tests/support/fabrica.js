@@ -34,6 +34,13 @@ export function datosEmpleado(departamentoId, cambios = {}) {
   };
 }
 
+export function fechaUtcMasDias(dias) {
+  const fecha = new Date();
+  fecha.setUTCHours(0, 0, 0, 0);
+  fecha.setUTCDate(fecha.getUTCDate() + dias);
+  return fecha.toISOString().slice(0, 10);
+}
+
 export async function login(world, usuario, contrasena) {
   const respuesta = await pedir(world, 'POST', '/auth/login', {
     auth: false,
@@ -56,7 +63,7 @@ export async function crearDepartamento(world, token) {
   return departamento;
 }
 
-export async function esperarTokenActivacion(world, empleadoId, token) {
+export async function esperarNotificacion(world, empleadoId, token, coincide) {
   return eventualmente(async () => {
     const respuesta = await pedir(
       world,
@@ -70,12 +77,24 @@ export async function esperarTokenActivacion(world, empleadoId, token) {
       );
     }
     const lista = Array.isArray(respuesta.cuerpo) ? respuesta.cuerpo : [];
-    const aviso = lista.find((item) => item?.tipo === 'SEGURIDAD' && extraerToken(item.mensaje));
-    return aviso ? extraerToken(aviso.mensaje) : null;
+    return lista.find(coincide) ?? null;
   }, {
     intentos: world.entorno.pollIntentos,
     intervaloMs: world.entorno.pollIntervaloMs,
   });
+}
+
+export async function esperarTokenActivacion(world, empleadoId, token, tokenExcluido = null) {
+  const aviso = await esperarNotificacion(
+    world,
+    empleadoId,
+    token,
+    (item) => {
+      const encontrado = item?.tipo === 'SEGURIDAD' ? extraerToken(item.mensaje) : null;
+      return encontrado && encontrado !== tokenExcluido;
+    },
+  );
+  return extraerToken(aviso.mensaje);
 }
 
 /**
