@@ -1,0 +1,6 @@
+# Solo lo usa el stage E2E (proyecto micro-ci).
+# En Docker Desktop el volumen nombrado deja .erlang.cookie como root y modo 600,
+# y RabbitMQ sale con eacces. En CI el broker no tiene que sobrevivir al down -v.
+services:
+  message-broker:
+    volumes: !reset []

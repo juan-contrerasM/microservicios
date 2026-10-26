@@ -106,6 +106,7 @@ pipeline {
       steps {
         sh '''
           set -eu
+          rm -rf e2e-tests/reports
           export GATEWAY_PORT=18080
           export RABBITMQ_PORT=5673
           export RABBITMQ_MANAGEMENT_PORT=15673
@@ -133,7 +134,9 @@ BASE_URL=http://host.docker.internal:18080
 EOF
           # Jenkins y Sonar ya ocupan sus container_name y sus puertos.
           # Este proyecto solo levanta el sistema de negocio.
-          docker compose --env-file /workspace/.env -p micro-ci up -d --build \
+          docker compose --env-file /workspace/.env \
+            -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
+            -p micro-ci up -d --build \
             api-gateway empleados-service departamentos-service \
             notificaciones-service perfiles-service vacaciones-service \
             auth-service mailhog message-broker
@@ -173,8 +176,12 @@ EOF
           ]
           sh '''
             rm -f e2e-tests/.ci-env
-            docker compose --env-file /workspace/.env -p micro-ci logs --no-color > docker-logs.txt || true
-            docker compose --env-file /workspace/.env -p micro-ci down -v || true
+            docker compose --env-file /workspace/.env \
+              -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
+              -p micro-ci logs --no-color > docker-logs.txt || true
+            docker compose --env-file /workspace/.env \
+              -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
+              -p micro-ci down -v || true
           '''
           archiveArtifacts artifacts: 'docker-logs.txt', allowEmptyArchive: true
         }
