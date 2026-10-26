@@ -1,0 +1,154 @@
+// CI de vacaciones-service. El workspace del job es la raíz del monorepo.
+// Decisiones: docs/reto7/PLAN-RETO7.md
+pipeline {
+  agent any
+  options {
+    skipStagesAfterUnstable()
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        sh 'git rev-parse HEAD'
+      }
+    }
+
+    stage('Build') {
+      agent {
+        docker {
+          image 'node:22'
+          reuseNode true
+          args "-u root --network ${env.DOCKER_NETWORK} --add-host=host.docker.internal:host-gateway -v jenkins_npm:/root/.npm"
+        }
+      }
+      steps {
+        dir('services/vacaciones-service') {
+          sh 'npm ci'
+          sh 'chown -R "$(stat -c %u .):$(stat -c %g .)" .'
+        }
+      }
+    }
+
+    stage('Test') {
+      agent {
+        docker {
+          image 'node:22'
+          reuseNode true
+          args "-u root --network ${env.DOCKER_NETWORK} --add-host=host.docker.internal:host-gateway -v jenkins_npm:/root/.npm"
+        }
+      }
+      steps {
+        dir('services/vacaciones-service') {
+          sh '''
+            set -eu
+            mkdir -p reports
+            npm test || true
+            chown -R "$(stat -c %u .):$(stat -c %g .)" .
+          '''
+        }
+      }
+      post {
+        always {
+          dir('services/vacaciones-service') {
+            junit 'reports/junit.xml'
+            recordCoverage tools: [[parser: 'LCOV', pattern: 'reports/lcov.info']],
+              sourceCodeRetention: 'EVERY_BUILD'
+          }
+        }
+      }
+    }
+
+    stage('SonarQube') {
+      steps {
+        script {
+          env.SONAR_TOKEN = readFile('/run/sonar-bootstrap/token').trim()
+        }
+        withSonarQubeEnv('sonarqube') {
+          script {
+            docker.image('sonarsource/sonar-scanner-cli').inside("-u root --network ${env.DOCKER_NETWORK} --add-host=host.docker.internal:host-gateway") {
+              dir('services/vacaciones-service') {
+                sh '''
+                  set +x
+                  set -eu
+                  sonar-scanner
+                  chown -R "$(stat -c %u .):$(stat -c %g .)" . || true
+                '''
+              }
+            }
+          }
+        }
+      }
+    }
+
+    stage('Quality Gate') {
+      steps {
+        timeout(time: 5, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    stage('Package') {
+      steps {
+        dir('services/vacaciones-service') {
+          sh '''
+            set -eu
+            docker build -t "micro/vacaciones-service:${BUILD_NUMBER}" -t micro/vacaciones-service:latest .
+            docker image inspect "micro/vacaciones-service:${BUILD_NUMBER}"
+          '''
+        }
+      }
+    }
+
+    stage('E2E Tests') {
+      options {
+        lock(resource: 'ecosistema-e2e')
+      }
+      steps {
+        sh '''
+          set -eu
+          export GATEWAY_PORT=18080
+          export RABBITMQ_PORT=5673
+          export RABBITMQ_MANAGEMENT_PORT=15673
+          export MAILHOG_UI_PORT=18025
+          docker compose --env-file /workspace/.env -p micro-ci up -d --build
+          chmod +x jenkins/wait-for-healthy.sh
+          jenkins/wait-for-healthy.sh
+        '''
+        script {
+          docker.image('node:22').inside('-u root --add-host=host.docker.internal:host-gateway -v jenkins_npm:/root/.npm') {
+            dir('e2e-tests') {
+              sh '''
+                set +x
+                set -eu
+                npm ci
+                export BASE_URL=http://host.docker.internal:18080
+                npm test || true
+                chown -R "$(stat -c %u .):$(stat -c %g .)" .
+              '''
+            }
+          }
+        }
+      }
+      post {
+        always {
+          junit testResults: 'e2e-tests/reports/junit.xml', allowEmptyResults: false
+          cucumber jsonReportDirectory: 'e2e-tests/reports',
+            fileIncludePattern: '**/cucumber.json',
+            buildStatus: 'UNSTABLE'
+          publishHTML target: [
+            reportDir: 'e2e-tests/reports',
+            reportFiles: 'cucumber.html',
+            reportName: 'Reporte BDD',
+            keepAll: true,
+            alwaysLinkToLastBuild: true
+          ]
+          sh '''
+            docker compose --env-file /workspace/.env -p micro-ci logs --no-color > docker-logs.txt || true
+            docker compose --env-file /workspace/.env -p micro-ci down -v || true
+          '''
+          archiveArtifacts artifacts: 'docker-logs.txt', allowEmptyArchive: true
+        }
+      }
+    }
+  }
+}

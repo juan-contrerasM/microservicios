@@ -5,6 +5,10 @@
 # Puerto de negocio al host: api-gateway :8080. empleados y departamentos usan
 # expose: (visibles solo dentro de microservices-network).
 # Puertos de infraestructura del broker: 5672 (AMQP) y 15672 (management UI).
+# Reto 7: Jenkins en el host :9090, SonarQube en :9000. El nombre de proyecto
+# queda fijo para que los volúmenes no cambien si el repo se clona en otra carpeta.
+
+name: microservicios
 
 services:
   # --- PostgreSQL de empleados-service (nadie más la usa) ---
@@ -372,6 +376,98 @@ services:
     networks:
       - microservices-network
 
+  # --- Reto 7. Jenkins publica la UI en el host :9090; dentro de la red sigue en 8080. ---
+  jenkins:
+    build: ./jenkins
+    container_name: jenkins
+    ports:
+      - "9090:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      - ./jenkins/casc.yaml:/var/jenkins_home/casc_configs/casc.yaml:ro
+      - ./:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+      - sonar_bootstrap:/run/sonar-bootstrap:ro
+    environment:
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
+      CASC_JENKINS_CONFIG: /var/jenkins_home/casc_configs
+      JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-admin}
+      DOCKER_NETWORK: microservicios_microservices-network
+      ADMIN_USUARIO: ${AUTH_ADMIN_USUARIO:-admin}
+      ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:-Admin1234!}
+      USER_PASSWORD: ${E2E_USER_PASSWORD:-Usuario123!}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - microservices-network
+
+  # --- Reto 7. Base solo de SonarQube: no la usa ningún servicio de negocio. ---
+  sonar-db:
+    image: postgres:16-alpine
+    container_name: sonar-db
+    environment:
+      POSTGRES_DB: sonar
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: ${SONAR_JDBC_PASSWORD:-sonar}
+    volumes:
+      - sonar_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - microservices-network
+
+  sonarqube:
+    image: sonarqube:26.10.0.133078-community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${SONAR_JDBC_PASSWORD:-sonar}
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_extensions:/opt/sonarqube/extensions
+    depends_on:
+      sonar-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/api/system/status | grep -q UP"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - microservices-network
+
+  sonar-bootstrap:
+    image: alpine:3.21
+    container_name: sonar-bootstrap
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+    environment:
+      SONAR_URL: http://sonarqube:9000
+      SONAR_ADMIN_PASSWORD: ${SONAR_ADMIN_PASSWORD:-SonarAdmin123!}
+    volumes:
+      - ./jenkins/init-sonar.sh:/init-sonar.sh:ro
+      - sonar_bootstrap:/bootstrap
+    entrypoint: ["/bin/sh", "/init-sonar.sh"]
+    restart: "no"
+    networks:
+      - microservices-network
+
 networks:
   microservices-network:
     driver: bridge
@@ -384,3 +480,15 @@ volumes:
   vol-perfiles:
   vol-vacaciones:
   vol-auth:
+  jenkins_data:
+    name: jenkins_data
+  jenkins_m2:
+    name: jenkins_m2
+  jenkins_npm:
+    name: jenkins_npm
+  sonar_bootstrap:
+    name: sonar_bootstrap
+  sonarqube_data:
+  sonarqube_logs:
+  sonarqube_extensions:
+  sonar_db_data:

@@ -16,6 +16,12 @@
 	<properties>
 		<java.version>21</java.version>
 		<jacoco.version>0.8.14</jacoco.version>
+		<sonar.maven.plugin.version>5.8.0.7211</sonar.maven.plugin.version>
+		<sonar.projectKey>empleados-service</sonar.projectKey>
+		<sonar.projectName>empleados-service</sonar.projectName>
+		<sonar.java.binaries>target/classes</sonar.java.binaries>
+		<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<sonar.coverage.exclusions>**/model/Empleado.java,**/Reto1Application.java,**/dto/**,**/config/**,**/event/EmpleadoActualizadoData.java,**/event/EmpleadoEventoData.java,**/event/EmpleadoRetiradoData.java,**/event/EventEnvelope.java</sonar.coverage.exclusions>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -158,6 +164,12 @@
 						</configuration>
 					</execution>
 				</executions>
+			</plugin>
+			<!-- Reto 7: solo el stage SonarQube del Jenkinsfile invoca el goal. No hay execution en el ciclo de package. -->
+			<plugin>
+				<groupId>org.sonarsource.scanner.maven</groupId>
+				<artifactId>sonar-maven-plugin</artifactId>
+				<version>${sonar.maven.plugin.version}</version>
 			</plugin>
 		</plugins>
 	</build>

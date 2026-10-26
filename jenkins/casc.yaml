@@ -1,0 +1,96 @@
+jenkins:
+  systemMessage: "Reto 7. Los jobs salen de este archivo; no se crean en la interfaz."
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: DOCKER_NETWORK
+            value: "${DOCKER_NETWORK}"
+          - key: ADMIN_USUARIO
+            value: "${ADMIN_USUARIO}"
+          - key: ADMIN_PASSWORD
+            value: "${ADMIN_PASSWORD}"
+          - key: USER_PASSWORD
+            value: "${USER_PASSWORD}"
+
+unclassified:
+  location:
+    url: "http://localhost:9090/"
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: true
+    installations:
+      - name: "sonarqube"
+        serverUrl: "http://sonarqube:9000"
+  lockableResourcesManager:
+    declaredResources:
+      - name: "ecosistema-e2e"
+        description: "Un solo docker compose -p micro-ci a la vez"
+
+jobs:
+  - script: |
+      pipelineJob('verificar-docker') {
+        description('Comprueba que el cliente Docker del contenedor habla con el daemon del host.')
+        definition {
+          cps {
+            sandbox(true)
+            script('''
+              pipeline {
+                agent any
+                stages {
+                  stage('Verificación') {
+                    steps {
+                      echo 'Jenkins está correctamente configurado'
+                      sh 'docker --version'
+                      sh 'docker compose version'
+                      sh 'docker ps'
+                    }
+                  }
+                }
+              }
+            ''')
+          }
+        }
+      }
+  - script: |
+      pipelineJob('empleados-service') {
+        description('CI de empleados-service. El Jenkinsfile vive en el servicio.')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('file:///workspace')
+                }
+                branches('*/main')
+              }
+            }
+            scriptPath('services/empleados-service/Jenkinsfile')
+          }
+        }
+      }
+  - script: |
+      pipelineJob('vacaciones-service') {
+        description('CI de vacaciones-service. El Jenkinsfile vive en el servicio.')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  url('file:///workspace')
+                }
+                branches('*/main')
+              }
+            }
+            scriptPath('services/vacaciones-service/Jenkinsfile')
+          }
+        }
+      }

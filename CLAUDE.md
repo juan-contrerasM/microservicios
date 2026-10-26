@@ -14,9 +14,11 @@ datos entre servicios.
 
 Documentos de referencia que SIEMPRE hay que leer antes de tocar código:
 
-- Reto 6 (vigente): [`docs/reto6/PLAN-RETO6.md`](docs/reto6/PLAN-RETO6.md),
+- Reto 7 (vigente): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md),
+  [`docs/reto7/STATUS.md`](docs/reto7/STATUS.md), [`docs/reto7/reto7.pdf`](docs/reto7/reto7.pdf).
+  **Actualiza `docs/reto7/STATUS.md` en el mismo commit/PR que cierra o avanza una fase.**
+- Reto 6 (pruebas; fases 7 y 8 abiertas): [`docs/reto6/PLAN-RETO6.md`](docs/reto6/PLAN-RETO6.md),
   [`docs/reto6/STATUS.md`](docs/reto6/STATUS.md), [`docs/reto6/reto6.pdf`](docs/reto6/reto6.pdf).
-  **Actualiza `docs/reto6/STATUS.md` en el mismo commit/PR que cierra o avanza una fase.**
 - Reto 5 (cerrado): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md),
   [`docs/reto5/STATUS.md`](docs/reto5/STATUS.md), [`docs/reto5/reto5.pdf`](docs/reto5/reto5.pdf).
 - Reto 4 (cerrado): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md),
@@ -38,7 +40,8 @@ micro/
 │   ├── reto3/                   # plan, STATUS, colección y PDF del Reto 3 (cerrado)
 │   ├── reto4/                   # plan, STATUS, colección y PDF del Reto 4 (cerrado)
 │   ├── reto5/                   # plan, STATUS, colección y PDF del Reto 5 (cerrado)
-│   └── reto6/                   # plan, STATUS y PDF del Reto 6 (vigente: pruebas)
+│   ├── reto6/                   # plan, STATUS y PDF del Reto 6 (pruebas; fases 7 y 8 abiertas)
+│   └── reto7/                   # plan, STATUS y PDF del Reto 7 (vigente: Jenkins)
 └── services/
     ├── empleados-service/       # Reto 1, Java 21 + Spring Boot + PostgreSQL
     ├── departamentos-service/   # Reto 2, Go + chi + MySQL
@@ -89,11 +92,11 @@ vive solo en el compose: no es un módulo bajo `services/`.
 
 ## Flujo de trabajo entre varias personas
 
-1. Antes de empezar una etapa, revisa `docs/reto6/STATUS.md` para ver qué sigue disponible y qué
-   ya está tomado/hecho.
+1. Antes de empezar una etapa, revisa `docs/reto7/STATUS.md` para ver qué sigue disponible y qué
+   ya está tomado/hecho. La Fase 4 del Reto 7 espera las fases 7 y 8 de `docs/reto6/STATUS.md`.
 2. Trabaja dentro de la carpeta del servicio que te corresponde; evita tocar otro módulo salvo que
    la etapa lo requiera explícitamente (p. ej. `docker-compose.yml` raíz sí lo tocan varias etapas).
-3. Al terminar una etapa, actualiza `docs/reto6/STATUS.md` (marca la etapa, agrega notas de
+3. Al terminar una etapa, actualiza `docs/reto7/STATUS.md` (marca la etapa, agrega notas de
    decisiones tomadas) en el mismo commit.
 4. Las decisiones técnicas del enunciado vigente se documentan en el README de cada servicio
    afectado, con el "por qué", no solo el "qué". El Gateway **no** se implementa con Spring Cloud

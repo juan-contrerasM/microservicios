@@ -5,6 +5,8 @@ propio lenguaje, base de datos y Dockerfile, orquestados desde un único `docker
 la raíz.
 
 > Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo).
+> Reto 7 (vigente): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md) y
+> [`docs/reto7/STATUS.md`](docs/reto7/STATUS.md). La sección de CI está al final de este archivo.
 > Reto 5 (cerrado): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md) y
 > [`docs/reto5/STATUS.md`](docs/reto5/STATUS.md).
 > Reto 4 (cerrado): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md) y
@@ -585,3 +587,79 @@ npx newman run docs/reto5/Reto5.postman_collection.json \
 
 La evidencia reproducible se registra en
 [`docs/reto5/EVIDENCIAS.md`](docs/reto5/EVIDENCIAS.md).
+
+## Reto 7 — Integración continua
+
+Cada cambio se compila, se prueba y se empaqueta solo. Jenkins corre dentro del mismo
+`docker compose` que el resto del sistema y publica, en su interfaz, los reportes que el Reto 6
+ya escribe en disco: JUnit, cobertura y los escenarios BDD en español. El detalle de las
+decisiones está en [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md).
+
+### Acceso
+
+| Qué | Dónde |
+|---|---|
+| Jenkins | [http://localhost:9090](http://localhost:9090) |
+| Usuario | `JENKINS_ADMIN_ID` del `.env` (referencia: `admin`) |
+| Contraseña | `JENKINS_ADMIN_PASSWORD` del `.env` (referencia: `admin`) |
+| SonarQube | [http://localhost:9000](http://localhost:9000), usuario `admin`, clave `SONAR_ADMIN_PASSWORD` |
+
+No hay contraseña inicial en `jenkins_home/secrets/initialAdminPassword`. El asistente de
+instalación está apagado y JCasC crea el usuario al arrancar.
+
+### Cómo levantarlo
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Eso incluye Jenkins, SonarQube y su Postgres. Los jobs `verificar-docker`, `empleados-service`
+y `vacaciones-service` aparecen solos: salen de `jenkins/casc.yaml` y leen el Jenkinsfile de
+cada servicio en el monorepo montado en `/workspace`. No se importan a mano en la interfaz.
+
+Para lanzar un pipeline: entra a Jenkins, abre el job y pulsa **Build Now**. `verificar-docker`
+tiene que mostrar `docker --version` y `docker ps` en verde antes de correr los otros dos.
+
+### Etapas
+
+Las dos pipelines (Java en empleados, Node en vacaciones) recorren lo mismo:
+
+| Etapa | Qué comprueba |
+|---|---|
+| Checkout | Imprime el commit que Jenkins sacó de `file:///workspace`, rama `main` |
+| Build | Compila (`mvn compile` o `npm ci`) sin ejecutar pruebas |
+| Test | Corre las pruebas del Reto 6 y publica JUnit y cobertura aunque alguna falle |
+| SonarQube | Manda el código y el reporte de cobertura a SonarQube. Sonar no ejecuta las pruebas |
+| Quality Gate | Espera el gate `Reto7` (cobertura ≥ 70 %). Si no pasa, el pipeline se detiene |
+| Package | Construye `micro/<servicio>:<BUILD_NUMBER>` y `micro/<servicio>:latest` |
+| E2E Tests | Levanta el sistema como proyecto `micro-ci` (Gateway en el puerto 18080), corre la BDD y apaga ese proyecto con `down -v` |
+
+Un build con pruebas fallidas queda **amarillo** (`UNSTABLE`) y no sigue a Package ni a E2E.
+Uno que no compila, no empaqueta o no pasa el Quality Gate queda **rojo** (`FAILURE`).
+Verde es que todas las etapas pasaron.
+
+El E2E usa el proyecto Compose `micro-ci`, no el de la carpeta. Su `down -v` borra solo
+`micro-ci_vol-*`. El Gateway de esa corrida publica el **18080** para no pisar el `:8080` del
+equipo. Las dos pipelines comparten el lock `ecosistema-e2e`, así que no levantan el stack a
+la vez.
+
+La suite BDD que corre es la que ya está en `e2e-tests/`. Los escenarios de vacaciones y de
+offboarding entran cuando el Reto 6 cierre sus fases 7 y 8.
+
+### Reportes publicados
+
+| Stage | Archivo | Paso de Jenkins | Dónde se mira |
+|---|---|---|---|
+| Test (Java) | `target/surefire-reports/*.xml`, `target/failsafe-reports/*.xml` | `junit` | Pestaña Test Result, tendencia entre builds |
+| Test (Java) | `target/site/jacoco/jacoco.xml` | `recordCoverage` parser `JACOCO` | Pestaña Coverage |
+| Test (Node) | `reports/junit.xml` | `junit` | Test Result |
+| Test (Node) | `reports/lcov.info` | `recordCoverage` parser `LCOV` | Coverage |
+| SonarQube | el mismo XML o lcov | `mvn sonar:sonar` o `sonar-scanner` | [http://localhost:9000](http://localhost:9000), proyecto y Quality Gate |
+| E2E | `e2e-tests/reports/junit.xml` | `junit` | Test Result (escenarios) |
+| E2E | `e2e-tests/reports/cucumber.json` | `cucumber` | Pestaña Cucumber Reports, en español |
+| E2E | `e2e-tests/reports/cucumber.html` | `publishHTML` | Enlace «Reporte BDD» |
+| E2E | `docker-logs.txt` | `archiveArtifacts` | Artefactos del build |
+
+Las capturas de un build verde, de Test Result, de Coverage, del reporte BDD y de un fallo
+identificado en la interfaz están en [`docs/reto7/EVIDENCIAS.md`](docs/reto7/EVIDENCIAS.md).
