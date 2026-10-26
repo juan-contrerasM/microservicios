@@ -110,6 +110,27 @@ pipeline {
           export RABBITMQ_PORT=5673
           export RABBITMQ_MANAGEMENT_PORT=15673
           export MAILHOG_UI_PORT=18025
+          # El contenedor de Node no hereda las globales de JCasC. Se copian aquí,
+          # sin imprimirlas, para que la BDD las lea.
+          if [ -z "${ADMIN_USUARIO:-}" ] || [ -z "${ADMIN_PASSWORD:-}" ] || [ -z "${USER_PASSWORD:-}" ]; then
+            pid=$(ps -eo pid,args | awk '/jenkins[.]war/ && !/awk/ { print $1; exit }')
+            while IFS= read -r -d '' item; do
+              case "$item" in
+                ADMIN_USUARIO=*|ADMIN_PASSWORD=*|USER_PASSWORD=*) export "$item" ;;
+              esac
+            done < "/proc/${pid}/environ"
+          fi
+          if [ -z "${ADMIN_USUARIO:-}" ] || [ -z "${ADMIN_PASSWORD:-}" ] || [ -z "${USER_PASSWORD:-}" ]; then
+            echo "Faltan ADMIN_USUARIO, ADMIN_PASSWORD o USER_PASSWORD en Jenkins" >&2
+            exit 1
+          fi
+          umask 077
+          cat > e2e-tests/.ci-env <<EOF
+ADMIN_USUARIO=${ADMIN_USUARIO}
+ADMIN_PASSWORD=${ADMIN_PASSWORD}
+USER_PASSWORD=${USER_PASSWORD}
+BASE_URL=http://host.docker.internal:18080
+EOF
           # Jenkins y Sonar ya ocupan sus container_name y sus puertos.
           # Este proyecto solo levanta el sistema de negocio.
           docker compose --env-file /workspace/.env -p micro-ci up -d --build \
@@ -126,8 +147,11 @@ pipeline {
                 set +x
                 set -eu
                 npm ci
-                export BASE_URL=http://host.docker.internal:18080
+                set -a
+                . ./.ci-env
+                set +a
                 npm test || true
+                rm -f .ci-env
                 chown -R "$(stat -c %u .):$(stat -c %g .)" .
               '''
             }
@@ -148,6 +172,7 @@ pipeline {
             alwaysLinkToLastBuild: true
           ]
           sh '''
+            rm -f e2e-tests/.ci-env
             docker compose --env-file /workspace/.env -p micro-ci logs --no-color > docker-logs.txt || true
             docker compose --env-file /workspace/.env -p micro-ci down -v || true
           '''
