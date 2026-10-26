@@ -1,11 +1,28 @@
 # Solo lo usa el stage E2E (proyecto micro-ci).
-# En Docker Desktop el volumen nombrado deja .erlang.cookie como root y modo 600,
-# y RabbitMQ sale con eacces. En CI el broker no tiene que sobrevivir al down -v.
+# En Docker Desktop el volumen de /var/lib/rabbitmq deja .erlang.cookie como root
+# y modo 600, y el broker sale con eacces. El script vive en el comando del
+# contenedor (sin bind mount: el daemon no ve el workspace de Jenkins) y guarda
+# la cookie en /tmp. En CI el broker no tiene que sobrevivir al down -v.
 services:
   message-broker:
+    user: "0:0"
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -eu
+        home=/tmp/rabbit-home
+        mkdir -p "$$home/mnesia" "$$home/log" /etc/rabbitmq/conf.d
+        if [ -n "$${RABBITMQ_DEFAULT_USER:-}" ] && [ -n "$${RABBITMQ_DEFAULT_PASS:-}" ]; then
+          printf 'default_user = %s\ndefault_pass = %s\n' "$$RABBITMQ_DEFAULT_USER" "$$RABBITMQ_DEFAULT_PASS" > /etc/rabbitmq/conf.d/10-defaults.conf
+        fi
+        printf '%s' "$${RABBITMQ_ERLANG_COOKIE:-microservicios-ci}" > "$$home/.erlang.cookie"
+        chown -R rabbitmq:rabbitmq "$$home"
+        chmod 600 "$$home/.erlang.cookie"
+        export HOME="$$home"
+        export RABBITMQ_MNESIA_BASE="$$home/mnesia"
+        export RABBITMQ_LOG_BASE="$$home/log"
+        exec gosu rabbitmq rabbitmq-server
     volumes: !reset []
-    tmpfs:
-      - /var/lib/rabbitmq:uid=999,gid=999,mode=755
 
 # down -v del proyecto micro-ci no debe borrar los volúmenes con nombre fijo
 # que ya usa el compose principal.
