@@ -17,15 +17,62 @@ services:
       start_period: 20s
     volumes: !reset []
 
-  # MySQL en frío, sobre un volumen nuevo, tarda más que el start_period
-  # del compose de desarrollo y Compose lo marca unhealthy.
+  # MySQL y Postgres en frío, sobre volúmenes nuevos, tardan más que el
+  # start_period de desarrollo y Compose los marca unhealthy.
+  database-empleados:
+    healthcheck:
+      start_period: 120s
+      retries: 20
+      timeout: 5s
   database-departamentos:
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping --protocol=tcp -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
       start_period: 240s
+      retries: 20
+      timeout: 5s
+  database-notificaciones:
+    healthcheck:
+      start_period: 120s
+      retries: 20
+      timeout: 5s
+  database-perfiles:
+    healthcheck:
+      start_period: 120s
+      retries: 20
+      timeout: 5s
+  database-vacaciones:
+    healthcheck:
+      start_period: 120s
+      retries: 20
+      timeout: 5s
+  database-auth:
+    healthcheck:
+      start_period: 120s
+      retries: 20
+      timeout: 5s
+  empleados-service:
+    healthcheck:
+      start_period: 120s
+      retries: 20
+  departamentos-service:
+    healthcheck:
+      start_period: 60s
+      retries: 20
+  notificaciones-service:
+    healthcheck:
+      start_period: 60s
+      retries: 20
+  perfiles-service:
+    healthcheck:
+      start_period: 150s
+      retries: 20
+  vacaciones-service:
+    healthcheck:
+      start_period: 60s
+      retries: 20
+  auth-service:
+    healthcheck:
+      start_period: 60s
+      retries: 20
 
 # down -v del proyecto micro-ci no debe borrar los volúmenes con nombre fijo
 # que ya usa el compose principal.
