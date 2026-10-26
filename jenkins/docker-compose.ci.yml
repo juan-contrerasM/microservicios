@@ -17,12 +17,6 @@ volumes:
   jenkins_npm:
     name: jenkins_npm
     external: true
-  jenkins_m2:
-    name: jenkins_m2
-    external: true
-  jenkins_npm:
-    name: jenkins_npm
-    external: true
   sonar_bootstrap:
     name: sonar_bootstrap
     external: true

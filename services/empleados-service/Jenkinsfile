@@ -105,6 +105,7 @@ pipeline {
       }
       steps {
         sh '''
+          set +x
           set -eu
           rm -rf e2e-tests/reports
           export GATEWAY_PORT=18080
