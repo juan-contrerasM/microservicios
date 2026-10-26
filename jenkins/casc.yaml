@@ -30,6 +30,7 @@ unclassified:
     installations:
       - name: "sonarqube"
         serverUrl: "http://sonarqube:9000"
+        credentialsId: "sonar-token"
   lockableResourcesManager:
     declaredResources:
       - name: "ecosistema-e2e"
