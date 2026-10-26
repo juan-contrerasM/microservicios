@@ -37,9 +37,7 @@ class HealthControllerTest {
 
 		var respuesta = controller.health();
 
-		assertThat(respuesta.getStatusCode())
-				.as("Fallo deliberado de la fase 2")
-				.isEqualTo(HttpStatus.I_AM_A_TEAPOT);
+		assertThat(respuesta.getStatusCode()).isEqualTo(HttpStatus.OK);
 		assertThat(respuesta.getBody().status()).isEqualTo("UP");
 	}
 
