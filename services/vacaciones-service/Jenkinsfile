@@ -164,6 +164,16 @@ EOF
       }
       post {
         always {
+          sh '''
+            rm -f e2e-tests/.ci-env
+            docker compose --env-file /workspace/.env \
+              -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
+              -p micro-ci logs --no-color > docker-logs.txt || true
+            docker compose --env-file /workspace/.env \
+              -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
+              -p micro-ci down -v || true
+          '''
+          archiveArtifacts artifacts: 'docker-logs.txt', allowEmptyArchive: true
           junit testResults: 'e2e-tests/reports/junit.xml', allowEmptyResults: false
           cucumber jsonReportDirectory: 'e2e-tests/reports',
             fileIncludePattern: '**/cucumber.json',
@@ -175,16 +185,6 @@ EOF
             keepAll: true,
             alwaysLinkToLastBuild: true
           ]
-          sh '''
-            rm -f e2e-tests/.ci-env
-            docker compose --env-file /workspace/.env \
-              -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
-              -p micro-ci logs --no-color > docker-logs.txt || true
-            docker compose --env-file /workspace/.env \
-              -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
-              -p micro-ci down -v || true
-          '''
-          archiveArtifacts artifacts: 'docker-logs.txt', allowEmptyArchive: true
         }
       }
     }

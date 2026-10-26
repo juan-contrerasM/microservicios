@@ -4,6 +4,8 @@
 services:
   message-broker:
     volumes: !reset []
+    tmpfs:
+      - /var/lib/rabbitmq:uid=999,gid=999,mode=755
 
 # down -v del proyecto micro-ci no debe borrar los volúmenes con nombre fijo
 # que ya usa el compose principal.
