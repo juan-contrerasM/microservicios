@@ -81,9 +81,6 @@ pipeline {
 
     stage('Quality Gate') {
       steps {
-        script {
-          registrarTokenSonar(readFile('/run/sonar-bootstrap/token').trim())
-        }
         timeout(time: 5, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
         }
@@ -153,29 +150,5 @@ pipeline {
         }
       }
     }
-  }
-}
-
-@NonCPS
-void registrarTokenSonar(String token) {
-  def provider = com.cloudbees.plugins.credentials.SystemCredentialsProvider.instance
-  def store = provider.store
-  def domain = com.cloudbees.plugins.credentials.domains.Domain.global()
-  def existing = com.cloudbees.plugins.credentials.CredentialsProvider.lookupCredentials(
-    org.jenkinsci.plugins.plaincredentials.StringCredentials.class,
-    jenkins.model.Jenkins.instance,
-    null,
-    null
-  ).find { it.id == 'sonar-token' }
-  def next = new org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl(
-    com.cloudbees.plugins.credentials.CredentialsScope.GLOBAL,
-    'sonar-token',
-    'Token de SonarQube',
-    hudson.util.Secret.fromString(token)
-  )
-  if (existing == null) {
-    store.addCredentials(domain, next)
-  } else {
-    store.updateCredentials(domain, existing, next)
   }
 }
