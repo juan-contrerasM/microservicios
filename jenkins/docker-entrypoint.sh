@@ -19,4 +19,9 @@ if ! runuser -u jenkins -- git config --global --get-all safe.directory 2>/dev/n
   runuser -u jenkins -- git config --global --add safe.directory '*'
 fi
 
+if [ -s /run/sonar-bootstrap/token ]; then
+  SONAR_TOKEN="$(tr -d '\r\n' < /run/sonar-bootstrap/token)"
+  export SONAR_TOKEN
+fi
+
 exec /usr/bin/tini -- runuser -u jenkins -- /usr/local/bin/jenkins.sh "$@"

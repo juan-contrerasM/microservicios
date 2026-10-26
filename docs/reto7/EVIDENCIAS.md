@@ -34,7 +34,36 @@ instala `dockerd` con `docker.io` y no el cliente). El build 3 es el que cierra 
 
 Es el gate por defecto. Sonar, al crear el gate, agrega condiciones de «clean as you code»
 (cobertura nueva al 80 %, violaciones, hotspots, duplicación). El bootstrap las quita y deja
-las dos del plan. El token queda en el volumen `sonar_bootstrap`, no en Git.
+las dos del plan. El token queda en el volumen `sonar_bootstrap`, no en Git. SonarQube 26
+rechaza el webhook hacia la red de Docker; `sonar.validateWebhooks=false` lo deja llegar a
+Jenkins.
+
+Dashboard de `empleados-service` tras el análisis del build 5, con el gate en Passed:
+
+| Métrica | Valor |
+|---|---|
+| Cobertura | 83,9 % |
+| Bugs | 0 |
+| Vulnerabilidades | 1 |
+| Code smells | 2 |
+| Duplicación | 6,4 % |
+| Quality Gate | OK |
+
+El stage del build 5 imprimió `Quality gate is 'OK'`.
+
+Build 7, pruebas quitadas salvo `HealthControllerTest` (2 passed, 0 failed). JaCoCo quedó en
+3,36 % de líneas y 3,21 % de instrucciones. El stage Quality Gate cortó el pipeline:
+
+```
+Quality gate is 'ERROR'
+Stage "Package" skipped due to earlier failure(s)
+Stage "E2E Tests" skipped due to earlier failure(s)
+ERROR: Pipeline aborted due to quality gate failure: ERROR
+Finished: FAILURE
+```
+
+Esas pruebas se restauraron. El build 8 volvió a analizar la suite completa y el stage
+imprimió `Quality gate is 'OK'`.
 
 ## Fase 2 — Test Result, cobertura y una unitaria rota
 

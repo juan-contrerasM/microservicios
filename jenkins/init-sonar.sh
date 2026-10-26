@@ -43,6 +43,12 @@ auth() {
   curl -sf -u "admin:${PASS}" "$@"
 }
 
+# SonarQube 26 rechaza webhooks hacia la red Docker (site-local).
+# El curso corre Jenkins y Sonar en el mismo compose, así que la validación se apaga.
+auth -X POST "${SONAR_URL}/api/settings/set" \
+  --data-urlencode "key=sonar.validateWebhooks" \
+  --data-urlencode "value=false" >/dev/null
+
 if ! auth "${SONAR_URL}/api/qualitygates/show?name=Reto7" >/dev/null 2>&1; then
   auth -X POST "${SONAR_URL}/api/qualitygates/create" --data-urlencode "name=Reto7" >/dev/null
 fi

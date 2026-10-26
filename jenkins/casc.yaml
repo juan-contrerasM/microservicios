@@ -22,6 +22,16 @@ jenkins:
           - key: USER_PASSWORD
             value: "${USER_PASSWORD}"
 
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - string:
+              scope: GLOBAL
+              id: sonar-token
+              secret: "${SONAR_TOKEN}"
+              description: "Token de SonarQube generado por sonar-bootstrap"
+
 unclassified:
   location:
     url: "http://localhost:9090/"
