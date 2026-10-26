@@ -110,7 +110,12 @@ pipeline {
           export RABBITMQ_PORT=5673
           export RABBITMQ_MANAGEMENT_PORT=15673
           export MAILHOG_UI_PORT=18025
-          docker compose --env-file /workspace/.env -p micro-ci up -d --build
+          # Jenkins y Sonar ya ocupan sus container_name y sus puertos.
+          # Este proyecto solo levanta el sistema de negocio.
+          docker compose --env-file /workspace/.env -p micro-ci up -d --build \
+            api-gateway empleados-service departamentos-service \
+            notificaciones-service perfiles-service vacaciones-service \
+            auth-service mailhog message-broker
           chmod +x jenkins/wait-for-healthy.sh
           jenkins/wait-for-healthy.sh
         '''
