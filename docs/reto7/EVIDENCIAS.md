@@ -90,3 +90,42 @@ Build 6, pestaña Test Result, sin abrir la consola:
 
 Ese fallo marcó el build UNSTABLE y `skipStagesAfterUnstable()` no entró a SonarQube, Quality
 Gate, Package ni E2E. La aserción se revirtió; `main` vuelve a esperar `HttpStatus.OK`.
+
+## Fase 4 — imagen, E2E y `vacaciones-service`, build 6, SUCCESS
+
+`empleados-service` build 12 ya había cerrado la corrida verde de ese pipeline. Los builds 1
+a 5 de vacaciones murieron en E2E (cookie de RabbitMQ, MySQL en frío, Postgres en frío y el
+broker unhealthy). El build 6, el 26 oct 2026, recorrió Checkout, Build, Test, SonarQube,
+Quality Gate, Package y E2E Tests en SUCCESS.
+
+`docker image inspect` devuelve la misma imagen para `micro/vacaciones-service:6` y
+`:latest`.
+
+Test Result del build 6, sin abrir la consola: 81 passed, 0 failed. La suite Cucumber aporta
+18 escenarios. En español aparecen, entre otros:
+
+- Programar vacaciones futuras
+- Rechazar un rango de fechas invertido
+- Rechazar vacaciones solapadas
+- Suspender y reactivar la cuenta durante el ciclo completo
+- Retirar conserva auditoría y bloquea la cuenta
+- La recuperación no vuelve a habilitar una cuenta retirada
+
+El enlace «Reporte BDD» responde en
+`/job/vacaciones-service/6/Reporte_20BDD/cucumber.html` y el HTML nombra las características
+«Ciclo de vacaciones» y «Retiro definitivo». El artefacto del build es `docker-logs.txt`.
+La pestaña Coverage responde.
+
+SonarQube, proyecto `vacaciones-service`, gate `Reto7` en Passed:
+
+| Métrica | Valor |
+|---|---|
+| Cobertura | 98,8 % |
+| Bugs | 4 |
+| Vulnerabilidades | 3 |
+| Code smells | 0 |
+| Duplicación | 0,0 % |
+| Quality Gate | OK |
+
+Al terminar, `docker compose -p micro-ci down -v` no dejó contenedores `micro-ci`. Siguieron
+arriba `jenkins`, `sonarqube` y `sonar-db`, y los volúmenes `jenkins_data` y `sonar_bootstrap`.

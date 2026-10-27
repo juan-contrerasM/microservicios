@@ -4,10 +4,9 @@ Fuente de verdad del avance real del equipo. Actualiza este archivo en el mismo 
 avanza o cierra una fase. Ver el detalle de cada fase en
 [`PLAN-RETO7.md`](PLAN-RETO7.md). Enunciado: [`reto7.pdf`](reto7.pdf).
 
-El Reto 6 sigue con las fases 7 y 8 abiertas; su estado vive en
-[`docs/reto6/STATUS.md`](../reto6/STATUS.md). Este reto no cambia contratos de negocio. La
-Fase 4 publica la suite BDD que ya exista; el escenario de offboarding entra cuando el Reto 6
-cierre su Fase 7.
+El Reto 6 está cerrado; su estado vive en [`docs/reto6/STATUS.md`](../reto6/STATUS.md).
+Este reto no cambia contratos de negocio. La Fase 4 publicó la suite BDD completa, incluidas
+`03-vacaciones.feature` y `04-offboarding.feature`.
 
 Leyenda: ✅ hecho · 🔄 en progreso · ⬜ pendiente
 
@@ -17,12 +16,12 @@ Leyenda: ✅ hecho · 🔄 en progreso · ⬜ pendiente
 | 1 | Jenkins en el compose: Dockerfile, plugins, socket, job `verificar-docker`, UI en `:9090` | ✅ | Falta: nada. Evidencia: build 3 de `verificar-docker` en SUCCESS. |
 | 2 | `services/empleados-service/Jenkinsfile`: Checkout, Build, Test, `junit`, JaCoCo, job como código | ✅ | Falta: nada. Evidencia: builds 2 a 5 en verde y build 6 UNSTABLE revertido. |
 | 3 | SonarQube, `sonar-db`, bootstrap del gate y del token, stages Sonar y Quality Gate | ✅ | Falta: nada. Evidencia: builds 5 y 8 con gate OK, build 7 con gate ERROR revertido. |
-| 4 | Package, E2E con reportes Cucumber, `wait-for-healthy.sh`, Jenkinsfile de `vacaciones-service` | 🔄 | Falta una corrida SUCCESS de `vacaciones-service`. Empleados build 12 ya está en verde. El detalle está en «Qué falta para continuar». |
-| 5 | Tres corridas, cuatro fallos simulados, README, capturas en `EVIDENCIAS.md` | 🔄 | Falta todo menos el README. No empezar hasta cerrar la fase 4. El detalle está abajo. |
+| 4 | Package, E2E con reportes Cucumber, `wait-for-healthy.sh`, Jenkinsfile de `vacaciones-service` | ✅ | Falta: nada. Evidencia: `vacaciones-service` build 6 en SUCCESS. Empleados build 12 ya estaba en verde. |
+| 5 | Tres corridas, cuatro fallos simulados, README, capturas en `EVIDENCIAS.md` | 🔄 | Falta todo menos el README. La fase 4 ya está cerrada. El detalle está abajo. |
 
 ## Qué falta para continuar
 
-Leer esta sección antes de tocar código. Las fases 0 a 3 están cerradas: no se repiten.
+Leer esta sección antes de tocar código. Las fases 0 a 4 están cerradas: no se repiten.
 Los jobs hacen checkout de `file:///workspace`, rama `main`. Jenkins solo ve un cambio
 después de commitearlo en `main`. No commitear `.env`, tokens ni `e2e-tests/.ci-env`.
 No hacer `docker compose down -v` del proyecto principal: borra `jenkins_data`,
@@ -74,40 +73,29 @@ Ya está hecho, y no hay que reescribirlo:
 - `jenkins/docker-compose.ci.yml` alarga el `start_period` de las bases y de los servicios
   en frío, y el healthcheck del broker corre como el usuario `rabbitmq`.
 
-Falta, en este orden:
+Cerrada con `vacaciones-service` build 6 en SUCCESS (26 oct 2026). Los builds 1 a 5
+murieron en E2E: el broker con `eacces` en la cookie (1 y 2), MySQL en frío (3), Postgres
+en frío (4) y el broker unhealthy otra vez (5). El build 6 levantó `micro-ci` con el broker
+healthy y corrió la suite completa.
 
-1. Volver a levantar Jenkins y Sonar. Los contenedores `jenkins`, `sonarqube` y `sonar-db`
-   quedaron parados con código 255. `docker compose up -d` alcanza. No borra volúmenes.
-2. Conseguir un build SUCCESS de `vacaciones-service` de punta a punta. Los builds 1 a 5
-   terminaron en FAILURE, todos en E2E, con Quality Gate y Package ya en verde en el
-   build 5:
-   - Builds 1 y 2: el broker murió con `eacces` al leer `.erlang.cookie`.
-   - Build 3: `micro-ci-database-departamentos-1` unhealthy. MySQL en frío tardó más que
-     el `start_period` de desarrollo. El init sí llegó a «ready for connections».
-   - Build 4: `micro-ci-database-empleados-1` unhealthy. Misma causa, en Postgres.
-   - Build 5: `micro-ci-message-broker-1` unhealthy. El artefacto `docker-logs.txt` de
-     ese build quedó vacío, así que la causa del healthcheck no quedó registrada.
-3. Si el build 6 vuelve a marcar el broker unhealthy, mirar el log de ese contenedor
-   antes de subir timeouts. El healthcheck es `gosu rabbitmq env HOME=/tmp/rabbit-home
-   rabbitmq-diagnostics -q ping`. Un arranque solo del broker sí queda healthy; el fallo
-   aparece cuando sube el stack completo. No usar `docker compose down -v` del proyecto
-   principal para «limpiar».
-4. En el build verde, comprobar `docker image inspect` de `micro/vacaciones-service:<N>`
-   y `:latest`, el reporte Cucumber en español sin abrir la consola, el enlace «Reporte
-   BDD» (la URL lleva `Reporte_20BDD`), el artefacto `docker-logs.txt`, y que el `down -v`
-   solo borró volúmenes `micro-ci_*`. Jenkins y Sonar tienen que seguir arriba.
-5. En el mismo commit, marcar esta fase ✅ y agregar la sección de la fase 4 en
-   `docs/reto7/EVIDENCIAS.md`.
+Comprobado en ese build:
 
-No crear `e2e-tests/features/03-vacaciones.feature` ni `04-offboarding.feature`. No
-existen, y cerrarlas es el Reto 6 (fases 7 y 8), fuera de este reto. El E2E de la fase 4
-corre contra `00-humo`, `01-seguridad` y `02-onboarding`. El escenario de offboarding no
-se marca ✅ hasta que el Reto 6 deje esas features. Eso no bloquea la corrida verde de
-vacaciones ni el README de la fase 5.
+- `docker image inspect` ve `micro/vacaciones-service:6` y `:latest` (la misma imagen).
+- Test Result: 81 passed, 0 failed. Son 63 unitarias y 18 escenarios Cucumber, entre ellos
+  «Programar vacaciones futuras», «Suspender y reactivar la cuenta durante el ciclo completo»,
+  «Retirar conserva auditoría y bloquea la cuenta» y «La recuperación no vuelve a habilitar
+  una cuenta retirada».
+- El enlace «Reporte BDD» (`/job/vacaciones-service/6/Reporte_20BDD/`) sirve
+  `cucumber.html` con «Ciclo de vacaciones» y «Retiro definitivo» en español.
+- El artefacto `docker-logs.txt` está en el build. Coverage responde. Sonar dejó
+  `vacaciones-service` en Passed: cobertura 98,8 %, 4 bugs, 3 vulnerabilidades, 0 code
+  smells, duplicación 0,0 %.
+- Tras el `down -v` no quedó ningún contenedor `micro-ci`. Siguen `jenkins_data`,
+  `sonar_bootstrap` y los volúmenes de Sonar. Jenkins y Sonar quedaron arriba.
 
 ### Fase 5
 
-No empezar hasta que la fase 4 tenga el build verde de vacaciones. El README raíz ya
+La fase 4 ya tiene el build verde de vacaciones. El README raíz ya
 tiene la sección Reto 7 y la tabla de reportes. Falta:
 
 1. Tres corridas SUCCESS seguidas de cada pipeline, sobre el mismo volumen `jenkins_data`.
@@ -121,7 +109,7 @@ tiene la sección Reto 7 y la tabla de reportes. Falta:
      Cucumber nombra el escenario en español.
 3. Capturas en `docs/reto7/EVIDENCIAS.md`: pipeline en verde, Test Result, Coverage,
    reporte BDD en español, y un build fallido con la prueba o el escenario identificado.
-   Hoy `EVIDENCIAS.md` tiene las fases 1 a 3 y dice que las capturas de la fase 5 siguen
+   Hoy `EVIDENCIAS.md` tiene las fases 1 a 4 y dice que las capturas de la fase 5 siguen
    pendientes.
 
 El `pollSCM` opcional no hace falta para cerrar la fase.
