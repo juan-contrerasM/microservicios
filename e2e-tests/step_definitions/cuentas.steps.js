@@ -8,6 +8,7 @@ Given('que existe un empleado con credenciales', async function () {
   const creado = await empleadoConCredenciales(this);
   this.empleado = creado.empleado;
   this.tokenUsuario = creado.token;
+  this.tokenActivacion = creado.tokenActivacion;
   this.departamentoDelEmpleado = creado.departamento;
 });
 

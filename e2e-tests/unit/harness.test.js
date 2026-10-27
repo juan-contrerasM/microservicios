@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { leerEntorno } from '../support/entorno.js';
-import { datosDepartamento, datosEmpleado, sufijo } from '../support/fabrica.js';
+import { datosDepartamento, datosEmpleado, fechaUtcMasDias, sufijo } from '../support/fabrica.js';
 import { ErrorDePolling, eventualmente } from '../support/polling.js';
 import { alterarFirma, extraerToken } from '../support/tokens.js';
 
@@ -73,5 +73,10 @@ describe('fabrica', () => {
     assert.ok(empleado.id.length <= 64);
     assert.notEqual(sufijo(), sufijo());
     assert.match(empleado.email, /@example\.com$/);
+  });
+
+  it('genera fechas UTC relativas en formato ISO', () => {
+    assert.match(fechaUtcMasDias(1), /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(fechaUtcMasDias(3) > fechaUtcMasDias(1));
   });
 });

@@ -7,6 +7,9 @@ la raíz.
 > Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo).
 > Reto 7 (vigente): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md) y
 > [`docs/reto7/STATUS.md`](docs/reto7/STATUS.md). La sección de CI está al final de este archivo.
+> Reto 6 (cerrado): [`docs/reto6/PLAN-RETO6.md`](docs/reto6/PLAN-RETO6.md),
+> [`docs/reto6/STATUS.md`](docs/reto6/STATUS.md) y
+> [`docs/reto6/EVIDENCIAS.md`](docs/reto6/EVIDENCIAS.md).
 > Reto 5 (cerrado): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md) y
 > [`docs/reto5/STATUS.md`](docs/reto5/STATUS.md).
 > Reto 4 (cerrado): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md) y
@@ -588,6 +591,68 @@ npx newman run docs/reto5/Reto5.postman_collection.json \
 La evidencia reproducible se registra en
 [`docs/reto5/EVIDENCIAS.md`](docs/reto5/EVIDENCIAS.md).
 
+## Reto 6 — automatización de pruebas
+
+El Reto 6 agrega una suite BDD de extremo a extremo sin cambiar los contratos de negocio. La
+pirámide queda repartida así:
+
+| Nivel | Alcance | Herramienta | Comando |
+|---|---|---|---|
+| Unitarias de dominio | Vacaciones, validaciones, fechas y transiciones | `node:test` + dobles | `cd services/vacaciones-service && npm test` |
+| Unitarias de negocio | Empleados, resiliencia, eventos y controladores | JUnit 5 + Mockito | `cd services/empleados-service && ./mvnw clean test` |
+| Integración con BD real | Repositorio de empleados y migraciones Liquibase sobre PostgreSQL | Testcontainers + Failsafe | `cd services/empleados-service && ./mvnw clean verify` |
+| Unitarias de seguridad | Login, tokens y regla de no reactivar retirados | pytest | `cd services/auth-service && python -m pytest` |
+| BDD / E2E | Sistema completo visto únicamente por el Gateway | Cucumber.js + Gherkin en español | `cd e2e-tests && npm test` |
+
+BDD expresa el comportamiento en escenarios legibles (`Dado/Cuando/Entonces`). Se eligió
+Cucumber.js porque interpreta Gherkin en español, crea un `World` aislado por escenario y genera
+HTML, JSON y JUnit sin sumar otro proyecto Maven. La suite usa `fetch`, datos únicos y polling
+acotado en lugar de pausas fijas.
+
+### Prerrequisitos y ejecución
+
+- Docker Desktop con Compose, Node.js 22, JDK 21, Maven Wrapper y Python 3.12.
+- Copiar `.env.example` a `.env` en la raíz y `e2e-tests/.env.example` a `e2e-tests/.env`.
+- Levantar el sistema y esperar todos los health checks: `docker compose up --build -d` y
+  `docker compose ps`.
+- Instalar una vez las dependencias BDD: `cd e2e-tests && npm ci`.
+- Ejecutar toda la aceptación: `npm test`.
+
+Las suites de los tres servicios se preparan y ejecutan así desde la raíz:
+
+```bash
+cd services/vacaciones-service
+npm ci
+npm test
+
+cd ../empleados-service
+./mvnw clean verify
+
+cd ../auth-service
+python -m pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest
+```
+
+En PowerShell usa `.\mvnw.cmd clean verify` para empleados. Docker debe estar activo para las
+cinco pruebas de integración de ese servicio.
+
+La suite cubre salud del Gateway; JWT ausente, malformado y alterado; permisos ADMIN/USER;
+onboarding asíncrono; validaciones de alta; programación, solapamiento y ciclo completo de
+vacaciones; retiro definitivo, auditoría y recuperación bloqueada. El tiempo de vacaciones se
+controla con fechas UTC relativas y `forzar-inicio` / `forzar-fin`.
+
+| Reporte generado por `npm test` | Uso |
+|---|---|
+| `e2e-tests/reports/cucumber.html` | Evidencia visual navegable |
+| `e2e-tests/reports/cucumber.json` | Resultado estructurado de Cucumber |
+| `e2e-tests/reports/junit.xml` | Integración posterior con Jenkins |
+
+Los reportes se regeneran y están ignorados por Git. El proceso devuelve código distinto de cero
+ante cualquier fallo. La validación final pasó tres veces seguidas sobre el mismo despliegue: 18
+escenarios y 137 pasos en cada corrida. La prueba negativa temporal también confirmó el mensaje,
+el exit code y los reportes fallidos. Detalle y cobertura:
+[`docs/reto6/EVIDENCIAS.md`](docs/reto6/EVIDENCIAS.md).
+
 ## Reto 7 — Integración continua
 
 Cada cambio se compila, se prueba y se empaqueta solo. Jenkins corre dentro del mismo
@@ -644,8 +709,8 @@ El E2E usa el proyecto Compose `micro-ci`, no el de la carpeta. Su `down -v` bor
 equipo. Las dos pipelines comparten el lock `ecosistema-e2e`, así que no levantan el stack a
 la vez.
 
-La suite BDD que corre es la que ya está en `e2e-tests/`. Los escenarios de vacaciones y de
-offboarding entran cuando el Reto 6 cierre sus fases 7 y 8.
+La suite BDD que corre es la que ya está en `e2e-tests/`, incluidas
+`03-vacaciones.feature` y `04-offboarding.feature` desde que el Reto 6 cerró las fases 7 y 8.
 
 ### Reportes publicados
 

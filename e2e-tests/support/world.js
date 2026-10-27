@@ -15,11 +15,14 @@ export class Contexto extends World {
     this.tokenUsuario = null;
     this.tokenAlterado = null;
     this.tokenActivacion = null;
+    this.tokenRecuperacion = null;
     this.ultimaRespuesta = null;
     this.empleado = null;
     this.departamento = null;
     this.otroEmpleado = null;
     this.empleadoRegistrado = null;
+    this.vacacion = null;
+    this.periodoVacaciones = null;
   }
 }
 

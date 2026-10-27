@@ -13,7 +13,7 @@ El sistema tiene que estar arriba (`docker compose up` en la raíz). Node 22.
 ```bash
 cd e2e-tests
 cp .env.example .env   # en Windows: copy .env.example .env
-npm install
+npm ci
 npm test
 ```
 
@@ -69,6 +69,8 @@ La suite **no** baja ese intervalo. Deja `POLL_INTENTOS=15` y `POLL_INTERVALO_MS
 - `00-humo.feature`: `GET /health` del Gateway es 200.
 - `01-seguridad.feature`: sin token, token malformado y firma alterada → 401 `No autenticado`. Un `USER` lista empleados (200) y no puede crearlos ni retirarlos (403). Un `ADMIN` crea y consulta (201 / 200). Un `USER` edita su perfil (200) y el de otro (403). Antecedentes: un empleado con credenciales y un departamento de prueba.
 - `02-onboarding.feature`: el alta publica, eventualmente, una `SEGURIDAD` con token; `reset-password` responde 200 `Contraseña actualizada`; el login queda en 200 con `role` `USER`.
+- `03-vacaciones.feature`: programación futura (201 y aviso `VACACIONES`), rango invertido (400), solapamiento (400) y ciclo completo `PROGRAMADA → EN_CURSO → FINALIZADA`. Los endpoints `forzar-inicio` y `forzar-fin` controlan el tiempo sin esperar al cron; el login se bloquea y se recupera mediante polling sobre hechos observables.
+- `04-offboarding.feature`: retiro lógico, aviso `CUENTA`, login bloqueado, auditoría por `estado=RETIRADO` y recuperación que conserva la respuesta genérica pero rechaza el reset de una cuenta desactivada permanentemente.
 
 Antes de activar, el login con la clave que todavía no se fijó responde **401 `Credenciales inválidas`**. La cuenta nace con `password_hash` nulo y auth rechaza la clave antes de mirar el estado, para no revelar si el correo existe. `La cuenta no está activa` aparece cuando la clave sí coincide y la cuenta no está `ACTIVA` (vacaciones y offboarding). La notificación `SEGURIDAD` es la prueba de que la cuenta se creó y quedó pendiente.
 
@@ -82,3 +84,13 @@ Los rechazos del alta se confirmaron contra el servicio, no contra un 409 supues
 | Email duplicado | 400 | `ese email` |
 
 El duplicado es 400 porque `ConflictException` de empleados se traduce a 400 desde el Reto 1 (`Ya existe un empleado registrado con ese email`). El departamento inexistente también es 400 (`El departamento con id … no existe`), no 404.
+
+## Reproducibilidad comprobada
+
+El 15 de octubre de 2026 la suite completa pasó tres veces seguidas, sin reiniciar ni limpiar
+volúmenes: 18 escenarios y 137 pasos en cada ejecución. Los tiempos fueron 52,448 s, 49,415 s y
+46,673 s. Después se cambió temporalmente la expectativa del humo de 200 a 201: Cucumber salió
+con código 1, mostró `esperado 201, obtenido 200`, JUnit registró un fallo y el HTML marcó el
+escenario fallido. La expectativa se restauró y la ejecución final volvió a quedar verde.
+
+La evidencia completa está en [`../docs/reto6/EVIDENCIAS.md`](../docs/reto6/EVIDENCIAS.md).

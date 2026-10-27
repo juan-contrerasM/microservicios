@@ -115,6 +115,8 @@ services:
   message-broker:
     image: rabbitmq:3-management
     hostname: message-broker
+    # Recupera fallos transitorios del primer arranque al inicializar el volumen/cookie de Erlang.
+    restart: on-failure
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
