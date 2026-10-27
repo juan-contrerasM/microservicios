@@ -1,8 +1,8 @@
 # Evidencias — Reto 7
 
-Lo que ya se vio en marcha, y lo que falta para cerrar el criterio 5. La fase 2 queda
-respaldada por la API de Test Result y por la gráfica de tests. Las capturas de pantalla
-de la interfaz siguen pendientes para la fase 5.
+Lo que ya se vio en marcha. La fase 5 cierra el criterio de capturas: pipeline en verde,
+Test Result, Coverage, reporte BDD en español y los cuatro fallos en la etapa que
+corresponde.
 
 ## Fase 1 — job `verificar-docker`, build 3, SUCCESS
 
@@ -129,3 +129,55 @@ SonarQube, proyecto `vacaciones-service`, gate `Reto7` en Passed:
 
 Al terminar, `docker compose -p micro-ci down -v` no dejó contenedores `micro-ci`. Siguieron
 arriba `jenkins`, `sonarqube` y `sonar-db`, y los volúmenes `jenkins_data` y `sonar_bootstrap`.
+
+## Fase 5 — tres corridas y cuatro fallos
+
+El volumen `jenkins_data` no se borró entre corridas. `empleados-service` builds 13, 14 y
+15 (26 oct 2026) y `vacaciones-service` builds 12, 13 y 14 (27 oct 2026) terminaron en
+SUCCESS, uno detrás de otro.
+
+Antes de esa racha de vacaciones, el build 7 falló por un corte TCP (`fetch failed` en
+`forzar-fin`; el gateway no vio la petición) y el build 8 por el healthcheck: empleados
+arrancó en 287 s y el presupuesto anterior se agotaba cerca del segundo 220. Esas dos
+causas quedaron corregidas en `main`. El build 11 se abortó porque Docker se cayó de
+noche; no forma parte de la racha.
+
+Pipeline en verde, Test Result, Coverage y el reporte BDD del build 10 de vacaciones:
+
+![Stage view en verde](capturas/stage-view.png)
+
+![Test Result](capturas/test-result.png)
+
+![Ciclo de vacaciones](capturas/ciclo-vacaciones.png)
+
+![Coverage](capturas/coverage.png)
+
+![Reporte BDD](capturas/cucumber.png)
+
+Los cuatro fallos se provocaron en `main`, se capturaron y se revirtieron. El árbol vuelve
+a tener la suite de empleados, el Dockerfile de vacaciones y el humo esperando 200.
+
+1. `empleados-service` build 16, UNSTABLE. Test queda en amarillo. Test Result nombra
+   `healthDevuelve200CuandoPostgreSqlEstaDisponible`: «Fallo deliberado de la fase 5»,
+   expected 418 I_AM_A_TEAPOT, was 200 OK. Sonar, Quality Gate, Package y E2E no corrieron.
+
+![Unitaria rota](capturas/unitaria-rota.png)
+
+2. `empleados-service` build 18, FAILURE. Líneas al 3,36 %. Quality Gate `ERROR`
+   (`Quality gate is 'ERROR'`). Package y E2E no corrieron. El build 17, con el código
+   excluido de Sonar, no bajó la medida y se abortó: no es este fallo.
+
+![Cobertura bajo 70 %](capturas/cobertura-baja.png)
+
+![Quality Gate en rojo](capturas/quality-gate.png)
+
+3. `vacaciones-service` build 15, FAILURE. Package en rojo. `RUN this-command-does-not-exist`
+   devolvió 127 (`not found`). E2E no corrió.
+
+![Package en rojo](capturas/package-roto.png)
+
+4. `vacaciones-service` build 16, UNSTABLE. Se detiene en E2E Tests. Cucumber nombra el
+   escenario «El borde responde cuando el sistema está operativo»: esperado 201, obtenido
+   200.
+
+![Escenario BDD en español](capturas/bdd-fallo.png)

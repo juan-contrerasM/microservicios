@@ -17,7 +17,7 @@ Leyenda: ✅ hecho · 🔄 en progreso · ⬜ pendiente
 | 2 | `services/empleados-service/Jenkinsfile`: Checkout, Build, Test, `junit`, JaCoCo, job como código | ✅ | Falta: nada. Evidencia: builds 2 a 5 en verde y build 6 UNSTABLE revertido. |
 | 3 | SonarQube, `sonar-db`, bootstrap del gate y del token, stages Sonar y Quality Gate | ✅ | Falta: nada. Evidencia: builds 5 y 8 con gate OK, build 7 con gate ERROR revertido. |
 | 4 | Package, E2E con reportes Cucumber, `wait-for-healthy.sh`, Jenkinsfile de `vacaciones-service` | ✅ | Falta: nada. Evidencia: `vacaciones-service` build 6 en SUCCESS. Empleados build 12 ya estaba en verde. |
-| 5 | Tres corridas, cuatro fallos simulados, README, capturas en `EVIDENCIAS.md` | 🔄 | Falta todo menos el README. La fase 4 ya está cerrada. El detalle está abajo. |
+| 5 | Tres corridas, cuatro fallos simulados, README, capturas en `EVIDENCIAS.md` | ✅ | Falta: nada. Empleados 13 a 15 y vacaciones 12 a 14 en SUCCESS. Los cuatro fallos quedaron revertidos. |
 
 ## Qué falta para continuar
 
@@ -95,24 +95,43 @@ Comprobado en ese build:
 
 ### Fase 5
 
-La fase 4 ya tiene el build verde de vacaciones. El README raíz ya
-tiene la sección Reto 7 y la tabla de reportes. Falta:
+Falta: nada. El README raíz ya tenía la sección Reto 7 y la tabla de reportes. El
+`pollSCM` opcional no hizo falta. Las capturas están en
+[`EVIDENCIAS.md`](EVIDENCIAS.md). El volumen `jenkins_data` no se borró entre corridas.
 
-1. Tres corridas SUCCESS seguidas de cada pipeline, sobre el mismo volumen `jenkins_data`.
-   No borrarlo entre corridas. Si una sale intermitente, anotar aquí la causa (espera de
-   salud, lock `ecosistema-e2e`, o un `down -v` que no corrió) y corregirla.
-2. Cuatro fallos, uno por uno, revertidos después de capturar la pantalla:
-   - Una unitaria rota se queda en **Test**, amarillo, y Test Result nombra la prueba.
-   - Cobertura bajo 70 % se detiene en **Quality Gate**.
-   - Un `RUN` inválido en el Dockerfile se detiene en **Package**, rojo.
-   - Un escenario BDD con el código esperado cambiado se detiene en **E2E Tests** y
-     Cucumber nombra el escenario en español.
-3. Capturas en `docs/reto7/EVIDENCIAS.md`: pipeline en verde, Test Result, Coverage,
-   reporte BDD en español, y un build fallido con la prueba o el escenario identificado.
-   Hoy `EVIDENCIAS.md` tiene las fases 1 a 4 y dice que las capturas de la fase 5 siguen
-   pendientes.
+Tres SUCCESS seguidas de cada pipeline:
 
-El `pollSCM` opcional no hace falta para cerrar la fase.
+- `empleados-service` builds 13, 14 y 15 (26 oct 2026).
+- `vacaciones-service` builds 12, 13 y 14 (27 oct 2026).
+
+Antes de la racha de vacaciones hubo dos fallos con causa medida, ya corregidos en `main`:
+
+- Build 7, UNSTABLE. El escenario «Suspender y reactivar la cuenta durante el ciclo
+  completo» murió con `fetch failed` en `POST .../forzar-fin`. El gateway no registró el
+  proxy: el corte fue TCP y la petición no llegó al servicio. `e2e-tests/support/http.js`
+  reintenta solo errores de red.
+- Build 8, FAILURE en la espera de salud, antes de las pruebas. `empleados-service`
+  arrancó en 287 s. Con intervalo de 5 s y 20 reintentos el healthcheck se agotaba cerca
+  del segundo 220, y Docker lo dejó unhealthy aunque después escuchara. El broker también
+  se pasó de su presupuesto. `jenkins/docker-compose.ci.yml` deja el `start_period` de
+  empleados en 360 s (30 reintentos) y el del broker en 150 s (15 reintentos).
+  `jenkins/wait-for-healthy.sh` espera 480 s, que cubre ese arranque.
+- El build 11 quedó colgado cuando Docker se cayó de noche y se abortó. No entra en la
+  racha. La racha válida es 12, 13 y 14.
+
+Cuatro fallos, uno por uno, capturados y revertidos. `main` vuelve a tener la suite, el
+Dockerfile y el humo en 200:
+
+1. `empleados-service` build 16, UNSTABLE. Test en amarillo y las etapas siguientes no
+   corrieron. Test Result nombra `healthDevuelve200CuandoPostgreSqlEstaDisponible`:
+   «Fallo deliberado de la fase 5», expected 418, was 200.
+2. `empleados-service` build 18, FAILURE. JaCoCo en 3,36 % de líneas. Quality Gate
+   `ERROR`; Package y E2E no corrieron. El build 17 excluyó todo el código de Sonar, la
+   medida no bajó y se abortó: no cuenta como el fallo del gate.
+3. `vacaciones-service` build 15, FAILURE. Package en rojo: `RUN this-command-does-not-exist`
+   salió 127. E2E no corrió.
+4. `vacaciones-service` build 16, UNSTABLE. Se detiene en E2E Tests. Cucumber nombra
+   «El borde responde cuando el sistema está operativo»: esperado 201, obtenido 200.
 
 ## Decisiones técnicas del enunciado
 
