@@ -21,7 +21,7 @@
 		<sonar.projectName>empleados-service</sonar.projectName>
 		<sonar.java.binaries>target/classes</sonar.java.binaries>
 		<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
-		<sonar.coverage.exclusions>**/*.java</sonar.coverage.exclusions>
+		<sonar.coverage.exclusions>**/model/Empleado.java,**/Reto1Application.java,**/dto/**,**/config/**,**/event/EmpleadoActualizadoData.java,**/event/EmpleadoEventoData.java,**/event/EmpleadoRetiradoData.java,**/event/EventEnvelope.java</sonar.coverage.exclusions>
 	</properties>
 	<dependencies>
 		<dependency>
