@@ -4,7 +4,8 @@
 set -eu
 
 PROJECT=micro-ci
-DEADLINE=$(($(date +%s) + 240))
+# 480s cubre el start_period de empleados en frío (360s) más un margen de checks.
+DEADLINE=$(($(date +%s) + 480))
 
 while true; do
   lines="$(docker compose -p "$PROJECT" ps --format '{{.Service}} {{.State}} {{.Health}}' || true)"
@@ -29,7 +30,7 @@ while true; do
   fi
 
   if [ "$(date +%s)" -ge "$DEADLINE" ]; then
-    echo "Timeout de 240s. Siguen sin estar sanos:" >&2
+    echo "Timeout de 480s. Siguen sin estar sanos:" >&2
     printf '%s\n' "$bad" >&2
     exit 1
   fi
