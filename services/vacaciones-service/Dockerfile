@@ -1,8 +1,6 @@
 FROM node:22-alpine
 WORKDIR /app
 
-RUN this-command-does-not-exist
-
 RUN apk add --no-cache curl
 
 COPY package.json package-lock.json ./
