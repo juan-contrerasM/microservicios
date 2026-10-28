@@ -1,5 +1,6 @@
 # vacaciones-service
 
+esto es una prueba
 Programa períodos de vacaciones y publica `vacaciones.programadas`. Desde el Reto 5 también
 observa el paso del tiempo: un scheduler inicia y finaliza los períodos y publica
 `vacaciones.iniciadas` y `vacaciones.finalizadas`. Node.js 22, Express y PostgreSQL propio.
