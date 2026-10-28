@@ -5,7 +5,7 @@ Programa períodos de vacaciones y publica `vacaciones.programadas`. Desde el Re
 observa el paso del tiempo: un scheduler inicia y finaliza los períodos y publica
 `vacaciones.iniciadas` y `vacaciones.finalizadas`. Node.js 22, Express y PostgreSQL propio.
 No comparte proceso con el Gateway.
-
+jkjkjkjk
 ## Por qué una réplica y no un GET a empleados
 
 Consultar empleados por HTTP en cada alta daría el estado del momento, pero el período no se

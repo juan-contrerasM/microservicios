@@ -1,5 +1,5 @@
 # api-gateway
-
+kjkkjkjk
 Punto de entrada único del ecosistema — Reto 3. Gateway de **aplicación** (código), no un
 enrutador declarativo tipo Traefik/Nginx.
 
