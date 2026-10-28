@@ -1,3 +1,17 @@
-#!/usr/bin/env bash
+#!/bin/sh
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
-exec "$ROOT/jenkins/trigger-ci-on-commit.sh"
+
+if command -v bash >/dev/null 2>&1 && [ -f "$ROOT/jenkins/trigger-ci-on-commit.sh" ]; then
+  exec bash "$ROOT/jenkins/trigger-ci-on-commit.sh"
+fi
+
+if [ -f "$ROOT/jenkins/trigger-ci-on-commit.ps1" ]; then
+  if command -v pwsh >/dev/null 2>&1; then
+    exec pwsh -NoProfile -ExecutionPolicy Bypass -File "$ROOT/jenkins/trigger-ci-on-commit.ps1"
+  fi
+  if command -v powershell.exe >/dev/null 2>&1; then
+    exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ROOT/jenkins/trigger-ci-on-commit.ps1"
+  fi
+fi
+
+exit 0
