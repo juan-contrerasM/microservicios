@@ -98,7 +98,8 @@ Comprobado en ese build:
 ### Fase 5
 
 Falta: nada. El README raíz ya tenía la sección Reto 7 y la tabla de reportes. El
-Hook `post-commit` en `jenkins/git-hooks/` (instalar con `./jenkins/install-git-hooks.sh`).
+Hook `post-commit` + `pollSCM('* * * * *')` (~1 min, tope de Jenkins) + opcional
+`poll-main-every-30s.sh` en local. Instalar hook: `./jenkins/install-git-hooks.sh`.
 Las capturas están en
 [`EVIDENCIAS.md`](EVIDENCIAS.md). El volumen `jenkins_data` no se borró entre corridas.
 

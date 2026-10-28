@@ -10,6 +10,15 @@ if [ "$branch" != "main" ]; then
   exit 0
 fi
 
+head_rev="$(git rev-parse HEAD 2>/dev/null)" || exit 0
+marker_file="$(git rev-parse --git-dir 2>/dev/null)/jenkins-last-ci-rev"
+if [ "${JENKINS_CI_FORCE:-}" != "1" ] && [ -f "${marker_file:-}" ]; then
+  last_rev="$(tr -d '\r\n' < "$marker_file" 2>/dev/null)" || last_rev=""
+  if [ "$head_rev" = "$last_rev" ]; then
+    exit 0
+  fi
+fi
+
 read_env() {
   local key=$1
   local file=$2
@@ -81,5 +90,9 @@ trigger_job() {
 
 trigger_job empleados-service
 trigger_job vacaciones-service
+
+if [ -n "${marker_file:-}" ]; then
+  printf '%s' "$head_rev" > "$marker_file"
+fi
 
 exit 0

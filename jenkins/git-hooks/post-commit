@@ -1,6 +1,11 @@
 #!/bin/sh
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 
+# Crear jenkins/.hook-suspended (local, gitignored) para probar pollSCM sin disparo por API.
+if [ -f "$ROOT/jenkins/.hook-suspended" ]; then
+  exit 0
+fi
+
 if command -v bash >/dev/null 2>&1 && [ -f "$ROOT/jenkins/trigger-ci-on-commit.sh" ]; then
   exec bash "$ROOT/jenkins/trigger-ci-on-commit.sh"
 fi

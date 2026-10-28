@@ -691,7 +691,19 @@ Disparo automático al commitear en **`main`** (una sola vez por clon):
 
 Tras eso, cada `git commit` en `main` encola `empleados-service` y `vacaciones-service` vía la
 API de Jenkins (`http://localhost:9090` y credenciales de `.env`). Si Jenkins no está levantado,
-el commit no falla; solo verás un aviso en la terminal. También puedes usar **Build Now** a mano.
+el commit no falla; solo verás un aviso en la terminal.
+
+Los Jenkinsfiles incluyen **`pollSCM('* * * * *')`**: Jenkins revisa cambios en `main` como
+mucho **cada minuto** (el cron de Jenkins no admite 30 segundos). Para un rescate cada **30 s**
+sin commitear de nuevo, en otra terminal:
+
+```bash
+./jenkins/poll-main-every-30s.sh
+```
+
+En PowerShell: `./jenkins/poll-main-every-30s.ps1`. Hook y poller comparten marca en
+`.git/jenkins-last-ci-rev` para no encolar dos veces el mismo commit. También puedes usar
+**Build Now** a mano.
 `verificar-docker` tiene que mostrar `docker --version` y `docker ps` en verde antes de correr
 los otros dos.
 

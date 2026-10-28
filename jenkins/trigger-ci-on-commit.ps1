@@ -7,6 +7,14 @@ Set-Location $Root
 $branch = git rev-parse --abbrev-ref HEAD 2>$null
 if ($branch -ne 'main') { exit 0 }
 
+$headRev = git rev-parse HEAD 2>$null
+$gitDir = git rev-parse --git-dir 2>$null
+$markerFile = Join-Path $gitDir 'jenkins-last-ci-rev'
+if ($env:JENKINS_CI_FORCE -ne '1' -and (Test-Path $markerFile)) {
+    $lastRev = (Get-Content $markerFile -Raw).Trim()
+    if ($lastRev -eq $headRev) { exit 0 }
+}
+
 $JenkinsUrl = 'http://localhost:9090'
 $JenkinsUser = 'admin'
 $JenkinsPassword = 'admin'
@@ -50,3 +58,7 @@ function Invoke-JenkinsBuild {
 
 Invoke-JenkinsBuild 'empleados-service'
 Invoke-JenkinsBuild 'vacaciones-service'
+
+if ($headRev -and $markerFile) {
+    Set-Content -Path $markerFile -Value $headRev -NoNewline
+}

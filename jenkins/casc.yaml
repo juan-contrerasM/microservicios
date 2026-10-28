@@ -15,6 +15,8 @@ jenkins:
         env:
           - key: DOCKER_NETWORK
             value: "${DOCKER_NETWORK}"
+          - key: SONAR_HOST_URL
+            value: "${SONAR_HOST_URL}"
           - key: ADMIN_USUARIO
             value: "${ADMIN_USUARIO}"
           - key: ADMIN_PASSWORD
@@ -39,7 +41,7 @@ unclassified:
     buildWrapperEnabled: true
     installations:
       - name: "sonarqube"
-        serverUrl: "http://sonarqube:9000"
+        serverUrl: "${SONAR_HOST_URL}"
         credentialsId: "sonar-token"
   lockableResourcesManager:
     declaredResources:

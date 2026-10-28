@@ -5,9 +5,14 @@ pipeline {
   options {
     skipStagesAfterUnstable()
   }
+  // Jenkins solo permite cron por minuto; el mínimo es * * * * * (~60 s). Disparo inmediato: hook post-commit.
+  triggers {
+    pollSCM('* * * * *')
+  }
   environment {
     TESTCONTAINERS_RYUK_DISABLED = 'true'
     TESTCONTAINERS_HOST_OVERRIDE = 'host.docker.internal'
+    SONAR_HOST_URL = "${env.SONAR_HOST_URL}"
   }
   stages {
     stage('Checkout') {
@@ -69,7 +74,7 @@ pipeline {
                 sh '''
                   set +x
                   set -eu
-                  mvn -Dmaven.repo.local=/var/maven/.m2 sonar:sonar -Dsonar.host.url=http://sonarqube:9000
+                  mvn -Dmaven.repo.local=/var/maven/.m2 sonar:sonar -Dsonar.host.url="${SONAR_HOST_URL}"
                   chown -R "$(stat -c %u .):$(stat -c %g .)" .
                 '''
               }
