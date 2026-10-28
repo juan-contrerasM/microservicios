@@ -683,8 +683,17 @@ Eso incluye Jenkins, SonarQube y su Postgres. Los jobs `verificar-docker`, `empl
 y `vacaciones-service` aparecen solos: salen de `jenkins/casc.yaml` y leen el Jenkinsfile de
 cada servicio en el monorepo montado en `/workspace`. No se importan a mano en la interfaz.
 
-Para lanzar un pipeline: entra a Jenkins, abre el job y pulsa **Build Now**. `verificar-docker`
-tiene que mostrar `docker --version` y `docker ps` en verde antes de correr los otros dos.
+Disparo automático al commitear en **`main`** (una sola vez por clon):
+
+```bash
+./jenkins/install-git-hooks.sh
+```
+
+Tras eso, cada `git commit` en `main` encola `empleados-service` y `vacaciones-service` vía la
+API de Jenkins (`http://localhost:9090` y credenciales de `.env`). Si Jenkins no está levantado,
+el commit no falla; solo verás un aviso en la terminal. También puedes usar **Build Now** a mano.
+`verificar-docker` tiene que mostrar `docker --version` y `docker ps` en verde antes de correr
+los otros dos.
 
 ### Etapas
 

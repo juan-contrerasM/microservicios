@@ -23,7 +23,9 @@ Leyenda: ✅ hecho · 🔄 en progreso · ⬜ pendiente
 
 Leer esta sección antes de tocar código. Las fases 0 a 4 están cerradas: no se repiten.
 Los jobs hacen checkout de `file:///workspace`, rama `main`. Jenkins solo ve un cambio
-después de commitearlo en `main`. No commitear `.env`, tokens ni `e2e-tests/.ci-env`.
+después de commitearlo en `main`. Disparo automático: `./jenkins/install-git-hooks.sh` y luego
+cada commit en `main` encola los dos jobs por API (Jenkins en `:9090`). **Build Now** sigue
+válido. No commitear `.env`, tokens ni `e2e-tests/.ci-env`.
 No hacer `docker compose down -v` del proyecto principal: borra `jenkins_data`,
 `sonar_bootstrap` y las bases de negocio. El `down -v` del E2E es solo `-p micro-ci`,
 con `jenkins/docker-compose.ci.yml`, que marca esos volúmenes como externos.
@@ -96,7 +98,8 @@ Comprobado en ese build:
 ### Fase 5
 
 Falta: nada. El README raíz ya tenía la sección Reto 7 y la tabla de reportes. El
-`pollSCM` opcional no hizo falta. Las capturas están en
+Hook `post-commit` en `jenkins/git-hooks/` (instalar con `./jenkins/install-git-hooks.sh`).
+Las capturas están en
 [`EVIDENCIAS.md`](EVIDENCIAS.md). El volumen `jenkins_data` no se borró entre corridas.
 
 Tres SUCCESS seguidas de cada pipeline:

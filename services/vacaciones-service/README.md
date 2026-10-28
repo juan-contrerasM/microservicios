@@ -1,5 +1,5 @@
 # vacaciones-service
-
+sssss
 esto es una prueba
 Programa períodos de vacaciones y publica `vacaciones.programadas`. Desde el Reto 5 también
 observa el paso del tiempo: un scheduler inicia y finaliza los períodos y publica
