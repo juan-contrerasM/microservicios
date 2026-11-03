@@ -5,6 +5,9 @@ import java.sql.SQLException;
 
 import javax.sql.DataSource;
 
+import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -34,9 +37,17 @@ public class HealthController {
 	private static final String JSON = "application/json";
 
 	private final DataSource dataSource;
+	private final CachingConnectionFactory brokerConnectionFactory;
 
 	public HealthController(DataSource dataSource) {
+		this(dataSource, null);
+	}
+
+	@Autowired
+	public HealthController(DataSource dataSource,
+			@Qualifier("brokerConnectionFactory") CachingConnectionFactory brokerConnectionFactory) {
 		this.dataSource = dataSource;
+		this.brokerConnectionFactory = brokerConnectionFactory;
 	}
 
 	@GetMapping("/health")
@@ -53,15 +64,29 @@ public class HealthController {
 							examples = @ExampleObject(value = "{\"status\":\"DOWN\"}")))
 	})
 	public ResponseEntity<HealthResponse> health() {
+		boolean databaseUp = false;
 		try (Connection connection = dataSource.getConnection()) {
 			if (connection.isValid(DATABASE_VALIDATION_TIMEOUT_SECONDS)) {
-				return ResponseEntity.ok(new HealthResponse("UP"));
+				databaseUp = true;
 			}
 		} catch (SQLException ex) {
 			log.warn("Health check de PostgreSQL falló: {}", ex.getMessage());
 		}
 
-		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-				.body(new HealthResponse("DOWN"));
+		boolean brokerUp = brokerConnectionFactory == null || brokerDisponible();
+		String status = databaseUp && brokerUp ? "UP" : "DOWN";
+		HealthResponse response = new HealthResponse(status, "empleados-service", java.util.Map.of(
+				"database", databaseUp ? "UP" : "DOWN", "messageBroker", brokerUp ? "UP" : "DOWN"));
+		return databaseUp && brokerUp ? ResponseEntity.ok(response)
+				: ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
+	}
+
+	private boolean brokerDisponible() {
+		try (org.springframework.amqp.rabbit.connection.Connection connection = brokerConnectionFactory.createConnection()) {
+			return connection.isOpen();
+		} catch (RuntimeException ex) {
+			log.warn("Health check de RabbitMQ falló: {}", ex.getMessage());
+			return false;
+		}
 	}
 }
