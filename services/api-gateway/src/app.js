@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exigirAcceso } from './auth.js';
 import { backendProxy } from './proxy.js';
+import { metricsHandler, metricsMiddleware } from './metricas.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const openapi = readFileSync(join(dir, 'openapi.json'), 'utf8');
@@ -28,9 +29,11 @@ export function createApp({
 
 	const app = express();
 	app.disable('x-powered-by');
+	app.use(metricsMiddleware);
+	app.get('/metrics', metricsHandler);
 
 	app.get('/health', (_req, res) => {
-		res.status(200).json({ status: 'UP', service: 'api-gateway' });
+		res.status(200).json({ status: 'UP', service: 'api-gateway', checks: { process: 'UP' } });
 	});
 
 	app.get('/openapi.json', (_req, res) => {

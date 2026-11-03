@@ -13,4 +13,4 @@ ENV PORT=8080
 EXPOSE 8080
 
 USER node
-CMD ["node", "src/index.js"]
+CMD ["node", "--import", "./src/telemetria.js", "src/index.js"]
