@@ -149,7 +149,7 @@ MANEJADORES = {
 
 
 def _sin_destinatario(evento: str, referencia: str | None) -> Resultado:
-    logger.error("%s sin destinatario para %s; se confirma sin fila", evento, referencia)
+    logger.error("%s sin destinatario; se confirma sin fila", evento)
     return Resultado.SIN_DESTINATARIO
 
 
@@ -181,10 +181,12 @@ def _registrar(
             empleado_id=empleado_id,
         )
     )
-    logger.info('[NOTIFICACIÓN] Tipo: %s | Para: %s | Mensaje: "%s"', tipo, email, mensaje)
+    # El cuerpo puede contener tokens de restablecimiento y el destino es un dato
+    # personal. Ambos se conservan en la notificación, pero nunca se escriben al log.
+    logger.info("[NOTIFICACIÓN] Tipo: %s | Empleado: %s | Guardada", tipo, empleado_id)
     if enviar is None:
         return
     try:
         enviar(email, asunto, mensaje)
     except Exception:
-        logger.exception("No se pudo enviar el correo a %s; la notificación ya quedó guardada", email)
+        logger.exception("No se pudo enviar el correo; la notificación ya quedó guardada")

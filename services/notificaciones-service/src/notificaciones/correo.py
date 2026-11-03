@@ -16,6 +16,6 @@ def crear_enviador(settings):
         mensaje.set_content(cuerpo)
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=5) as smtp:
             smtp.send_message(mensaje)
-        logger.info("Correo enviado a %s con asunto %s", destino, asunto)
+        logger.info("Correo enviado con asunto %s", asunto)
 
     return enviar

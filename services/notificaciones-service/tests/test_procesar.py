@@ -97,7 +97,9 @@ def test_usuario_creado_deja_una_seguridad_con_el_token(caplog):
         "Para establecer o restablecer su contraseña ingrese a "
         f"https://app.empresa.com/reset?token={TOKEN}"
     )
-    assert caplog.text.count("[NOTIFICACIÓN] Tipo: SEGURIDAD | Para: juan.perez@empresa.com") == 1
+    assert caplog.text.count("[NOTIFICACIÓN] Tipo: SEGURIDAD | Empleado: E001 | Guardada") == 1
+    assert TOKEN not in caplog.text
+    assert "juan.perez@empresa.com" not in caplog.text
 
 
 def test_recuperacion_busca_el_empleado_por_email():
@@ -151,7 +153,8 @@ def test_cuenta_desactivada_y_activada_dejan_cuenta(caplog):
         ("CUENTA", "Su cuenta fue desactivada"),
         ("CUENTA", "Bienvenido de regreso. Su cuenta ha sido reactivada"),
     ]
-    assert '[NOTIFICACIÓN] Tipo: CUENTA | Para: juan.perez@empresa.com | Mensaje: "Su cuenta fue desactivada"' in caplog.text
+    assert "[NOTIFICACIÓN] Tipo: CUENTA | Empleado: E001 | Guardada" in caplog.text
+    assert "juan.perez@empresa.com" not in caplog.text
 
 
 def test_retiro_ya_no_deja_desvinculacion():
