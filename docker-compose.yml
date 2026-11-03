@@ -7,6 +7,7 @@
 # Puertos de infraestructura del broker: 5672 (AMQP) y 15672 (management UI).
 # Reto 7: Jenkins en el host :9090, SonarQube en :9000. El nombre de proyecto
 # queda fijo para que los volúmenes no cambien si el repo se clona en otra carpeta.
+# Reto 8: Grafana :3000, Prometheus :9091 y Zipkin :9411; Loki queda interno.
 
 name: microservicios
 
@@ -58,6 +59,11 @@ services:
       DB_NAME: ${DEPARTAMENTOS_DB_NAME}
       DB_USER: ${DEPARTAMENTOS_DB_USER}
       DB_PASSWORD: ${DEPARTAMENTOS_DB_PASSWORD}
+      OTEL_SERVICE_NAME: departamentos-service
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      LOG_FORMAT: json
     expose:
       - "8081"
     depends_on:
@@ -95,10 +101,20 @@ services:
       RABBITMQ_USER: ${RABBITMQ_USER:-onboarding}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
+      OTEL_SERVICE_NAME: empleados-service
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      OTEL_TRACES_EXPORTER: zipkin
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      LOG_FORMAT: json
     expose:
       - "8080"
     depends_on:
       database-empleados:
+        condition: service_healthy
+      message-broker:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -155,6 +171,11 @@ services:
       AUTH_URL: http://auth-service:8086
       JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en .env}
       PROXY_TIMEOUT_MS: ${PROXY_TIMEOUT_MS}
+      OTEL_SERVICE_NAME: api-gateway
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      LOG_FORMAT: json
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     # El borde debe arrancar incluso si un backend falla. Solo exige que Compose
@@ -214,6 +235,11 @@ services:
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       SMTP_FROM: ${SMTP_FROM:-onboarding@empresa.com}
+      OTEL_SERVICE_NAME: notificaciones-service
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      LOG_FORMAT: json
     expose:
       - "8084"
     depends_on:
@@ -265,6 +291,14 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
       BROKER_QUEUE: q.perfiles
+      OTEL_SERVICE_NAME: perfiles-service
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      OTEL_TRACES_EXPORTER: zipkin
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      LOG_FORMAT: json
     expose:
       - "8083"
     depends_on:
@@ -329,6 +363,11 @@ services:
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
       BROKER_QUEUE: q.vacaciones
       VACACIONES_CRON: "${VACACIONES_CRON:-* * * * *}"
+      OTEL_SERVICE_NAME: vacaciones-service
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      LOG_FORMAT: json
     expose:
       - "8085"
     depends_on:
@@ -362,6 +401,11 @@ services:
       AUTH_ADMIN_USUARIO: ${AUTH_ADMIN_USUARIO:-admin}
       AUTH_ADMIN_EMAIL: ${AUTH_ADMIN_EMAIL:-admin@empresa.com}
       AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:?Defina AUTH_ADMIN_PASSWORD en .env}
+      OTEL_SERVICE_NAME: auth-service
+      OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
+      OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
+      LOG_FORMAT: json
     expose:
       - "8086"
     depends_on:
@@ -373,6 +417,109 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
       interval: 5s
       timeout: 3s
+      retries: 12
+      start_period: 20s
+    networks:
+      - microservices-network
+
+  # --- Reto 8. Prometheus raspa los siete procesos HTTP por nombre Docker. ---
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-9091}:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  # --- Reto 8. Loki almacena logs; no publica puerto porque se consulta desde Grafana. ---
+  loki:
+    image: grafana/loki:3.6.11
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    healthcheck:
+      # La imagen 3.6 es distroless: no incluye shell, curl ni wget.
+      test: ["CMD", "/usr/bin/loki", "-version"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  # Promtail descubre contenedores y lee sus logs JSON mediante el socket de Docker.
+  promtail:
+    image: grafana/promtail:3.6.11
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail_positions:/run/promtail
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      # La imagen 3.6 es distroless: se valida el binario y Promtail registra
+      # errores de conexión a Loki en sus propios logs.
+      test: ["CMD", "/usr/bin/promtail", "-version"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - microservices-network
+
+  # Zipkin recibe spans OpenTelemetry en /api/v2/spans.
+  zipkin:
+    image: openzipkin/zipkin:3.5.1
+    ports:
+      - "${ZIPKIN_PORT:-9411}:9411"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9411/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - microservices-network
+
+  # Grafana queda listo con Prometheus y Loki sin configuración manual en la UI.
+  grafana:
+    image: grafana/grafana:13.2.5
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-GrafanaAdmin123!}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      ZIPKIN_PORT: ${ZIPKIN_PORT:-9411}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 12
       start_period: 20s
     networks:
@@ -496,3 +643,7 @@ volumes:
   sonarqube_logs:
   sonarqube_extensions:
   sonar_db_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  promtail_positions:
