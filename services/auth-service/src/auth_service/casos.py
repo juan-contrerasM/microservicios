@@ -169,7 +169,7 @@ def _empleado_creado(repo, tokens, data: dict, ahora: datetime) -> list[EventoSa
         logger.info("Ya existe cuenta para %s; no se publica otro usuario.creado", empleado_id)
         return []
     if repo.buscar_por_email(email) is not None:
-        logger.error("El email %s ya tiene cuenta; se confirma sin alta", email)
+        logger.error("El email recibido ya tiene cuenta; se confirma sin alta")
         return []
     repo.insertar(
         Cuenta(

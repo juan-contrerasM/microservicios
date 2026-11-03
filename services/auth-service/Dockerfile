@@ -17,4 +17,4 @@ ENV PYTHONPATH=/app/src
 ENV PORT=8086
 EXPOSE 8086
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn auth_service.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn auth_service.main:app --host 0.0.0.0 --port ${PORT} --log-config /app/src/auth_service/logging.json"]

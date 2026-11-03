@@ -2,9 +2,9 @@ import logging
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-logging.getLogger("auth").setLevel(logging.INFO)
-logging.getLogger("pika").setLevel(logging.WARNING)
+from auth_service.telemetria import configurar, instrumentar_app
+
+configurar()
 
 from fastapi import FastAPI, Header, Security
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -97,9 +97,12 @@ def crear_app(
 
     @app.get("/health", summary="Health check contra PostgreSQL y el consumidor")
     def health():
-        if comprobar_salud():
-            return {"status": "UP", "service": "auth-service"}
-        return JSONResponse(status_code=503, content={"status": "DOWN", "service": "auth-service"})
+        result = comprobar_salud()
+        database_ok, broker_ok = result if isinstance(result, tuple) else (bool(result), bool(result))
+        checks = {"database": "UP" if database_ok else "DOWN", "messageBroker": "UP" if broker_ok else "DOWN"}
+        if database_ok and broker_ok:
+            return {"status": "UP", "service": "auth-service", "checks": checks}
+        return JSONResponse(status_code=503, content={"status": "DOWN", "service": "auth-service", "checks": checks})
 
     @app.post("/auth/login", summary="Verifica credenciales y retorna un access JWT")
     def login(cuerpo: LoginCuerpo):
@@ -137,6 +140,7 @@ def crear_app(
                 sesion.rollback()
         return _aplicar(respuesta, [])
 
+    instrumentar_app(app)
     return app
 
 
@@ -160,9 +164,9 @@ def construir(settings: Settings | None = None):
     tokens = Tokens(settings.jwt_secret, settings.jwt_access_minutes, settings.reset_token_minutes)
     publicador = PublicadorRabbit(settings)
 
-    def comprobar_salud() -> bool:
+    def comprobar_salud() -> tuple[bool, bool]:
         cola_ok = settings.consumer_disabled or estado.conectado
-        return base_responde(motor) and cola_ok
+        return base_responde(motor), cola_ok
 
     app = crear_app(settings, _abrir_sql(sesiones), publicador, estado, comprobar_salud, tokens, sesiones)
     return app
