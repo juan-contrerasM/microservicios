@@ -24,11 +24,14 @@ func NewHealthHandler(db *sql.DB) *HealthHandler {
 // realmente atender peticiones.
 func (h *HealthHandler) Check(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.PingContext(r.Context()); err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"status": "DOWN",
-			"error":  "no se pudo conectar a la base de datos",
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"status": "DOWN", "service": "departamentos-service",
+			"checks": map[string]string{"database": "DOWN"},
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "UP"})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "UP", "service": "departamentos-service",
+		"checks": map[string]string{"database": "UP"},
+	})
 }

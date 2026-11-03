@@ -2,9 +2,10 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -13,9 +14,16 @@ import (
 	"departamentos-service/internal/config"
 	dbmigrate "departamentos-service/internal/db"
 	"departamentos-service/internal/httpapi"
+	"departamentos-service/internal/observability"
 )
 
 func main() {
+	shutdownTelemetry, err := observability.Setup(context.Background())
+	if err != nil {
+		slog.Error("configurando observabilidad", "error", err)
+		return
+	}
+	defer func() { _ = shutdownTelemetry(context.Background()) }()
 	// 1. Configuración desde variables de entorno (ver internal/config).
 	cfg := config.Load()
 
@@ -23,7 +31,8 @@ func main() {
 	// valida el DSN y prepara el pool.
 	db, err := sql.Open("mysql", cfg.DSN())
 	if err != nil {
-		log.Fatalf("abriendo conexión a MySQL: %v", err)
+		slog.Error("abriendo conexión a MySQL", "error", err)
+		return
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(10)
@@ -34,7 +43,8 @@ func main() {
 	// este contenedor (depends_on: condition: service_healthy). Este ping
 	// solo confirma que las credenciales/DSN son correctas al iniciar.
 	if err := db.Ping(); err != nil {
-		log.Fatalf("no se pudo conectar a MySQL en el arranque: %v", err)
+		slog.Error("no se pudo conectar a MySQL en el arranque", "error", err)
+		return
 	}
 
 	// 4. Esquema reproducible: aplicar los changelogs pendientes (ver
@@ -42,7 +52,8 @@ func main() {
 	// `docker compose up --build` deje la base de datos lista sin pasos
 	// manuales.
 	if err := dbmigrate.Migrate(db); err != nil {
-		log.Fatalf("no se pudieron aplicar los changelogs de base de datos: %v", err)
+		slog.Error("no se pudieron aplicar los changelogs", "error", err)
+		return
 	}
 
 	// 5. Router HTTP (endpoints de negocio + /health), ver internal/httpapi.
@@ -50,8 +61,8 @@ func main() {
 
 	// 6. Servir peticiones hasta que el proceso se detenga.
 	addr := ":" + cfg.Port
-	log.Printf("departamentos-service escuchando en %s", addr)
+	slog.Info("departamentos-service escuchando", "address", addr)
 	if err := http.ListenAndServe(addr, router); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("servidor HTTP detenido con error: %v", err)
+		slog.Error("servidor HTTP detenido", "error", err)
 	}
 }

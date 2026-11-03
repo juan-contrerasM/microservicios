@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"departamentos-service/internal/department"
+	"departamentos-service/internal/observability"
 )
 
 // NewRouter arma el árbol de dependencias del servicio (repositorio →
@@ -24,13 +25,13 @@ func NewRouter(db *sql.DB) http.Handler {
 	healthHandler := NewHealthHandler(db)
 
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)    // log de cada petición (método, ruta, status, duración)
 	r.Use(middleware.Recoverer) // convierte un panic en 500 en vez de tumbar el proceso
 
 	// Healthcheck propio del servicio: lo usa Docker Compose
 	// (docker-compose.yml raíz) para no marcar el contenedor "healthy"
 	// hasta que la conexión a MySQL responde.
 	r.Get("/health", healthHandler.Check)
+	r.Handle("/metrics", observability.MetricsHandler())
 
 	// OpenAPI / Swagger UI (Etapa 4): spec estática embebida, sin codegen.
 	r.Get("/openapi.yaml", serveOpenAPISpec)
@@ -45,5 +46,5 @@ func NewRouter(db *sql.DB) http.Handler {
 		r.Get("/{id}", deptHandler.GetByID) // GET    /departamentos/{id} -> consultar por id
 	})
 
-	return r
+	return observability.Handler(r)
 }

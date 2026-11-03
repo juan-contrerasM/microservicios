@@ -2,7 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 )
 
@@ -23,7 +23,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 		return
 	}
 	if err := json.NewEncoder(w).Encode(body); err != nil {
-		log.Printf("error codificando respuesta JSON: %v", err)
+		slog.Error("error codificando respuesta JSON", "error", err)
 	}
 }
 
