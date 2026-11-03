@@ -14,9 +14,11 @@ datos entre servicios.
 
 Documentos de referencia que SIEMPRE hay que leer antes de tocar código:
 
-- Reto 7 (vigente): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md),
+- Reto 8 (vigente, en implementación): [`docs/reto8/PLAN-RETO8.md`](docs/reto8/PLAN-RETO8.md),
+  [`docs/reto8/STATUS.md`](docs/reto8/STATUS.md) y [`docs/reto8/reto8.pdf`](docs/reto8/reto8.pdf).
+  **Actualiza `docs/reto8/STATUS.md` en el mismo commit/PR que cierra o avanza una fase.**
+- Reto 7 (cerrado): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md),
   [`docs/reto7/STATUS.md`](docs/reto7/STATUS.md), [`docs/reto7/reto7.pdf`](docs/reto7/reto7.pdf).
-  **Actualiza `docs/reto7/STATUS.md` en el mismo commit/PR que cierra o avanza una fase.**
 - Reto 6 (cerrado): [`docs/reto6/PLAN-RETO6.md`](docs/reto6/PLAN-RETO6.md),
   [`docs/reto6/STATUS.md`](docs/reto6/STATUS.md), [`docs/reto6/EVIDENCIAS.md`](docs/reto6/EVIDENCIAS.md),
   [`docs/reto6/reto6.pdf`](docs/reto6/reto6.pdf).
@@ -42,7 +44,8 @@ micro/
 │   ├── reto4/                   # plan, STATUS, colección y PDF del Reto 4 (cerrado)
 │   ├── reto5/                   # plan, STATUS, colección y PDF del Reto 5 (cerrado)
 │   ├── reto6/                   # plan, STATUS, evidencias y PDF del Reto 6 (cerrado)
-│   └── reto7/                   # plan, STATUS y PDF del Reto 7 (vigente: Jenkins)
+│   ├── reto7/                   # plan, STATUS, evidencias y PDF del Reto 7 (cerrado)
+│   └── reto8/                   # plan, STATUS, enunciado y material de observabilidad (vigente)
 └── services/
     ├── empleados-service/       # Reto 1, Java 21 + Spring Boot + PostgreSQL
     ├── departamentos-service/   # Reto 2, Go + chi + MySQL

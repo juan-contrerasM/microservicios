@@ -5,7 +5,10 @@ propio lenguaje, base de datos y Dockerfile, orquestados desde un único `docker
 la raíz.
 
 > Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo).
-> Reto 7 (vigente): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md) y
+> Reto 8 (vigente, en implementación): [`docs/reto8/PLAN-RETO8.md`](docs/reto8/PLAN-RETO8.md) y
+> [`docs/reto8/STATUS.md`](docs/reto8/STATUS.md).
+>
+> Reto 7 (cerrado): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md) y
 > [`docs/reto7/STATUS.md`](docs/reto7/STATUS.md). La sección de CI está al final de este archivo.
 > Reto 6 (cerrado): [`docs/reto6/PLAN-RETO6.md`](docs/reto6/PLAN-RETO6.md),
 > [`docs/reto6/STATUS.md`](docs/reto6/STATUS.md) y
@@ -39,6 +42,37 @@ se rechaza. `5672` y `15672` son del broker, no una segunda API de negocio.
 
 Hay cuatro lenguajes: Java (empleados y perfiles), Go (departamentos), Node.js (Gateway y
 vacaciones) y Python (notificaciones y autenticación). El Gateway no es Spring Cloud Gateway.
+
+## Reto 8 — arquitectura de observabilidad (diseño previo)
+
+La infraestructura del Reto 8 se configura como código bajo [`observability/`](observability/).
+Prometheus usa el modelo **Pull** para consultar las métricas de los siete procesos HTTP. Los
+servicios envían (**Push**) sus trazas a Zipkin; Promtail descubre los contenedores por el socket de
+Docker y envía sus logs a Loki. Grafana consulta Prometheus y Loki. La instrumentación de los
+servicios se completa en las Fases 2A y 2B del plan.
+
+```mermaid
+flowchart LR
+    C[Cliente] --> G[API Gateway]
+    G --> S[Microservicios]
+    S <--> R[RabbitMQ]
+
+    P[Prometheus :9090 interno] -- Pull /metrics --> G
+    P -- Pull /metrics --> S
+    G -- Push spans OTel/W3C --> Z[Zipkin :9411]
+    S -- Push spans OTel/W3C --> Z
+    R -. traceparent en headers AMQP .-> S
+
+    D[Docker logs JSON] --> PT[Promtail]
+    PT -- Push logs --> L[Loki :3100]
+    GF[Grafana :3000] -- PromQL --> P
+    GF -- LogQL --> L
+    GF --> A[Discord / alertas]
+```
+
+Puertos de host: Prometheus `9091` (Jenkins ya ocupa `9090`), Grafana `3000` y Zipkin `9411`.
+Loki y Promtail quedan internos. Al terminar la Fase 1, Prometheus conoce los siete targets; estos
+permanecen `DOWN` en `/metrics` hasta que la instrumentación correspondiente sea implementada.
 
 ## Arranque desde cero
 
