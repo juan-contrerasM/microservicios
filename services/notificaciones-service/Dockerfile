@@ -17,4 +17,4 @@ ENV PYTHONPATH=/app/src
 ENV PORT=8084
 EXPOSE 8084
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn notificaciones.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn notificaciones.main:app --host 0.0.0.0 --port ${PORT} --log-config /app/src/notificaciones/logging.json"]

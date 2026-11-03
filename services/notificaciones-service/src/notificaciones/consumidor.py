@@ -25,7 +25,13 @@ CLAVES = (
 )
 
 
-def iniciar_consumidor(settings, sesiones) -> threading.Event:
+class EstadoConsumidor:
+    def __init__(self):
+        self.conectado = False
+
+
+def iniciar_consumidor(settings, sesiones, estado: EstadoConsumidor | None = None) -> threading.Event:
+    estado = estado or EstadoConsumidor()
     detener = threading.Event()
     enviar = crear_enviador(settings)
 
@@ -48,13 +54,16 @@ def iniciar_consumidor(settings, sesiones) -> threading.Event:
                     )
                 canal.basic_qos(prefetch_count=1)
                 canal.basic_consume(settings.broker_queue, _manejador(sesiones, enviar), auto_ack=False)
+                estado.conectado = True
                 logger.info("Consumidor escuchando %s", settings.broker_queue)
                 while not detener.is_set():
                     conexion.process_data_events(time_limit=1)
             except Exception:
+                estado.conectado = False
                 logger.exception("Consumidor desconectado; reintento en 5s")
                 detener.wait(5)
             finally:
+                estado.conectado = False
                 if conexion is not None and conexion.is_open:
                     conexion.close()
 

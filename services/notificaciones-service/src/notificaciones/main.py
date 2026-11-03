@@ -2,8 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-logging.getLogger("notificaciones").setLevel(logging.INFO)
+from notificaciones.telemetria import configurar, instrumentar_app
+
+configurar()
 
 from fastapi import Depends, FastAPI, Security
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -12,14 +13,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from notificaciones.config import load_settings
-from notificaciones.consumidor import iniciar_consumidor
+from notificaciones.consumidor import EstadoConsumidor, iniciar_consumidor
 from notificaciones.db import SqlRepositorio, base_responde, crear_motor, crear_sesiones
-
-logging.getLogger("pika").setLevel(logging.WARNING)
 
 settings = load_settings()
 motor = crear_motor(settings.database_url)
 sesiones = crear_sesiones(motor)
+estado_consumidor = EstadoConsumidor()
 bearer_auth = HTTPBearer(
     auto_error=False,
     scheme_name="BearerAuth",
@@ -42,7 +42,7 @@ class NotificacionRespuesta(BaseModel):
 async def lifespan(_app: FastAPI):
     detener = None
     if not settings.consumer_disabled:
-        detener = iniciar_consumidor(settings, sesiones)
+        detener = iniciar_consumidor(settings, sesiones, estado_consumidor)
     yield
     if detener is not None:
         detener.set()
@@ -79,11 +79,14 @@ def swagger():
     },
 )
 def health():
-    if base_responde(motor):
-        return {"status": "UP", "service": "notificaciones-service"}
+    database_ok = base_responde(motor)
+    broker_ok = settings.consumer_disabled or estado_consumidor.conectado
+    checks = {"database": "UP" if database_ok else "DOWN", "messageBroker": "UP" if broker_ok else "DOWN"}
+    if database_ok and broker_ok:
+        return {"status": "UP", "service": "notificaciones-service", "checks": checks}
     return JSONResponse(
         status_code=503,
-        content={"status": "DOWN", "service": "notificaciones-service"},
+        content={"status": "DOWN", "service": "notificaciones-service", "checks": checks},
     )
 
 
@@ -110,3 +113,6 @@ def listar_de_empleado(
     _credenciales: HTTPAuthorizationCredentials | None = Security(bearer_auth),
 ):
     return SqlRepositorio(sesion).listar(empleado_id)
+
+
+instrumentar_app(app)
