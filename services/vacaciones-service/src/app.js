@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ErrorApi } from './errores.js';
+import { metricsHandler, metricsMiddleware } from './metricas.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const openapi = readFileSync(join(dir, 'openapi.json'), 'utf8');
@@ -12,12 +13,19 @@ export function createApp({ servicio, estaSano }) {
 	const app = express();
 	app.disable('x-powered-by');
 	app.use(express.json());
+	app.use(metricsMiddleware);
+	app.get('/metrics', metricsHandler);
 
 	app.get('/health', async (_req, res) => {
-		const sano = await estaSano();
+		const resultado = await estaSano();
+		const checks = typeof resultado === 'boolean'
+			? { database: resultado ? 'UP' : 'DOWN', messageBroker: resultado ? 'UP' : 'DOWN' }
+			: resultado;
+		const sano = Object.values(checks).every((value) => value === 'UP');
 		res.status(sano ? 200 : 503).json({
 			status: sano ? 'UP' : 'DOWN',
 			service: 'vacaciones-service',
+			checks,
 		});
 	});
 

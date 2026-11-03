@@ -8,15 +8,20 @@
     "node": ">=22"
   },
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node --import ./src/telemetria.js src/index.js",
     "pretest": "node -e \"require('node:fs').mkdirSync('reports',{recursive:true})\"",
     "test": "node --test --experimental-test-coverage --test-coverage-include=src/validar.js --test-coverage-include=src/fechas.js --test-coverage-include=src/transiciones.js --test-coverage-include=src/servicio.js --test-coverage-lines=70 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.67.2",
+    "@opentelemetry/exporter-zipkin": "^2.2.0",
+    "@opentelemetry/sdk-node": "^0.207.0",
     "amqplib": "^0.10.5",
     "express": "^4.21.2",
     "node-cron": "^4.6.0",
     "node-pg-migrate": "^7.9.1",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "prom-client": "^15.1.3"
   }
 }

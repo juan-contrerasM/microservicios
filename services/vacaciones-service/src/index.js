@@ -34,7 +34,10 @@ crearConsumidor({
 
 const app = createApp({
 	servicio,
-	estaSano: async () => consumidorConectado && await baseResponde(pool),
+	estaSano: async () => ({
+		database: await baseResponde(pool) ? 'UP' : 'DOWN',
+		messageBroker: consumidorConectado ? 'UP' : 'DOWN',
+	}),
 });
 
 app.listen(config.port, () => {
