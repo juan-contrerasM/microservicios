@@ -136,8 +136,14 @@ describe('api-gateway', () => {
 
 	it('GET /health es propio y no depende de los backends', async () => {
 		const res = await request(app).get('/health').expect(200);
-		assert.deepEqual(res.body, { status: 'UP', service: 'api-gateway' });
+		assert.deepEqual(res.body, { status: 'UP', service: 'api-gateway', checks: { process: 'UP' } });
 		assert.match(res.headers['content-type'], /json/);
+	});
+
+	it('GET /metrics es público y expone formato Prometheus', async () => {
+		const res = await request(app).get('/metrics').expect(200);
+		assert.match(res.headers['content-type'], /text\/plain/);
+		assert.match(res.text, /api_gateway_process_cpu/);
 	});
 
 	it('sirve el OpenAPI del borde y la UI', async () => {
