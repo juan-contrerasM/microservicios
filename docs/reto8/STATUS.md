@@ -19,15 +19,19 @@ Leyenda: ✅ hecho · 🔄 en progreso · ⬜ pendiente
 | 2B | Métricas, salud, OTel y JSON logs en Gateway, vacaciones, auth y notificaciones | Persona 2 | ✅ | Pasan 21, 64, 31 y 12 pruebas; los cuatro targets están `UP`; métricas, salud, JSON y trazas comprobados. |
 | 3 | Trazabilidad HTTP + RabbitMQ; onboarding y scheduler como trazas completas | Persona 2 + apoyo Persona 1 | ✅ | Onboarding: traza `434a2652025a4a142b17fcd44b199cc4`, 66 spans, siete servicios, una raíz y cero huérfanos. Scheduler: traza `b8d8cc298c80d4264a52fcfc89ff1a9e`, 30 spans, vacaciones/auth/notificaciones. |
 | 4 | Loki/Promtail, LogQL y correlación `traceId` entre logs y Zipkin | Ambas | ✅ | Consulta por `service` y `traceId` comprobada; enlace Loki→Zipkin aprovisionado, retención de 7 días y regresión contra tokens en logs. |
-| 5 | Dashboard aprovisionado, cuatro paneles, dos alertas y contact point de Discord | Persona 1 | ⬜ | El webhook real no entra a Git. |
-| 6 | Tráfico, caos controlado, capturas y análisis del servicio más lento | Persona 2 + validación conjunta | ⬜ | No dejar retardos ni fallos deliberados activos. |
-| 7 | README final, regresión de Retos 1–7, evidencias y cierre | Ambas | ⬜ | Pendiente. |
+| 5 | Dashboard aprovisionado, cuatro paneles, alertas y contact point externo | Persona 1 | ✅ | Dashboard `reto8-observabilidad` (11 paneles) con datos de los siete servicios; 8 recording rules; 3 reglas (caído, 5xx, p95); contact point `email-reto8`. Grafana reconstruido desde volumen vacío sin tocar la UI. |
+| 6 | Tráfico, caos controlado, capturas y análisis del servicio más lento | Persona 2 + validación conjunta | ✅ | Caída: alerta por email a los 82 s, RESOLVED al restaurar; también dispararon 5xx (21 %) y p95 del Gateway (9,1 s). Latencia 1500 ms: departamentos p95 1,87 s, 99 % de la traza. 8 capturas y análisis en `EVIDENCIAS.md`; retardo restaurado a 0. |
+| 7 | README final, regresión de Retos 1–7, evidencias y cierre | Ambas | ✅ | README completo. BDD 18/18 en 3 de 4 corridas (1 intermitencia previa documentada); onboarding `7f88f6d6bef73ce982c7bc875291f2dd`: 67 spans, 7 servicios, 0 huérfanos; `verify.ps1` final verde. |
 
 ## Punto actual
 
-Las **Fases 0 a 4 están cerradas y verificadas en el stack integrado**. El siguiente trabajo empieza
-en la Fase 5: dashboard, paneles y alertas. Los identificadores y comandos reproducibles de las
-pruebas están en `EVIDENCIAS.md` y `observability/verify.ps1`.
+**Reto 8 cerrado: las fases 0 a 7 están verificadas en el stack integrado** (2026-11-03). Resultados,
+tiempos de alerta, análisis del servicio más lento y capturas en [`EVIDENCIAS.md`](EVIDENCIAS.md);
+comandos para repetirlo en [`observability/README.md`](../../observability/README.md).
+
+Pendiente fuera del alcance de observabilidad: la intermitencia del paso BDD `empleadoConCredenciales`
+(toma el primer aviso `SEGURIDAD` con token) pertenece a los Retos 5/6 y debe corregirse en un cambio
+separado con su prueba.
 
 ## Reglas para marcar una fase como hecha
 
@@ -39,11 +43,13 @@ pruebas están en `EVIDENCIAS.md` y `observability/verify.ps1`.
 6. Toda simulación de caos debe ser reversible y dejar el sistema saludable.
 7. No registrar ni capturar JWT, contraseñas, tokens o webhooks.
 
-## Decisiones pendientes de aprobación del equipo
+## Decisiones tomadas
 
-| Decisión propuesta | Estado |
+| Decisión | Estado |
 |---|---|
-| Zipkin como backend de trazas | Propuesta en el plan |
-| Prometheus publicado en `9091` para no chocar con Jenkins | Necesaria por la arquitectura actual |
-| Discord como canal externo, configurado mediante `.env` local | Propuesta en el plan |
-| 100 % de sampling solo en desarrollo/demostración | Propuesta en el plan |
+| Zipkin como backend de trazas, almacenamiento en memoria acotado (100 000 spans, heap 512 MB) | Implementada y verificada |
+| Prometheus publicado en `9091` para no chocar con Jenkins | Implementada |
+| Canal externo: **email por SMTP a Mailhog** en lugar de Discord. El enunciado lo admite para pruebas, Mailhog ya estaba en el stack y no requiere webhooks ni secretos | Implementada y verificada (9 emails FIRING/RESOLVED) |
+| 100 % de sampling solo en desarrollo/demostración | Implementada |
+| Métricas heterogéneas normalizadas con recording rules en vez de renombrar métricas en el código | Implementada |
+| Retardo de caos por variable `CHAOS_LATENCY_MS` (fijo, solo `/departamentos`, 0 por defecto) | Implementada y verificada |

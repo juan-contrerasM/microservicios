@@ -5,7 +5,7 @@ propio lenguaje, base de datos y Dockerfile, orquestados desde un único `docker
 la raíz.
 
 > Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo).
-> Reto 8 (vigente, en implementación): [`docs/reto8/PLAN-RETO8.md`](docs/reto8/PLAN-RETO8.md) y
+> Reto 8 (vigente, implementado y verificado): [`docs/reto8/PLAN-RETO8.md`](docs/reto8/PLAN-RETO8.md) y
 > [`docs/reto8/STATUS.md`](docs/reto8/STATUS.md).
 >
 > Reto 7 (cerrado): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md) y
@@ -43,13 +43,68 @@ se rechaza. `5672` y `15672` son del broker, no una segunda API de negocio.
 Hay cuatro lenguajes: Java (empleados y perfiles), Go (departamentos), Node.js (Gateway y
 vacaciones) y Python (notificaciones y autenticación). El Gateway no es Spring Cloud Gateway.
 
-## Reto 8 — arquitectura de observabilidad (diseño previo)
+## Reto 8 — observabilidad y monitoreo
 
-La infraestructura del Reto 8 se configura como código bajo [`observability/`](observability/).
-Prometheus usa el modelo **Pull** para consultar las métricas de los siete procesos HTTP. Los
-servicios envían (**Push**) sus trazas a Zipkin; Promtail descubre los contenedores por el socket de
-Docker y envía sus logs a Loki. Grafana consulta Prometheus y Loki. La instrumentación de los
-servicios se completa en las Fases 2A y 2B del plan.
+La infraestructura del Reto 8 se configura como código bajo [`observability/`](observability/) y se
+levanta con el mismo `docker compose up`: datasources, dashboard, recording rules, alertas y contact
+point se aprovisionan desde Git, sin pasos manuales en la UI. Operación y comandos detallados:
+[`observability/README.md`](observability/README.md). Plan y estado: [`docs/reto8/`](docs/reto8/).
+Paso a paso para ejecutar y sustentar: [`docs/reto8/MANUAL-SUSTENTACION.md`](docs/reto8/MANUAL-SUSTENTACION.md).
+
+### Los tres pilares
+
+| Pilar | Qué responde | Implementación |
+|---|---|---|
+| **Métricas** | ¿Está sano el sistema? ¿Cuánto tráfico, latencia y errores? | Cada servicio expone formato Prometheus; Prometheus lo raspa cada 15 s |
+| **Logs** | ¿Qué pasó exactamente en una petición? | JSON a `stdout` con `timestamp`, `level`, `service`, `traceId`; Promtail → Loki |
+| **Trazas** | ¿Por dónde pasó una petición y dónde tardó? | OpenTelemetry con W3C Trace Context → Zipkin, incluida la propagación por RabbitMQ |
+
+Los tres se unen por el `traceId`: un log en Loki enlaza con su traza en Zipkin (campo derivado del
+datasource Loki).
+
+### Pull vs. Push
+
+- **Pull (métricas):** Prometheus decide cuándo consultar `/metrics` de cada servicio. Así detecta
+  por sí mismo un servicio caído (`up = 0`), que es justamente lo que dispara la alerta de
+  disponibilidad: un servicio caído no podría avisar que se cayó.
+- **Push (trazas y logs):** los spans se envían a Zipkin al terminar y Promtail empuja los logs a
+  Loki. Son eventos de cada petición; esperar a que alguien los consulte obligaría a acumularlos
+  dentro del servicio.
+
+### Estándares: CNCF, OpenTelemetry y W3C Trace Context
+
+OpenTelemetry es el proyecto de la CNCF que define una API y SDK de instrumentación neutrales
+respecto del backend. Usarlo en los cuatro lenguajes permite cambiar Zipkin por Jaeger o Tempo sin
+tocar el código de negocio. La propagación usa **W3C Trace Context** (`traceparent`, `tracestate`) y
+`baggage`: es el formato que entienden por igual Java, Go, Node y Python. En RabbitMQ el contexto
+viaja en los headers AMQP del mensaje, nunca en el cuerpo del evento.
+
+### Librerías por servicio
+
+| Servicio | Lenguaje | Métricas | Trazas | Logs JSON |
+|---|---|---|---|---|
+| api-gateway | Node 22 | `prom-client` | OpenTelemetry Node SDK | logger JSON propio |
+| vacaciones-service | Node 22 | `prom-client` | OpenTelemetry Node SDK + span raíz del scheduler | logger JSON propio |
+| empleados-service | Java 21 | Micrometer / Actuator | OpenTelemetry Java agent | logging estructurado de Spring Boot |
+| perfiles-service | Java 21 | Micrometer / Actuator | OpenTelemetry Java agent | logging estructurado de Spring Boot |
+| departamentos-service | Go | `prometheus/client_golang` | `otelhttp` + exportador Zipkin | `log/slog` JSON |
+| auth-service | Python 3.12 | `prometheus-fastapi-instrumentator` | OpenTelemetry FastAPI/SQLAlchemy/Pika | `logging` + formateador JSON |
+| notificaciones-service | Python 3.12 | `prometheus-fastapi-instrumentator` | OpenTelemetry FastAPI/SQLAlchemy/Pika | `logging` + formateador JSON |
+
+Cada librería nombra distinto las métricas HTTP (Micrometer publica `http_server_requests_seconds`;
+el instrumentador de FastAPI agrupa el estado como `2xx`). En lugar de falsificar nombres en el
+código, las recording rules de
+[`observability/prometheus/rules/`](observability/prometheus/rules/reto8-recording.yml) producen
+series comunes por `job`: `job:http_requests:rate1m`, `job:http_requests_5xx:ratio_rate1m`,
+`job:http_request_duration_seconds:p95_5m`, `job:process_cpu:cores_rate1m`, etc.
+
+### Por qué Zipkin
+
+Es el backend recomendado por el enunciado para el entorno académico: un solo contenedor, una UI
+simple para buscar por `traceId` y recepción directa en `/api/v2/spans` desde todos los SDK, sin
+necesitar un OTel Collector. El sampling es del 100 %, válido solo para demostración.
+
+### Arquitectura
 
 ```mermaid
 flowchart LR
@@ -57,22 +112,99 @@ flowchart LR
     G --> S[Microservicios]
     S <--> R[RabbitMQ]
 
-    P[Prometheus :9090 interno] -- Pull /metrics --> G
+    P[Prometheus :9091 host] -- Pull /metrics --> G
     P -- Pull /metrics --> S
     G -- Push spans OTel/W3C --> Z[Zipkin :9411]
     S -- Push spans OTel/W3C --> Z
     R -. traceparent en headers AMQP .-> S
 
     D[Docker logs JSON] --> PT[Promtail]
-    PT -- Push logs --> L[Loki :3100]
+    PT -- Push logs --> L[Loki :3100 interno]
     GF[Grafana :3000] -- PromQL --> P
     GF -- LogQL --> L
-    GF --> A[Discord / alertas]
+    GF -- SMTP --> M[Mailhog / email]
 ```
 
-Puertos de host: Prometheus `9091` (Jenkins ya ocupa `9090`), Grafana `3000` y Zipkin `9411`.
-Loki y Promtail quedan internos. Al terminar la Fase 1, Prometheus conoce los siete targets; estos
-permanecen `DOWN` en `/metrics` hasta que la instrumentación correspondiente sea implementada.
+| Interfaz | URL |
+|---|---|
+| Grafana (dashboard «Reto 8 — Observabilidad de microservicios») | `http://localhost:3000` (usuario `GRAFANA_ADMIN_USER`) |
+| Prometheus | `http://localhost:9091` (Jenkins ya ocupa `9090`) |
+| Zipkin | `http://localhost:9411` |
+
+Loki y Promtail quedan internos.
+
+### Dashboard y alertas
+
+El dashboard aprovisionado tiene tres filas: **Resumen** (estado `UP/DOWN` de los siete targets,
+CPU y memoria), **Tráfico** (peticiones/s, latencia p95 y media, proporción 5xx, errores 4xx/5xx y
+ranking del servicio más lento) y **Logs** (WARN/ERROR desde Loki). Un selector filtra por servicio.
+
+| Alerta | Condición | Severidad |
+|---|---|---|
+| Servicio caído | `up == 0` durante 1 minuto | critical |
+| Tasa de errores 5xx superior al 10 % | `job:http_requests_5xx:ratio_rate1m > 0.1` durante 2 minutos | critical |
+| Latencia p95 superior a 1 s | `job:http_request_duration_seconds:p95_5m > 1` durante 1 minuto | warning |
+
+**Canal de alertas: email (SMTP) recibido en Mailhog.** El contact point `email-reto8` envía cada
+alerta (`FIRING`) y su resolución (`RESOLVED`) a `GRAFANA_ALERT_EMAIL` por el SMTP `mailhog:1025`. La
+bandeja se ve en `http://localhost:8025`. Por qué este canal: el enunciado lo admite explícitamente
+para pruebas, Mailhog ya formaba parte del stack desde el Reto 5 y no requiere webhooks, tokens ni
+cuentas externas, así que no hay secretos que proteger y cualquiera puede reproducir la evidencia.
+Cambiar a Telegram, Discord o Slack es reemplazar el receiver en
+[`notificaciones.yml`](observability/grafana/provisioning/alerting/notificaciones.yml).
+
+### Caos controlado
+
+```powershell
+powershell -ExecutionPolicy Bypass -File observability/trafico.ps1 -Segundos 180
+powershell -ExecutionPolicy Bypass -File observability/caos.ps1 -Escenario caida
+powershell -ExecutionPolicy Bypass -File observability/caos.ps1 -Escenario latencia -LatenciaMs 1500
+```
+
+`caida` detiene `departamentos-service` sin borrarlo, espera la alerta y lo vuelve a iniciar.
+`latencia` activa `CHAOS_LATENCY_MS` (retardo fijo, solo en `/departamentos`, nunca en `/health` ni
+`/metrics`) y lo devuelve a `0` al terminar. Ambos restauran el sistema aunque se interrumpan. El
+procedimiento y los resultados están en [`docs/reto8/EVIDENCIAS.md`](docs/reto8/EVIDENCIAS.md).
+
+### Pruebas: simulación del caos
+
+Ejecutadas el 2026-11-03 sobre el stack completo. Detalle, tiempos y comandos en
+[`docs/reto8/EVIDENCIAS.md`](docs/reto8/EVIDENCIAS.md).
+
+**1. Dashboard con métricas reales y servicio caído.** `docker compose stop departamentos-service`:
+a los 12 s Prometheus marca el target `DOWN` y el panel de estado cambia a rojo.
+
+![Dashboard con departamentos-service DOWN](docs/reto8/capturas/01-dashboard-caida.png)
+
+**2. Alerta recibida en el canal.** El email «Servicio caído» llegó 82 s después de detener el
+servicio, y el `RESOLVED` al restaurarlo. Durante la caída también se dispararon «5xx > 10 %» (21 % en
+el Gateway) y «p95 > 1 s».
+
+![Emails de alerta en Mailhog](docs/reto8/capturas/03-mailhog-alertas.png)
+
+**3. Traza distribuida completa.** `POST /empleados`: Gateway → empleados → departamentos → RabbitMQ →
+auth, perfiles y notificaciones. 67 spans, 7 servicios, una sola raíz.
+
+![Traza de onboarding en Zipkin](docs/reto8/capturas/08-zipkin-onboarding.png)
+
+**4. Latencia inducida.** Con `CHAOS_LATENCY_MS=1500` en departamentos (retardo fijo, revertido a `0`
+al terminar), el panel de latencia refleja el incremento y se dispara la alerta «Latencia p95».
+
+![Latencia p95 durante los dos experimentos](docs/reto8/capturas/07-latencia-p95-caos.png)
+
+![Traza lenta: el 99 % en departamentos](docs/reto8/capturas/04-zipkin-latencia-departamentos.png)
+
+**¿Qué servicio del ecosistema tardó más en responder y cómo lo identificaron?**
+
+- **Con la latencia inducida: `departamentos-service`**, con p95 de 1,87 s. Se identificó en tres
+  pasos: el panel «Ranking de latencia» y «Latencia p95» de Grafana lo pusieron primero; en Zipkin, la
+  traza `2e2dacd62aff20c6a7b8374618e7352b` muestra que su span ocupa 1,503 s de 1,515 s (99 %); y en
+  Loki, filtrando por ese `traceId`, aparecen los logs del Gateway (1514 ms) y de departamentos
+  (1502 ms). El Gateway también subió a 1,62 s: la latencia de un backend se propaga al borde.
+- **Sin caos: `auth-service`** (≈ 0,31 s de media), porque el login verifica la contraseña con un hash
+  costoso a propósito. Es lentitud esperada, no un defecto.
+
+![Logs de la misma petición en Loki](docs/reto8/capturas/05-loki-traceid.png)
 
 ## Arranque desde cero
 

@@ -1,0 +1,121 @@
+# Reglas de alerta del Reto 8, aprovisionadas desde Git (sin configuración manual en la UI).
+# Las consultas usan las recording rules de observability/prometheus/rules/, que normalizan
+# Java, Go, Node y Python bajo el label `job` (= nombre Docker del servicio).
+# Las plantillas usan .Labels / .Values en vez de $labels para que Grafana no las interprete
+# como variables de entorno al leer este archivo.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: reto8-disponibilidad
+    folder: Microservicios
+    interval: 10s
+    rules:
+      - uid: reto8-servicio-caido
+        title: Servicio caído
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up{job=~"api-gateway|empleados-service|departamentos-service|perfiles-service|notificaciones-service|vacaciones-service|auth-service"}
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        # Si Prometheus deja de responder también se avisa: es pérdida de visibilidad.
+        noDataState: Alerting
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: '{{ .Labels.job }} no responde al scrape de Prometheus'
+          description: 'El target {{ .Labels.job }} ({{ .Labels.instance }}) lleva al menos 1 minuto en DOWN (up = 0).'
+          __dashboardUid__: reto8-observabilidad
+          __panelId__: '2'
+        labels:
+          severity: critical
+          reto: '8'
+        isPaused: false
+
+  - orgId: 1
+    name: reto8-comportamiento
+    folder: Microservicios
+    interval: 10s
+    rules:
+      - uid: reto8-errores-5xx
+        title: Tasa de errores 5xx superior al 10 %
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: job:http_requests_5xx:ratio_rate1m
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.1] }
+        # Sin tráfico no hay tasa de error: no es una condición de alerta.
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: '{{ .Labels.job }} responde 5xx en más del 10 % de las peticiones'
+          description: 'Proporción 5xx actual de {{ .Labels.job }}: {{ humanizePercentage .Values.A.Value }} (umbral 10 % durante 2 minutos).'
+          __dashboardUid__: reto8-observabilidad
+          __panelId__: '7'
+        labels:
+          severity: critical
+          reto: '8'
+        isPaused: false
+
+      - uid: reto8-latencia-p95
+        title: Latencia p95 superior a 1 s
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: job:http_request_duration_seconds:p95_5m
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: '{{ .Labels.job }} tiene p95 por encima de 1 segundo'
+          description: 'p95 de 5 minutos de {{ .Labels.job }}: {{ humanizeDuration .Values.A.Value }}.'
+          __dashboardUid__: reto8-observabilidad
+          __panelId__: '6'
+        labels:
+          severity: warning
+          reto: '8'
+        isPaused: false

@@ -73,9 +73,15 @@ Scaffold del segundo microservicio, en un lenguaje distinto a Java:
 | `DB_NAME` | `departamentos_db` | Base de datos |
 | `DB_USER` | `departamentos` | Usuario |
 | `DB_PASSWORD` | `departamentos` | Contraseña |
+| `CHAOS_LATENCY_MS` | `0` | Solo Reto 8 (caos controlado): retardo fijo en ms para `/departamentos`. `0` o inválido = desactivado |
 
 En Docker Compose, `DB_HOST` debe ser el nombre del servicio de la base de datos
 (`database-departamentos`), no `localhost` — ver `docker-compose.yml` raíz.
+
+`CHAOS_LATENCY_MS` existe para demostrar en el Reto 8 cómo una dependencia lenta se ve en el panel
+de latencia, en la alerta p95 y en Zipkin. Por qué así: es determinista (no aleatorio), se monta solo
+en las rutas de negocio para que `/health` y `/metrics` sigan respondiendo a Docker y Prometheus, y
+Compose lo deja en `0`. Lo activa y revierte `observability/caos.ps1`.
 
 ## Esquema de base de datos: golang-migrate con rollback
 

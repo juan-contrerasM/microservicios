@@ -64,6 +64,10 @@ services:
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
       LOG_FORMAT: json
+      # Caos controlado (Reto 8, Fase 6): retardo fijo en /departamentos. 0 = desactivado.
+      CHAOS_LATENCY_MS: ${DEPARTAMENTOS_CHAOS_LATENCY_MS:-0}
+    ports:
+      - "8081:8081"
     expose:
       - "8081"
     depends_on:
@@ -240,6 +244,8 @@ services:
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
       LOG_FORMAT: json
+    ports:
+      - "8084:8084"
     expose:
       - "8084"
     depends_on:
@@ -299,6 +305,8 @@ services:
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
       LOG_FORMAT: json
+    ports:
+      - "8083:8083"
     expose:
       - "8083"
     depends_on:
@@ -368,6 +376,8 @@ services:
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
       LOG_FORMAT: json
+    ports:
+      - "8085:8085"
     expose:
       - "8085"
     depends_on:
@@ -434,6 +444,7 @@ services:
       - "${PROMETHEUS_PORT:-9091}:9090"
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/ready"]
@@ -486,6 +497,15 @@ services:
   # Zipkin recibe spans OpenTelemetry en /api/v2/spans.
   zipkin:
     image: openzipkin/zipkin:3.5.1
+    # Almacenamiento en memoria (entorno académico). Con el heap por defecto (128 MB) y el tope de
+    # 500 000 spans, Zipkin murió por OutOfMemoryError tras ~40 min de tráfico + caos + BDD.
+    # Se acota el número de spans (descarta los más antiguos) y se amplía el heap; si aun así cae,
+    # Docker lo reinicia. Reiniciar borra las trazas: es memoria, no persistencia.
+    environment:
+      STORAGE_TYPE: mem
+      MEM_MAX_SPANS: ${ZIPKIN_MEM_MAX_SPANS:-100000}
+      JAVA_OPTS: -Xms256m -Xmx512m -XX:+ExitOnOutOfMemoryError
+    restart: unless-stopped
     ports:
       - "${ZIPKIN_PORT:-9411}:9411"
     healthcheck:
@@ -507,6 +527,15 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-GrafanaAdmin123!}
       GF_USERS_ALLOW_SIGN_UP: "false"
       ZIPKIN_PORT: ${ZIPKIN_PORT:-9411}
+      # Canal de alertas: email por el SMTP de desarrollo (Mailhog, ya presente desde el Reto 5).
+      # Mailhog no usa TLS ni autenticación; la bandeja se ve en http://localhost:${MAILHOG_UI_PORT:-8025}.
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: mailhog:1025
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:-grafana-alertas@empresa.com}
+      GF_SMTP_FROM_NAME: Grafana Reto 8
+      GF_SMTP_STARTTLS_POLICY: NoStartTLS
+      GF_SMTP_SKIP_VERIFY: "true"
+      GRAFANA_ALERT_EMAIL: ${GRAFANA_ALERT_EMAIL:-equipo-observabilidad@empresa.com}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -516,6 +545,8 @@ services:
         condition: service_healthy
       loki:
         condition: service_healthy
+      mailhog:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
       interval: 10s

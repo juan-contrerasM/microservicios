@@ -14,6 +14,11 @@ scrape_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
     relabel_configs:
+      # Solo los siete servicios del reto: el host puede tener contenedores de otros proyectos
+      # cuyos logs no deben terminar en este Loki.
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        regex: "api-gateway|empleados-service|departamentos-service|perfiles-service|notificaciones-service|vacaciones-service|auth-service"
+        action: keep
       - source_labels: ["__meta_docker_container_name"]
         regex: "/(.*)"
         target_label: container

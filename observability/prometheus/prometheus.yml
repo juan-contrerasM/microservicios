@@ -2,6 +2,10 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Normaliza las métricas HTTP/CPU/memoria de Java, Go, Node y Python (ver rules/).
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   # El Gateway va primero porque representa la experiencia del cliente.
   - job_name: api-gateway

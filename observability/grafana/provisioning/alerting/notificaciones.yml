@@ -1,0 +1,25 @@
+# Contact point y política de notificación del Reto 8.
+# Canal externo: email. Grafana envía por SMTP a Mailhog (servicio `mailhog` del Compose), que el
+# enunciado admite para pruebas; la bandeja se consulta en http://localhost:8025.
+# El destinatario sale de GRAFANA_ALERT_EMAIL (docker-compose.yml); aquí no hay secretos.
+# Cambiar de canal (Telegram, Discord, Slack) es reemplazar este receiver.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: email-reto8
+    receivers:
+      - uid: email-reto8
+        type: email
+        settings:
+          addresses: ${GRAFANA_ALERT_EMAIL}
+          singleEmail: true
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: email-reto8
+    group_by: ['alertname', 'job']
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 4h

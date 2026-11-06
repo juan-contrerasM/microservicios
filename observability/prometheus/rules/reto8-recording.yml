@@ -1,0 +1,107 @@
+# Recording rules del Reto 8.
+#
+# Cada stack expone sus métricas HTTP con nombres y labels distintos:
+#   - Node (api-gateway, vacaciones) y Go (departamentos): http_requests_total y
+#     http_request_duration_seconds con labels service/method/route/status ("200").
+#   - Python (auth, notificaciones; prometheus-fastapi-instrumentator): http_requests_total
+#     con status agrupado ("2xx") y http_request_duration_highr_seconds sin labels de ruta.
+#   - Java (empleados, perfiles; Micrometer): http_server_requests_seconds con uri/status.
+#   - CPU/memoria: Node antepone un prefijo propio; Java publica process_cpu_usage y jvm_memory_*.
+#
+# Estas reglas producen series comunes por `job` (el nombre Docker) para que el dashboard y las
+# alertas usen una sola consulta. No se inventan métricas: solo se renombran y agregan series reales.
+# Nunca se agregan labels de alta cardinalidad (ids, emails, trace ids).
+
+groups:
+  - name: reto8-http
+    interval: 15s
+    rules:
+      # Peticiones por segundo por servicio y clase de estado (2xx, 4xx, 5xx...).
+      # Se excluye el endpoint que raspa Prometheus para no medirse a sí mismo.
+      - record: job_status_class:http_requests:rate1m
+        expr: |
+          sum by (job, status_class) (
+            label_replace(
+              rate(http_requests_total{job=~"api-gateway|departamentos-service|vacaciones-service|auth-service|notificaciones-service", route!="/metrics", handler!="/metrics"}[1m]),
+              "status_class", "${1}xx", "status", "([1-5]).*"
+            )
+          )
+          or
+          sum by (job, status_class) (
+            label_replace(
+              rate(http_server_requests_seconds_count{job=~"empleados-service|perfiles-service", uri!~"/actuator.*"}[1m]),
+              "status_class", "${1}xx", "status", "([1-5]).*"
+            )
+          )
+
+      - record: job:http_requests:rate1m
+        expr: sum by (job) (job_status_class:http_requests:rate1m)
+
+      # Proporción de respuestas 5xx (0..1). Si un servicio tiene tráfico pero ningún 5xx,
+      # la regla devuelve 0 en vez de ausencia de datos, para que la alerta pueda resolverse.
+      - record: job:http_requests_5xx:ratio_rate1m
+        expr: |
+          (
+            sum by (job) (job_status_class:http_requests:rate1m{status_class="5xx"})
+            or
+            sum by (job) (job_status_class:http_requests:rate1m) * 0
+          )
+          / sum by (job) (job_status_class:http_requests:rate1m)
+
+      - record: job:http_requests_4xx:ratio_rate1m
+        expr: |
+          (
+            sum by (job) (job_status_class:http_requests:rate1m{status_class="4xx"})
+            or
+            sum by (job) (job_status_class:http_requests:rate1m) * 0
+          )
+          / sum by (job) (job_status_class:http_requests:rate1m)
+
+      # Percentil 95 de latencia en ventana de 5 minutos. Node/Go/Java excluyen /health y /metrics
+      # para que los healthchecks de Docker no oculten la latencia de negocio. En Python el
+      # histograma de alta resolución no tiene label de ruta, por lo que incluye /health.
+      - record: job:http_request_duration_seconds:p95_5m
+        expr: |
+          histogram_quantile(0.95, sum by (job, le) (
+            rate(http_request_duration_seconds_bucket{job=~"api-gateway|departamentos-service|vacaciones-service", route!~"/metrics|/health"}[5m])
+          ))
+          or
+          histogram_quantile(0.95, sum by (job, le) (
+            rate(http_request_duration_highr_seconds_bucket{job=~"auth-service|notificaciones-service"}[5m])
+          ))
+          or
+          histogram_quantile(0.95, sum by (job, le) (
+            rate(http_server_requests_seconds_bucket{job=~"empleados-service|perfiles-service", uri!~"/actuator.*|/health"}[5m])
+          ))
+
+      # Latencia media en 5 minutos, excluyendo salud y métricas en los siete servicios.
+      # `>= 0` descarta el NaN (0/0) de un servicio sin peticiones de negocio en la ventana.
+      - record: job:http_request_duration_seconds:mean5m
+        expr: |
+          (
+          sum by (job) (rate(http_request_duration_seconds_sum{job=~"api-gateway|departamentos-service|vacaciones-service", route!~"/metrics|/health"}[5m]))
+            / sum by (job) (rate(http_request_duration_seconds_count{job=~"api-gateway|departamentos-service|vacaciones-service", route!~"/metrics|/health"}[5m]))
+          or
+          sum by (job) (rate(http_request_duration_seconds_sum{job=~"auth-service|notificaciones-service", handler!~"/metrics|/health"}[5m]))
+            / sum by (job) (rate(http_request_duration_seconds_count{job=~"auth-service|notificaciones-service", handler!~"/metrics|/health"}[5m]))
+          or
+          sum by (job) (rate(http_server_requests_seconds_sum{job=~"empleados-service|perfiles-service", uri!~"/actuator.*|/health"}[5m]))
+            / sum by (job) (rate(http_server_requests_seconds_count{job=~"empleados-service|perfiles-service", uri!~"/actuator.*|/health"}[5m]))
+          ) >= 0
+
+  - name: reto8-recursos
+    interval: 15s
+    rules:
+      # CPU en núcleos usados. Java publica un ratio sobre todos los núcleos del contenedor.
+      - record: job:process_cpu:cores_rate1m
+        expr: |
+          sum by (job) (rate({__name__=~"process_cpu_seconds_total|api_gateway_process_cpu_seconds_total|vacaciones_process_cpu_seconds_total", job!~"empleados-service|perfiles-service"}[1m]))
+          or
+          sum by (job) (process_cpu_usage{job=~"empleados-service|perfiles-service"} * on (job, instance) system_cpu_count)
+
+      # Memoria: RSS del proceso; en Java, memoria usada por la JVM (heap + non-heap).
+      - record: job:process_memory:bytes
+        expr: |
+          sum by (job) ({__name__=~"process_resident_memory_bytes|api_gateway_process_resident_memory_bytes|vacaciones_process_resident_memory_bytes", job!~"empleados-service|perfiles-service"})
+          or
+          sum by (job) (jvm_memory_used_bytes{job=~"empleados-service|perfiles-service"})

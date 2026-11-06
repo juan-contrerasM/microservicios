@@ -41,6 +41,8 @@ func NewRouter(db *sql.DB) http.Handler {
 
 	// Endpoints de negocio del Reto 2 (§3 del enunciado).
 	r.Route("/departamentos", func(r chi.Router) {
+		// Caos controlado del Reto 8: inactivo salvo que CHAOS_LATENCY_MS > 0.
+		r.Use(observability.ChaosLatencyFromEnv())
 		r.Post("/", deptHandler.Create)     // POST   /departamentos      -> registrar
 		r.Get("/", deptHandler.List)        // GET    /departamentos      -> listar
 		r.Get("/{id}", deptHandler.GetByID) // GET    /departamentos/{id} -> consultar por id
