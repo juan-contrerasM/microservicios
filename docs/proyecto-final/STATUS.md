@@ -7,8 +7,8 @@ Leyenda: ✅ terminado · 🔄 en progreso · ⬜ pendiente · ⛔ bloqueado
 
 | Fase | Descripción | Responsable | Estado | Evidencia/nota |
 |---|---|---|---|---|
-| 0 | Punto de restauración, rama y documentos normativos | Conjunta | ✅ | Etiqueta local `reto8-completo`, rama `proyecto-final`, PDF, plan y estado creados; publicación remota en el commit de esta fase. |
-| 1 | Matriz normativa y baseline ejecutable | Ambas | ⬜ | Revalidar todo lo heredado de Retos 1–8. |
+| 0 | Punto de restauración, rama y documentos normativos | Conjunta | ✅ | Etiqueta local `reto8-completo`, rama `proyecto-final`, PDF, plan y estado creados. Push pendiente por HTTP 403 de permisos. |
+| 1 | Matriz normativa y baseline ejecutable | Ambas | ✅ | Siete suites verificadas, stack construido, BDD 18/18 y brechas registradas en `EVIDENCIAS.md`. |
 | 2 | Cero secretos y configuración segura | Persona 2 | ⬜ | Compose Secrets, scripts, rotación y auditoría Git. |
 | 3A | Funcionalidad faltante Java/Go | Persona 1 | ⬜ | CRUD Departamentos y modelo completo de Perfiles. |
 | 3B | Funcionalidad faltante Node/Python | Persona 2 | ⬜ | CRUD Vacaciones, plantillas y ciclo de cuenta. |
@@ -26,16 +26,16 @@ Leyenda: ✅ terminado · 🔄 en progreso · ⬜ pendiente · ⛔ bloqueado
 
 ## Punto actual
 
-La Fase 0 está cerrada y la Fase 1 es el siguiente bloque. No se ha iniciado ninguna modificación
-funcional del proyecto final: primero se obtendrá el baseline reproducible y la matriz normativa;
-no conviene saltar directamente a los faltantes sin esa auditoría.
+Las fases 0 y 1 están cerradas. El siguiente bloque normativo es la Fase 2 (cero secretos y
+configuración segura). Como corrección habilitante detectada por el baseline, se normaliza también
+el entrypoint de Jenkins para que el stack pueda arrancar desde Windows.
 
 ## Decisiones que deben quedar registradas antes de Fase 2
 
 | Decisión | Propuesta inicial | Estado |
 |---|---|---|
-| Rama de trabajo | `proyecto-final` | Creada; se publica con la Fase 0 |
-| Punto de restauración | etiqueta `reto8-completo` | Creada sobre `b28c220`; se publica con la Fase 0 |
+| Rama de trabajo | `proyecto-final` | Creada localmente; push pendiente por permisos del remoto |
+| Punto de restauración | etiqueta `reto8-completo` | Creada sobre `b28c220`; push pendiente por permisos del remoto |
 | Gestión de secretos | Docker Compose Secrets | Pendiente de validación |
 | Registry | Registry Docker local persistente | Pendiente de validación |
 | Load balancer | Traefik o Nginx, según prueba técnica | Pendiente de selección |
