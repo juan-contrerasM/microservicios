@@ -9,7 +9,7 @@ Leyenda: ✅ terminado · 🔄 en progreso · ⬜ pendiente · ⛔ bloqueado
 |---|---|---|---|---|
 | 0 | Punto de restauración, rama y documentos normativos | Conjunta | ✅ | Etiqueta local `reto8-completo`, rama `proyecto-final`, PDF, plan y estado creados. Push pendiente por HTTP 403 de permisos. |
 | 1 | Matriz normativa y baseline ejecutable | Ambas | ✅ | Siete suites verificadas, stack construido, BDD 18/18 y brechas registradas en `EVIDENCIAS.md`. |
-| 2 | Cero secretos y configuración segura | Persona 2 | 🔄 | Plantillas sin valores utilizables y generadores criptográficos listos; falta migrar Compose y servicios a `*_FILE`. |
+| 2 | Cero secretos y configuración segura | Persona 2 | ✅ | Docker Secrets y `*_FILE` validados desde volúmenes limpios; Gitleaks sin hallazgos y BDD 18/18. |
 | 3A | Funcionalidad faltante Java/Go | Persona 1 | ⬜ | CRUD Departamentos y modelo completo de Perfiles. |
 | 3B | Funcionalidad faltante Node/Python | Persona 2 | ⬜ | CRUD Vacaciones, plantillas y ciclo de cuenta. |
 | 4 | Catálogo de eventos e idempotencia integral | Ambas | ⬜ | Contratos, DLQ, duplicados y headers W3C. |
@@ -26,9 +26,8 @@ Leyenda: ✅ terminado · 🔄 en progreso · ⬜ pendiente · ⛔ bloqueado
 
 ## Punto actual
 
-Las fases 0 y 1 están cerradas. El siguiente bloque normativo es la Fase 2 (cero secretos y
-configuración segura). Como corrección habilitante detectada por el baseline, se normaliza también
-el entrypoint de Jenkins para que el stack pueda arrancar desde Windows.
+Las fases 0, 1 y 2 están cerradas. El trabajo activo pasa a las fases 3A y 3B: completar las brechas
+funcionales detectadas en Departamentos, Perfiles, Vacaciones y Notificaciones.
 
 ## Decisiones que deben quedar registradas antes de Fase 2
 
@@ -36,7 +35,7 @@ el entrypoint de Jenkins para que el stack pueda arrancar desde Windows.
 |---|---|---|
 | Rama de trabajo | `proyecto-final` | Creada localmente; push pendiente por permisos del remoto |
 | Punto de restauración | etiqueta `reto8-completo` | Creada sobre `b28c220`; push pendiente por permisos del remoto |
-| Gestión de secretos | Docker Compose Secrets | Pendiente de validación |
+| Gestión de secretos | Docker Compose Secrets | Implementada y validada desde volúmenes limpios |
 | Registry | Registry Docker local persistente | Pendiente de validación |
 | Load balancer | Traefik o Nginx, según prueba técnica | Pendiente de selección |
 | Auth obligatoria | Conservar JWT HS256 y endurecerlo | Propuesta |

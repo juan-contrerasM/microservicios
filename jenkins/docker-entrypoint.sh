@@ -2,6 +2,20 @@
 # Ajusta el grupo del socket al GID real del host y arranca Jenkins como usuario jenkins.
 set -euo pipefail
 
+load_secret() {
+  name="$1"
+  eval "file=\${${name}_FILE:-}"
+  if [ -n "$file" ]; then
+    [ -r "$file" ] || { echo "No se puede leer ${name}_FILE" >&2; exit 1; }
+    value="$(tr -d '\r\n' < "$file")"
+    export "$name=$value"
+  fi
+}
+
+load_secret JENKINS_ADMIN_PASSWORD
+load_secret ADMIN_PASSWORD
+load_secret USER_PASSWORD
+
 SOCK=/var/run/docker.sock
 if [ ! -S "$SOCK" ]; then
   echo "No está ${SOCK}. El plan monta el socket del host en el servicio jenkins." >&2

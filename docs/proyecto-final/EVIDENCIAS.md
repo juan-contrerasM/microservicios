@@ -80,3 +80,12 @@ Hallazgos adicionales:
 - Gitleaks recorrió los 94 commits del historial, aproximadamente 7,65 MB: cero hallazgos.
 - Las exclusiones del escáner se limitan a `.venv`, fixtures JWT inválidos y el bootstrap que reemplaza
   la credencial inicial pública de SonarQube.
+- Se levantó el proyecto aislado `pfsecretstest` con volúmenes nuevos y los 15 secretos generados.
+- Todas las bases, RabbitMQ, los siete procesos HTTP, Grafana, Prometheus, Loki, Zipkin, Jenkins y
+  SonarQube quedaron disponibles; `sonar-bootstrap` terminó con código 0.
+- RabbitMQ requirió un wrapper mínimo porque la imagen actual rechaza `RABBITMQ_DEFAULT_PASS_FILE`;
+  el wrapper lee el archivo, elimina la variable obsoleta y delega al entrypoint oficial.
+- El generador garantiza una contraseña con mayúscula, minúscula, número y símbolo, compatible con
+  las políticas de Auth y SonarQube.
+- Regresión posterior: Gateway 21/21, Vacaciones 64/64, Auth 31/31, Notificaciones 12/12, Go y ambas
+  suites Java correctas; BDD integrada 18 escenarios y 137 pasos correctos.

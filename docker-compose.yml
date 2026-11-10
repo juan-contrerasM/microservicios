@@ -18,7 +18,9 @@ services:
     environment:
       POSTGRES_DB: ${EMPLEADOS_DB_NAME}
       POSTGRES_USER: ${EMPLEADOS_DB_USER}
-      POSTGRES_PASSWORD: ${EMPLEADOS_DB_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/empleados_db_password
+    secrets:
+      - empleados_db_password
     volumes:
       - vol-empleados:/var/lib/postgresql/data
     healthcheck:
@@ -36,12 +38,15 @@ services:
     environment:
       MYSQL_DATABASE: ${DEPARTAMENTOS_DB_NAME}
       MYSQL_USER: ${DEPARTAMENTOS_DB_USER}
-      MYSQL_PASSWORD: ${DEPARTAMENTOS_DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DEPARTAMENTOS_DB_ROOT_PASSWORD}
+      MYSQL_PASSWORD_FILE: /run/secrets/departamentos_db_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/departamentos_db_root_password
+    secrets:
+      - departamentos_db_password
+      - departamentos_db_root_password
     volumes:
       - vol-departamentos:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping --protocol=tcp -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD"]
+      test: ["CMD-SHELL", "mysqladmin ping --protocol=tcp -h 127.0.0.1 -u root --password=$$(cat /run/secrets/departamentos_db_root_password)"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -58,7 +63,7 @@ services:
       DB_PORT: 3306
       DB_NAME: ${DEPARTAMENTOS_DB_NAME}
       DB_USER: ${DEPARTAMENTOS_DB_USER}
-      DB_PASSWORD: ${DEPARTAMENTOS_DB_PASSWORD}
+      DB_PASSWORD_FILE: /run/secrets/departamentos_db_password
       OTEL_SERVICE_NAME: departamentos-service
       OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
@@ -70,6 +75,8 @@ services:
       - "8081:8081"
     expose:
       - "8081"
+    secrets:
+      - departamentos_db_password
     depends_on:
       database-departamentos:
         condition: service_healthy
@@ -91,7 +98,7 @@ services:
       DB_PORT: 5432
       DB_NAME: ${EMPLEADOS_DB_NAME}
       DB_USER: ${EMPLEADOS_DB_USER}
-      DB_PASSWORD: ${EMPLEADOS_DB_PASSWORD}
+      DB_PASSWORD_FILE: /run/secrets/empleados_db_password
       DEPARTAMENTOS_SERVICE_URL: http://departamentos-service:8081
       DEPARTAMENTOS_SERVICE_TIMEOUT: ${DEPARTAMENTOS_SERVICE_TIMEOUT}
       DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS: ${DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS}
@@ -103,7 +110,7 @@ services:
       CB_PERMITTED_CALLS_HALF_OPEN: ${CB_PERMITTED_CALLS_HALF_OPEN}
       BROKER_URL: amqp://message-broker:5672
       RABBITMQ_USER: ${RABBITMQ_USER:-onboarding}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
+      RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
       OTEL_SERVICE_NAME: empleados-service
       OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
@@ -115,6 +122,9 @@ services:
       LOG_FORMAT: json
     expose:
       - "8080"
+    secrets:
+      - empleados_db_password
+      - rabbitmq_password
     depends_on:
       database-empleados:
         condition: service_healthy
@@ -133,13 +143,15 @@ services:
   #     hostname fijo: el nombre del nodo (rabbit@message-broker) vive en el
   #     volumen; si cambia, el broker no recupera las colas durables. ---
   message-broker:
-    image: rabbitmq:3-management
+    build: ./infrastructure/rabbitmq
     hostname: message-broker
     # Recupera fallos transitorios del primer arranque al inicializar el volumen/cookie de Erlang.
     restart: on-failure
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_PASS_FILE: /run/secrets/rabbitmq_password
+    secrets:
+      - rabbitmq_password
     ports:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
@@ -173,7 +185,7 @@ services:
       PERFILES_URL: http://perfiles-service:8083
       VACACIONES_URL: http://vacaciones-service:8085
       AUTH_URL: http://auth-service:8086
-      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en .env}
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
       PROXY_TIMEOUT_MS: ${PROXY_TIMEOUT_MS}
       OTEL_SERVICE_NAME: api-gateway
       OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
@@ -182,6 +194,8 @@ services:
       LOG_FORMAT: json
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
+    secrets:
+      - jwt_secret
     # El borde debe arrancar incluso si un backend falla. Solo exige que Compose
     # haya iniciado sus contenedores; la disponibilidad se resuelve en runtime
     # con el 503 JSON del proxy y el /health del Gateway permanece independiente.
@@ -213,7 +227,9 @@ services:
     environment:
       POSTGRES_DB: ${NOTIFICACIONES_DB_NAME:-notificaciones_db}
       POSTGRES_USER: ${NOTIFICACIONES_DB_USER:-notificaciones}
-      POSTGRES_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD:-notificaciones}
+      POSTGRES_PASSWORD_FILE: /run/secrets/notificaciones_db_password
+    secrets:
+      - notificaciones_db_password
     volumes:
       - vol-notificaciones:/var/lib/postgresql/data
     healthcheck:
@@ -230,10 +246,14 @@ services:
     build: ./services/notificaciones-service
     environment:
       PORT: 8084
-      DATABASE_URL: postgresql+psycopg://${NOTIFICACIONES_DB_USER:-notificaciones}:${NOTIFICACIONES_DB_PASSWORD:-notificaciones}@database-notificaciones:5432/${NOTIFICACIONES_DB_NAME:-notificaciones_db}
+      DB_HOST: database-notificaciones
+      DB_PORT: 5432
+      DB_NAME: ${NOTIFICACIONES_DB_NAME:-notificaciones_db}
+      DB_USER: ${NOTIFICACIONES_DB_USER:-notificaciones}
+      DB_PASSWORD_FILE: /run/secrets/notificaciones_db_password
       BROKER_URL: amqp://message-broker:5672
       RABBITMQ_USER: ${RABBITMQ_USER:-onboarding}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
+      RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
       BROKER_QUEUE: q.notificaciones
       SMTP_HOST: mailhog
@@ -246,6 +266,9 @@ services:
       LOG_FORMAT: json
     ports:
       - "8084:8084"
+    secrets:
+      - notificaciones_db_password
+      - rabbitmq_password
     expose:
       - "8084"
     depends_on:
@@ -270,7 +293,9 @@ services:
     environment:
       POSTGRES_DB: ${PERFILES_DB_NAME:-perfiles_db}
       POSTGRES_USER: ${PERFILES_DB_USER:-perfiles}
-      POSTGRES_PASSWORD: ${PERFILES_DB_PASSWORD:-perfiles}
+      POSTGRES_PASSWORD_FILE: /run/secrets/perfiles_db_password
+    secrets:
+      - perfiles_db_password
     volumes:
       - vol-perfiles:/var/lib/postgresql/data
     healthcheck:
@@ -291,10 +316,10 @@ services:
       DB_PORT: 5432
       DB_NAME: ${PERFILES_DB_NAME:-perfiles_db}
       DB_USER: ${PERFILES_DB_USER:-perfiles}
-      DB_PASSWORD: ${PERFILES_DB_PASSWORD:-perfiles}
+      DB_PASSWORD_FILE: /run/secrets/perfiles_db_password
       BROKER_URL: amqp://message-broker:5672
       RABBITMQ_USER: ${RABBITMQ_USER:-onboarding}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
+      RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
       BROKER_QUEUE: q.perfiles
       OTEL_SERVICE_NAME: perfiles-service
@@ -307,6 +332,9 @@ services:
       LOG_FORMAT: json
     ports:
       - "8083:8083"
+    secrets:
+      - perfiles_db_password
+      - rabbitmq_password
     expose:
       - "8083"
     depends_on:
@@ -329,7 +357,9 @@ services:
     environment:
       POSTGRES_DB: ${VACACIONES_DB_NAME:-vacaciones_db}
       POSTGRES_USER: ${VACACIONES_DB_USER:-vacaciones}
-      POSTGRES_PASSWORD: ${VACACIONES_DB_PASSWORD:-vacaciones}
+      POSTGRES_PASSWORD_FILE: /run/secrets/vacaciones_db_password
+    secrets:
+      - vacaciones_db_password
     volumes:
       - vol-vacaciones:/var/lib/postgresql/data
     healthcheck:
@@ -347,7 +377,9 @@ services:
     environment:
       POSTGRES_DB: ${AUTH_DB_NAME:-auth_db}
       POSTGRES_USER: ${AUTH_DB_USER:-auth}
-      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-auth}
+      POSTGRES_PASSWORD_FILE: /run/secrets/auth_db_password
+    secrets:
+      - auth_db_password
     volumes:
       - vol-auth:/var/lib/postgresql/data
     healthcheck:
@@ -364,10 +396,14 @@ services:
     build: ./services/vacaciones-service
     environment:
       PORT: 8085
-      DATABASE_URL: postgresql://${VACACIONES_DB_USER:-vacaciones}:${VACACIONES_DB_PASSWORD:-vacaciones}@database-vacaciones:5432/${VACACIONES_DB_NAME:-vacaciones_db}
+      DB_HOST: database-vacaciones
+      DB_PORT: 5432
+      DB_NAME: ${VACACIONES_DB_NAME:-vacaciones_db}
+      DB_USER: ${VACACIONES_DB_USER:-vacaciones}
+      DB_PASSWORD_FILE: /run/secrets/vacaciones_db_password
       BROKER_URL: amqp://message-broker:5672
       RABBITMQ_USER: ${RABBITMQ_USER:-onboarding}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
+      RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
       BROKER_QUEUE: q.vacaciones
       VACACIONES_CRON: "${VACACIONES_CRON:-* * * * *}"
@@ -378,6 +414,9 @@ services:
       LOG_FORMAT: json
     ports:
       - "8085:8085"
+    secrets:
+      - vacaciones_db_password
+      - rabbitmq_password
     expose:
       - "8085"
     depends_on:
@@ -399,18 +438,22 @@ services:
     build: ./services/auth-service
     environment:
       PORT: 8086
-      DATABASE_URL: postgresql+psycopg://${AUTH_DB_USER:-auth}:${AUTH_DB_PASSWORD:-auth}@database-auth:5432/${AUTH_DB_NAME:-auth_db}
+      DB_HOST: database-auth
+      DB_PORT: 5432
+      DB_NAME: ${AUTH_DB_NAME:-auth_db}
+      DB_USER: ${AUTH_DB_USER:-auth}
+      DB_PASSWORD_FILE: /run/secrets/auth_db_password
       BROKER_URL: amqp://message-broker:5672
       RABBITMQ_USER: ${RABBITMQ_USER:-onboarding}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-onboarding}
+      RABBITMQ_PASSWORD_FILE: /run/secrets/rabbitmq_password
       BROKER_EXCHANGE: ${BROKER_EXCHANGE:-onboarding.eventos}
       BROKER_QUEUE: q.auth
-      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en .env}
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
       JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-60}
       RESET_TOKEN_MINUTES: ${RESET_TOKEN_MINUTES:-60}
       AUTH_ADMIN_USUARIO: ${AUTH_ADMIN_USUARIO:-admin}
       AUTH_ADMIN_EMAIL: ${AUTH_ADMIN_EMAIL:-admin@empresa.com}
-      AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:?Defina AUTH_ADMIN_PASSWORD en .env}
+      AUTH_ADMIN_PASSWORD_FILE: /run/secrets/auth_admin_password
       OTEL_SERVICE_NAME: auth-service
       OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
@@ -418,6 +461,11 @@ services:
       LOG_FORMAT: json
     expose:
       - "8086"
+    secrets:
+      - auth_db_password
+      - rabbitmq_password
+      - jwt_secret
+      - auth_admin_password
     depends_on:
       database-auth:
         condition: service_healthy
@@ -524,7 +572,7 @@ services:
       - "${GRAFANA_PORT:-3000}:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-GrafanaAdmin123!}
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
       GF_USERS_ALLOW_SIGN_UP: "false"
       ZIPKIN_PORT: ${ZIPKIN_PORT:-9411}
       # Canal de alertas: email por el SMTP de desarrollo (Mailhog, ya presente desde el Reto 5).
@@ -540,6 +588,8 @@ services:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    secrets:
+      - grafana_admin_password
     depends_on:
       prometheus:
         condition: service_healthy
@@ -573,12 +623,16 @@ services:
       JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
       CASC_JENKINS_CONFIG: /var/jenkins_home/casc_configs
       JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
-      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-admin}
+      JENKINS_ADMIN_PASSWORD_FILE: /run/secrets/jenkins_admin_password
       DOCKER_NETWORK: microservicios_microservices-network
       SONAR_HOST_URL: ${SONAR_HOST_URL:-http://sonarqube:9000}
       ADMIN_USUARIO: ${AUTH_ADMIN_USUARIO:-admin}
-      ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:-Admin1234!}
-      USER_PASSWORD: ${E2E_USER_PASSWORD:-Usuario123!}
+      ADMIN_PASSWORD_FILE: /run/secrets/auth_admin_password
+      USER_PASSWORD_FILE: /run/secrets/e2e_user_password
+    secrets:
+      - jenkins_admin_password
+      - auth_admin_password
+      - e2e_user_password
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -591,7 +645,9 @@ services:
     environment:
       POSTGRES_DB: sonar
       POSTGRES_USER: sonar
-      POSTGRES_PASSWORD: ${SONAR_JDBC_PASSWORD:-sonar}
+      POSTGRES_PASSWORD_FILE: /run/secrets/sonar_jdbc_password
+    secrets:
+      - sonar_jdbc_password
     volumes:
       - sonar_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -610,9 +666,14 @@ services:
     environment:
       SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
       SONAR_JDBC_USERNAME: sonar
-      SONAR_JDBC_PASSWORD: ${SONAR_JDBC_PASSWORD:-sonar}
       SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
       SONAR_VALIDATEWEBHOOKS: "false"
+    secrets:
+      - sonar_jdbc_password
+    entrypoint:
+      - /bin/bash
+      - -c
+      - export SONAR_JDBC_PASSWORD="$$(tr -d '\r\n' < /run/secrets/sonar_jdbc_password)"; exec /opt/sonarqube/docker/entrypoint.sh
     volumes:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_logs:/opt/sonarqube/logs
@@ -634,18 +695,20 @@ services:
       - microservices-network
 
   sonar-bootstrap:
-    image: alpine:3.21
+    build:
+      context: ./jenkins
+      dockerfile: sonar-bootstrap.Dockerfile
     container_name: sonar-bootstrap
     depends_on:
       sonarqube:
         condition: service_healthy
     environment:
       SONAR_URL: http://sonarqube:9000
-      SONAR_ADMIN_PASSWORD: ${SONAR_ADMIN_PASSWORD:-SonarAdmin123!}
+      SONAR_ADMIN_PASSWORD_FILE: /run/secrets/sonar_admin_password
     volumes:
-      - ./jenkins/init-sonar.sh:/init-sonar.sh:ro
       - sonar_bootstrap:/bootstrap
-    entrypoint: ["/bin/sh", "/init-sonar.sh"]
+    secrets:
+      - sonar_admin_password
     restart: "no"
     networks:
       - microservices-network
@@ -678,3 +741,35 @@ volumes:
   grafana_data:
   loki_data:
   promtail_positions:
+
+secrets:
+  empleados_db_password:
+    file: ./secrets/empleados_db_password.txt
+  departamentos_db_password:
+    file: ./secrets/departamentos_db_password.txt
+  departamentos_db_root_password:
+    file: ./secrets/departamentos_db_root_password.txt
+  rabbitmq_password:
+    file: ./secrets/rabbitmq_password.txt
+  notificaciones_db_password:
+    file: ./secrets/notificaciones_db_password.txt
+  perfiles_db_password:
+    file: ./secrets/perfiles_db_password.txt
+  vacaciones_db_password:
+    file: ./secrets/vacaciones_db_password.txt
+  auth_db_password:
+    file: ./secrets/auth_db_password.txt
+  jwt_secret:
+    file: ./secrets/jwt_secret.txt
+  auth_admin_password:
+    file: ./secrets/auth_admin_password.txt
+  jenkins_admin_password:
+    file: ./secrets/jenkins_admin_password.txt
+  sonar_admin_password:
+    file: ./secrets/sonar_admin_password.txt
+  sonar_jdbc_password:
+    file: ./secrets/sonar_jdbc_password.txt
+  e2e_user_password:
+    file: ./secrets/e2e_user_password.txt
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password.txt

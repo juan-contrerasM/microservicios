@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Config son todos los parámetros configurables del servicio. Ver
@@ -28,8 +29,26 @@ func Load() Config {
 		DBPort:     getEnv("DB_PORT", "3306"),
 		DBName:     getEnv("DB_NAME", "departamentos_db"),
 		DBUser:     getEnv("DB_USER", "departamentos"),
-		DBPassword: getEnv("DB_PASSWORD", "departamentos"),
+		DBPassword: getSecret("DB_PASSWORD", ""),
 	}
+}
+
+// getSecret acepta la variable tradicional o KEY_FILE para Docker Secrets.
+// El contenido nunca se registra y se eliminan únicamente saltos de línea externos.
+func getSecret(key, fallback string) string {
+	if value := getEnv(key, ""); value != "" {
+		return value
+	}
+	if path := getEnv(key+"_FILE", ""); path != "" {
+		value, err := os.ReadFile(path)
+		if err != nil {
+			panic(fmt.Sprintf("no se pudo leer %s_FILE: %v", key, err))
+		}
+		if secret := strings.TrimSpace(string(value)); secret != "" {
+			return secret
+		}
+	}
+	return fallback
 }
 
 // DSN arma el Data Source Name para el driver go-sql-driver/mysql.

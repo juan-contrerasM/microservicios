@@ -6,7 +6,11 @@ set -eu
 apk add --no-cache curl >/dev/null
 
 SONAR_URL="${SONAR_URL:-http://sonarqube:9000}"
-PASS="${SONAR_ADMIN_PASSWORD:?Defina SONAR_ADMIN_PASSWORD}"
+if [ -n "${SONAR_ADMIN_PASSWORD_FILE:-}" ]; then
+  PASS="$(tr -d '\r\n' < "$SONAR_ADMIN_PASSWORD_FILE")"
+else
+  PASS="${SONAR_ADMIN_PASSWORD:?Defina SONAR_ADMIN_PASSWORD o SONAR_ADMIN_PASSWORD_FILE}"
+fi
 TOKEN_FILE=/bootstrap/token
 WEBHOOK_URL="http://jenkins:8080/sonarqube-webhook/"
 

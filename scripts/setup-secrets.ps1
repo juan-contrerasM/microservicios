@@ -6,6 +6,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $template = Join-Path $root '.env.example'
 $envPath = Join-Path $root '.env'
 $secretDir = Join-Path $root 'secrets'
+$e2eEnvPath = Join-Path $root 'e2e-tests/.env'
 
 if ((Test-Path $envPath) -and -not $Force) {
     throw '.env ya existe. Use -Force únicamente si desea rotar todos los secretos.'
@@ -15,7 +16,7 @@ function New-RandomSecret([int]$Bytes = 32) {
     $buffer = [byte[]]::new($Bytes)
     $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     try { $generator.GetBytes($buffer) } finally { $generator.Dispose() }
-    return [Convert]::ToBase64String($buffer).TrimEnd('=').Replace('+', 'A').Replace('/', 'B')
+    return 'Aa1!' + [Convert]::ToBase64String($buffer).TrimEnd('=').Replace('+', 'A').Replace('/', 'B')
 }
 
 $secretNames = @(
@@ -41,5 +42,15 @@ foreach ($name in $secretNames) {
     $fileName = $name.ToLowerInvariant() + '.txt'
     [System.IO.File]::WriteAllText((Join-Path $secretDir $fileName), $values[$name], [System.Text.UTF8Encoding]::new($false))
 }
+
+$e2eContent = @"
+BASE_URL=http://localhost:8080
+ADMIN_USUARIO=admin
+ADMIN_PASSWORD=$($values['AUTH_ADMIN_PASSWORD'])
+USER_PASSWORD=$($values['E2E_USER_PASSWORD'])
+POLL_INTENTOS=15
+POLL_INTERVALO_MS=2000
+"@
+[System.IO.File]::WriteAllText($e2eEnvPath, $e2eContent, [System.Text.UTF8Encoding]::new($false))
 
 Write-Host "Configuración local creada en .env y secrets/ ($($secretNames.Count) secretos)."

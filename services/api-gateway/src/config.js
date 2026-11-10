@@ -1,5 +1,14 @@
+import { readFileSync } from 'node:fs';
+
+function secret(env, name) {
+	if (env[name]?.trim()) return env[name].trim();
+	const path = env[`${name}_FILE`];
+	if (path?.trim()) return readFileSync(path.trim(), 'utf8').trim();
+	return undefined;
+}
+
 function required(env, name) {
-	const value = env[name];
+	const value = secret(env, name);
 	if (!value || value.trim() === '') {
 		throw new Error(`La variable de entorno ${name} es obligatoria`);
 	}

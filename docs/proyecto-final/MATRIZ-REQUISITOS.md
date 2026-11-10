@@ -90,9 +90,9 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 
 | Requisito | Estado inicial | Evidencia actual / brecha |
 |---|---|---|
-| Cero secretos versionados | ❌ | `.env.example` y defaults contienen valores utilizables de desarrollo |
+| Cero secretos versionados | ✅ | Plantilla con marcadores; Gitleaks sin hallazgos en árbol e historial |
 | `.env` y `secrets/` ignorados | ✅ | `.env`, `secrets/`, llaves y certificados privados excluidos; plantilla sin valores utilizables |
-| Compose Secrets/Vault | ❌ | No implementado |
+| Compose Secrets/Vault | ✅ | Quince secretos montados por archivo; bases, broker, servicios, Jenkins, Sonar y Grafana validados |
 | Script de generación local | ✅ | Scripts PowerShell y POSIX generan 15 secretos criptográficos; prueba aislada correcta |
 | Rotación documentada | ✅ | `SEGURIDAD-SECRETOS.md` cubre creación, rotación y revocación específica |
 | RBAC y propiedad | 🟡 | Implementados parcialmente; falta auditoría completa |

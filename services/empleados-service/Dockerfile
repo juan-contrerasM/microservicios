@@ -20,7 +20,9 @@ RUN curl -fsSL "https://github.com/open-telemetry/opentelemetry-java-instrumenta
     -o /app/opentelemetry-javaagent.jar
 
 COPY --from=build /app/target/*.jar app.jar
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && chmod 755 /app/docker-entrypoint.sh
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-javaagent:/app/opentelemetry-javaagent.jar", "-jar", "app.jar"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

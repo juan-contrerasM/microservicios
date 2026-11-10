@@ -16,12 +16,20 @@ secret_names='EMPLEADOS_DB_PASSWORD DEPARTAMENTOS_DB_PASSWORD DEPARTAMENTOS_DB_R
 mkdir -p "$SECRET_DIR"
 cp "$ENV_TEMPLATE" "$ENV_FILE"
 for name in $secret_names; do
-  value=$(openssl rand -hex 32)
+  value="Aa1!$(openssl rand -hex 32)"
   escaped=$(printf '%s' "$value" | sed 's/[&|]/\\&/g')
   sed "s|^${name}=__GENERATE__$|${name}=${escaped}|" "$ENV_FILE" > "$ENV_FILE.tmp"
   mv "$ENV_FILE.tmp" "$ENV_FILE"
   printf '%s' "$value" > "$SECRET_DIR/$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]').txt"
 done
 
-chmod 600 "$ENV_FILE" "$SECRET_DIR"/*.txt 2>/dev/null || true
+auth_admin=$(cat "$SECRET_DIR/auth_admin_password.txt")
+e2e_user=$(cat "$SECRET_DIR/e2e_user_password.txt")
+{
+  printf '%s\n' 'BASE_URL=http://localhost:8080' 'ADMIN_USUARIO=admin'
+  printf 'ADMIN_PASSWORD=%s\nUSER_PASSWORD=%s\n' "$auth_admin" "$e2e_user"
+  printf '%s\n' 'POLL_INTENTOS=15' 'POLL_INTERVALO_MS=2000'
+} > "$ROOT_DIR/e2e-tests/.env"
+
+chmod 600 "$ENV_FILE" "$ROOT_DIR/e2e-tests/.env" "$SECRET_DIR"/*.txt 2>/dev/null || true
 echo 'Configuración local creada en .env y secrets/.'
