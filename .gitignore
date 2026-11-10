@@ -3,6 +3,12 @@
 .env
 .env.*
 !.env.example
+secrets/
+!secrets.example/
+*.pem
+*.key
+*.p12
+*.jks
 data/
 jenkins/.hook-suspended
 
