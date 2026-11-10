@@ -82,3 +82,36 @@ func (r *Repository) List(ctx context.Context) ([]Department, error) {
 	}
 	return departamentos, rows.Err()
 }
+
+func (r *Repository) Update(ctx context.Context, d Department) (Department, error) {
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE departamentos SET nombre = ?, descripcion = ? WHERE id = ?`,
+		d.Nombre, d.Descripcion, d.ID,
+	)
+	if err != nil {
+		return Department{}, fmt.Errorf("actualizando departamento %s: %w", d.ID, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return Department{}, fmt.Errorf("verificando actualización de departamento %s: %w", d.ID, err)
+	}
+	if rows == 0 {
+		return Department{}, ErrNotFound
+	}
+	return d, nil
+}
+
+func (r *Repository) Delete(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM departamentos WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("eliminando departamento %s: %w", id, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("verificando eliminación de departamento %s: %w", id, err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

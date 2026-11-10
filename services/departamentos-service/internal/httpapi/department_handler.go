@@ -72,3 +72,38 @@ func (h *DepartmentHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, all)
 }
+
+func (h *DepartmentHandler) Update(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var input department.Department
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "cuerpo de la petición inválido")
+		return
+	}
+	updated, err := h.svc.Update(r.Context(), id, input)
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, updated)
+	case errors.Is(err, department.ErrValidation):
+		writeError(w, http.StatusBadRequest, "el departamento requiere 'nombre'")
+	case errors.Is(err, department.ErrNotFound):
+		writeError(w, http.StatusNotFound, "el departamento con id "+id+" no existe")
+	default:
+		writeError(w, http.StatusInternalServerError, "error interno actualizando el departamento")
+	}
+}
+
+func (h *DepartmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	err := h.svc.Delete(r.Context(), id)
+	switch {
+	case err == nil:
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, department.ErrValidation):
+		writeError(w, http.StatusBadRequest, "el id del departamento es obligatorio")
+	case errors.Is(err, department.ErrNotFound):
+		writeError(w, http.StatusNotFound, "el departamento con id "+id+" no existe")
+	default:
+		writeError(w, http.StatusInternalServerError, "error interno eliminando el departamento")
+	}
+}

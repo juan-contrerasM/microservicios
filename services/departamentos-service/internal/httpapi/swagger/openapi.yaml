@@ -115,6 +115,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+    put:
+      tags: [Departamentos]
+      summary: Actualizar departamento
+      operationId: actualizarDepartamento
+      parameters:
+        - $ref: "#/components/parameters/DepartamentoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepartamentoActualizacion"
+      responses:
+        "200":
+          description: Departamento actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Departamento"
+        "400": { description: Datos inválidos }
+        "404": { description: Departamento inexistente }
+    delete:
+      tags: [Departamentos]
+      summary: Eliminar departamento
+      operationId: eliminarDepartamento
+      parameters:
+        - $ref: "#/components/parameters/DepartamentoId"
+      responses:
+        "204": { description: Departamento eliminado }
+        "404": { description: Departamento inexistente }
   /health:
     get:
       security: []
@@ -136,6 +166,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthDown"
 components:
+  parameters:
+    DepartamentoId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
   securitySchemes:
     BearerAuth:
       type: http
@@ -159,6 +195,12 @@ components:
           type: string
           description: Descripción libre, opcional
           example: Departamento de TI
+    DepartamentoActualizacion:
+      type: object
+      required: [nombre]
+      properties:
+        nombre: { type: string, example: Tecnología e Innovación }
+        descripcion: { type: string, example: Área tecnológica actualizada }
     Error:
       type: object
       required: [mensaje]

@@ -46,6 +46,8 @@ func NewRouter(db *sql.DB) http.Handler {
 		r.Post("/", deptHandler.Create)     // POST   /departamentos      -> registrar
 		r.Get("/", deptHandler.List)        // GET    /departamentos      -> listar
 		r.Get("/{id}", deptHandler.GetByID) // GET    /departamentos/{id} -> consultar por id
+		r.Put("/{id}", deptHandler.Update)
+		r.Delete("/{id}", deptHandler.Delete)
 	})
 
 	return observability.Handler(r)

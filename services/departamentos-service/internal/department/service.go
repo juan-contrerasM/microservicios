@@ -19,6 +19,8 @@ type repository interface {
 	Create(ctx context.Context, d Department) (Department, error)
 	GetByID(ctx context.Context, id string) (Department, error)
 	List(ctx context.Context) ([]Department, error)
+	Update(ctx context.Context, d Department) (Department, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // Service contiene las reglas de negocio de departamentos: validación de
@@ -56,4 +58,21 @@ func (s *Service) Get(ctx context.Context, id string) (Department, error) {
 // List devuelve todos los departamentos registrados.
 func (s *Service) List(ctx context.Context) ([]Department, error) {
 	return s.repo.List(ctx)
+}
+
+func (s *Service) Update(ctx context.Context, id string, d Department) (Department, error) {
+	d.ID = strings.TrimSpace(id)
+	d.Nombre = strings.TrimSpace(d.Nombre)
+	if d.ID == "" || d.Nombre == "" {
+		return Department{}, ErrValidation
+	}
+	return s.repo.Update(ctx, d)
+}
+
+func (s *Service) Delete(ctx context.Context, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ErrValidation
+	}
+	return s.repo.Delete(ctx, id)
 }
