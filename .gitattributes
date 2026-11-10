@@ -1,0 +1,7 @@
+* text=auto
+
+# Los scripts se ejecutan dentro de contenedores Linux, incluso desde hosts Windows.
+*.sh text eol=lf
+Dockerfile text eol=lf
+**/Dockerfile text eol=lf
+

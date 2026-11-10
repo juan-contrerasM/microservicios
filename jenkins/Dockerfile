@@ -43,6 +43,9 @@ RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-27
 RUN command -v runuser && command -v tini && command -v docker
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Defensa adicional para builds hechos desde un checkout de Windows. .gitattributes
+# conserva LF, pero normalizar aquí evita que un checkout externo rompa el shebang.
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

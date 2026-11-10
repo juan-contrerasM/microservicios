@@ -62,3 +62,11 @@ Hallazgos adicionales:
 - El comportamiento DOWN de Empleados queda registrado como brecha de la Fase 5; no se considera
   un health dependiente completamente verificado.
 - Jenkins requiere normalización LF reproducible para poder iniciar desde un checkout de Windows.
+
+### Corrección habilitante de Jenkins
+
+- Se añadió `.gitattributes` para conservar LF en scripts de shell y Dockerfiles.
+- El Dockerfile normaliza defensivamente `docker-entrypoint.sh` antes de marcarlo ejecutable.
+- `docker compose --env-file .env.example build jenkins` finalizó correctamente.
+- El contenedor quedó en estado `Up`, Jenkins informó `fully up and running` y
+  `http://localhost:9090/login` respondió HTTP 200.

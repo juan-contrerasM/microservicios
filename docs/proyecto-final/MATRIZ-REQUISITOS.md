@@ -64,7 +64,7 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 
 | Requisito | Estado inicial | Evidencia actual / brecha |
 |---|---|---|
-| Jenkins en Compose | 🟡 | Aprovisionado con JCasC; el baseline detectó un entrypoint CRLF que impide el arranque desde Windows |
+| Jenkins en Compose | ✅ | Aprovisionado con JCasC; entrypoint normalizado y acceso HTTP 200 verificado desde Windows |
 | SonarQube/Quality Gate | 🟡 | Base funcional del Reto 7; solo dos pipelines de aplicación |
 | Jenkinsfile en siete servicios | ❌ | Solo Empleados y Vacaciones |
 | Lint y análisis de seguridad | ❌ | No existe cobertura uniforme de ambos controles |
@@ -72,7 +72,7 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 | Push a Registry | ❌ | No hay Registry ni publicación versionada |
 | Deploy automatizado | ❌ | No hay etapa final con smoke/rollback |
 | Trigger por webhook | 🟡 | Hay polling/hook local; falta webhook final verificable |
-| `docker compose up --build` completo | 🟡 | Siete servicios construyen y BDD pasa; Jenkins falló inicialmente por CRLF |
+| `docker compose up --build` completo | ✅ | Siete servicios construyen, BDD pasa y Jenkins arranca tras normalizar el entrypoint |
 
 ## Observabilidad
 
