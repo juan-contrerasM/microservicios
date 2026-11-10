@@ -1,0 +1,13 @@
+[extend]
+useDefault = true
+
+# Exclusiones limitadas a dependencias locales ignoradas y fixtures deliberadamente inválidos.
+# La sintaxis singular mantiene compatibilidad con Gitleaks 8.24.
+[allowlist]
+description = "Dependencias locales y fixtures de seguridad no utilizables"
+paths = [
+  '''\.venv''',
+  '''Reto5\.postman_collection\.json''',
+  '''notificaciones-service/tests/test_procesar\.py''',
+  '''init-sonar\.sh'''
+]

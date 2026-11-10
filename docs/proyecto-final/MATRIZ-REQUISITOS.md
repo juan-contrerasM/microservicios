@@ -91,13 +91,13 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 | Requisito | Estado inicial | Evidencia actual / brecha |
 |---|---|---|
 | Cero secretos versionados | ❌ | `.env.example` y defaults contienen valores utilizables de desarrollo |
-| `.env` y `secrets/` ignorados | 🟡 | `.env` está ignorado; falta política completa para `secrets/` |
+| `.env` y `secrets/` ignorados | ✅ | `.env`, `secrets/`, llaves y certificados privados excluidos; plantilla sin valores utilizables |
 | Compose Secrets/Vault | ❌ | No implementado |
-| Script de generación local | ❌ | No existe `scripts/setup-secrets.*` |
-| Rotación documentada | ❌ | No existe guía final |
+| Script de generación local | ✅ | Scripts PowerShell y POSIX generan 15 secretos criptográficos; prueba aislada correcta |
+| Rotación documentada | ✅ | `SEGURIDAD-SECRETOS.md` cubre creación, rotación y revocación específica |
 | RBAC y propiedad | 🟡 | Implementados parcialmente; falta auditoría completa |
 | IdP OIDC/JWKS | ⭐ | Bonificación no implementada |
-| Escaneo de secretos/SAST/dependencias/imágenes | ❌ | No integrado uniformemente en CI |
+| Escaneo de secretos/SAST/dependencias/imágenes | 🟡 | Gitleaks reproducible pasa árbol e historial; falta integrarlo a CI y añadir SAST/dependencias/imágenes |
 
 ## Escalabilidad y resiliencia
 

@@ -70,3 +70,13 @@ Hallazgos adicionales:
 - `docker compose --env-file .env.example build jenkins` finalizó correctamente.
 - El contenedor quedó en estado `Up`, Jenkins informó `fully up and running` y
   `http://localhost:9090/login` respondió HTTP 200.
+
+## Fase 2 — Gestión segura de secretos
+
+- `.env.example` contiene marcadores, no credenciales académicas utilizables.
+- Los generadores de Windows y Linux crean 15 valores criptográficos en destinos ignorados.
+- La prueba aislada de `setup-secrets.ps1` generó 15 archivos y dejó cero marcadores pendientes.
+- Gitleaks 8.24.3 analizó aproximadamente 3,47 MB del árbol actual: cero hallazgos.
+- Gitleaks recorrió los 94 commits del historial, aproximadamente 7,65 MB: cero hallazgos.
+- Las exclusiones del escáner se limitan a `.venv`, fixtures JWT inválidos y el bootstrap que reemplaza
+  la credencial inicial pública de SonarQube.
