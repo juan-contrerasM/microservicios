@@ -3,3 +3,5 @@
 pytest==8.3.4
 pytest-cov==6.0.0
 httpx==0.28.1
+# Exportar openapi.yaml y prueba de drift del contrato (Fase 5).
+PyYAML==6.0.3
