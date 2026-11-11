@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch]$Force)
+param([switch]$Force, [switch]$Permisos)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -8,8 +8,28 @@ $envPath = Join-Path $root '.env'
 $secretDir = Join-Path $root 'secrets'
 $e2eEnvPath = Join-Path $root 'e2e-tests/.env'
 
+# Compose (sin Swarm) monta cada secreto como bind mount con los permisos del host
+# y los servicios corren como UID 10001. En Windows (Docker Desktop) los archivos
+# se ven legibles dentro del contenedor y la protección es la ACL del perfil del
+# usuario. En pwsh sobre Linux/macOS se aplica lo mismo que setup-secrets.sh:
+# secrets/ 0700 y secrets/*.txt 0644; .env y e2e-tests/.env 0600.
+$onUnix = ($PSVersionTable.PSEdition -eq 'Core') -and -not $IsWindows
+function Set-SecretPermissions {
+    if (-not $onUnix) { return }
+    & chmod 700 $secretDir
+    Get-ChildItem -LiteralPath $secretDir -Filter '*.txt' | ForEach-Object { & chmod 644 $_.FullName }
+    foreach ($path in @($envPath, $e2eEnvPath)) { if (Test-Path $path) { & chmod 600 $path } }
+}
+
+if ($Permisos) {
+    if (-not (Test-Path $secretDir)) { throw 'No existe secrets/. Ejecute el script sin argumentos.' }
+    Set-SecretPermissions
+    Write-Host 'Permisos de secrets/ actualizados.'
+    return
+}
+
 if ((Test-Path $envPath) -and -not $Force) {
-    throw '.env ya existe. Use -Force únicamente si desea rotar todos los secretos.'
+    throw '.env ya existe. Use -Force únicamente si desea rotar todos los secretos, o -Permisos para solo corregir permisos.'
 }
 
 function New-RandomSecret([int]$Bytes = 32) {
@@ -53,4 +73,5 @@ POLL_INTERVALO_MS=2000
 "@
 [System.IO.File]::WriteAllText($e2eEnvPath, $e2eContent, [System.Text.UTF8Encoding]::new($false))
 
+Set-SecretPermissions
 Write-Host "Configuración local creada en .env y secrets/ ($($secretNames.Count) secretos)."

@@ -55,3 +55,38 @@ La reescritura del historial solo se realiza coordinadamente con todo el equipo 
 - Bases y RabbitMQ: cambiar el usuario/clave en el servidor y luego recrear los consumidores.
 - Jenkins, Grafana y SonarQube: cambiar la credencial administrativa desde el servicio y actualizar
   el secreto local; no mantener contraseñas de referencia académica.
+
+## Permisos de `secrets/` con contenedores no root (Fase 7)
+
+Los siete servicios corren como UID/GID fijo `10001` (E02). Compose sin Swarm no copia los
+secretos: los monta como bind mount de solo lectura en `/run/secrets/<nombre>` conservando dueño
+y modo del host. Con el modo anterior (0600, dueño = usuario del host) el UID 10001 no podía
+leerlos y los servicios no arrancaban.
+
+**Decisión:** archivos `secrets/*.txt` en 0644 dentro de un directorio `secrets/` en 0700.
+
+- En el host, el directorio 0700 impide a cualquier otro usuario atravesarlo, así que el bit de
+  lectura "otros" de los archivos no expone nada fuera del dueño (y de root, que ya podía leerlos).
+- En el contenedor solo existe el archivo montado; el directorio del host no se ve. Cada servicio
+  recibe únicamente los secretos que declara en `secrets:` de `docker-compose.yml`.
+- `.env` y `e2e-tests/.env` siguen en 0600: nunca se montan en un contenedor de servicio.
+- El script crea todo con `umask 077` y solo al final abre los `.txt` a 0644, de modo que no hay
+  ventana en la que el directorio sea accesible a otros.
+
+**Alternativas descartadas:**
+
+- `chown 10001` de los archivos: exige `sudo` en el host y deja archivos que el propio usuario no
+  puede leer ni rotar sin privilegios.
+- Un entrypoint que arranque como root, copie los secretos y baje a 10001 (`su-exec`/`gosu`):
+  añade un binario con setuid lógico y una fase root a cada imagen; contradice E02.
+- `uid`/`gid`/`mode` en la sintaxis larga de `secrets:` de Compose: solo se aplica con Swarm; con
+  `docker compose` y `file:` se ignora.
+
+**Migración:** quien ya tenga `secrets/` de una versión anterior ejecuta
+`./scripts/setup-secrets.sh --permisos` (no rota valores). En Windows con Docker Desktop los
+archivos ya se ven legibles en el contenedor; la protección es la ACL del perfil de usuario y
+`setup-secrets.ps1` no cambia permisos. En pwsh sobre Linux/macOS, `setup-secrets.ps1` aplica los
+mismos modos que la variante `.sh` y acepta `-Permisos`.
+
+**Verificación:** `docker compose exec auth-service sh -c 'id && test -r /run/secrets/jwt_secret && echo legible'`
+debe mostrar `uid=10001` y `legible`, sin imprimir el valor.
