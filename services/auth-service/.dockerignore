@@ -1,0 +1,25 @@
+# Contexto mínimo: el build solo necesita requirements.txt, alembic.ini, alembic/ y src/.
+.git
+.gitignore
+.dockerignore
+Dockerfile
+Jenkinsfile
+sonar-project.properties
+tests
+requirements-dev.txt
+pyproject.toml
+reports
+coverage.xml
+.coverage
+htmlcov
+.pytest_cache
+.mypy_cache
+.ruff_cache
+**/__pycache__
+**/*.pyc
+.venv
+venv
+*.md
+.env
+.env.*
+secrets

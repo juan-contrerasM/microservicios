@@ -150,3 +150,26 @@ FAILED tests/test_ciclo.py::test_retiro_durante_vacaciones_no_reactiva_y_el_id_r
 FAILED tests/test_reglas.py::test_fin_de_vacaciones_sobre_una_cuenta_activa_no_publica
 E  Left contains one more item: EventoSaliente(tipo='cuenta.activada', ... 'motivo': 'FIN_VACACIONES')
 ```
+
+## Imagen Docker
+
+| Etapa | Base | Contenido |
+|---|---|---|
+| `build` | `python:3.12.12-slim-bookworm` | venv en `/opt/venv` con `pip install -r requirements.txt` |
+| `runtime` | `python:3.12.12-slim-bookworm` | `/opt/venv`, `curl`, `alembic.ini`, `alembic/` y `src/` |
+
+- **Usuario:** `app` de sistema con UID/GID fijos `10001:10001`, sin home ni shell de login
+  (`USER 10001:10001`). El código queda con dueño `root`, de solo lectura; por eso
+  `PYTHONDONTWRITEBYTECODE=1` evita intentos de escribir `__pycache__`. El servicio no escribe en
+  disco: las migraciones (`alembic upgrade head`) guardan su estado en la base.
+- **Por qué multi-stage:** pip, su caché y los artefactos de instalación quedan en `build`; a
+  `runtime` solo llega el venv. `requirements-dev.txt` (pytest, cobertura) nunca se instala en la
+  imagen. Si una dependencia futura necesita compilar, `gcc` y cabeceras irán en `build` sin
+  engordar la imagen final.
+- **Por qué no root:** el proceso que valida contraseñas y firma JWT no puede modificar su código
+  ni sus dependencias. El UID fijo debe poder leer `/run/secrets/*` (`JWT_SECRET_FILE`,
+  `DB_PASSWORD_FILE`, etc.; ver `docs/proyecto-final/SEGURIDAD-SECRETOS.md`).
+- **Base fijada:** parche exacto de Python y versión de Debian (`bookworm`) en ambas etapas; el
+  venv solo es portable entre etapas con el mismo intérprete en la misma ruta.
+- `curl` se mantiene porque el healthcheck de Compose ejecuta `curl -f http://localhost:8086/health`.
+- `.dockerignore` deja fuera `tests`, `reports`, cachés de pytest, `.venv`, `.env` y `secrets`.
