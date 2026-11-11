@@ -2,14 +2,17 @@ import express from 'express';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ErrorApi } from './errores.js';
+import { manejarError, rutaNoEncontrada } from './errores.js';
 import { metricsHandler, metricsMiddleware } from './metricas.js';
+import { conTimeout } from './salud.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const openapi = readFileSync(join(dir, 'openapi.json'), 'utf8');
 const swaggerHtml = readFileSync(join(dir, 'swagger.html'), 'utf8');
+export const VERSION = JSON.parse(readFileSync(join(dir, '..', 'package.json'), 'utf8')).version;
+const TODO_DOWN = { database: 'DOWN', messageBroker: 'DOWN' };
 
-export function createApp({ servicio, estaSano }) {
+export function createApp({ servicio, estaSano, healthTimeoutMs = 2_000 }) {
 	const app = express();
 	app.disable('x-powered-by');
 	app.use(express.json());
@@ -17,14 +20,18 @@ export function createApp({ servicio, estaSano }) {
 	app.get('/metrics', metricsHandler);
 
 	app.get('/health', async (_req, res) => {
-		const resultado = await estaSano();
-		const checks = typeof resultado === 'boolean'
-			? { database: resultado ? 'UP' : 'DOWN', messageBroker: resultado ? 'UP' : 'DOWN' }
-			: resultado;
+		// Guarda externa: aunque estaSano no acote sus checks, el endpoint no pasa de ~2.5 s (C2: < 3 s).
+		const resultado = await conTimeout(estaSano, healthTimeoutMs + 500, null);
+		const checks = resultado === null
+			? TODO_DOWN
+			: typeof resultado === 'boolean'
+				? { database: resultado ? 'UP' : 'DOWN', messageBroker: resultado ? 'UP' : 'DOWN' }
+				: resultado;
 		const sano = Object.values(checks).every((value) => value === 'UP');
 		res.status(sano ? 200 : 503).json({
 			status: sano ? 'UP' : 'DOWN',
 			service: 'vacaciones-service',
+			version: VERSION,
 			checks,
 		});
 	});
@@ -101,14 +108,9 @@ export function createApp({ servicio, estaSano }) {
 		}
 	});
 
-	app.use((error, _req, res, _next) => {
-		if (error instanceof ErrorApi) {
-			res.status(error.status).json(error.body);
-			return;
-		}
-		console.error(error);
-		res.status(500).json({ mensaje: 'Error interno' });
-	});
+	// Contrato C3: rutas desconocidas y toda excepción salen con el mismo cuerpo de error.
+	app.use(rutaNoEncontrada);
+	app.use(manejarError);
 
 	return app;
 }

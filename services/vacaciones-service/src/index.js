@@ -6,6 +6,7 @@ import { loadConfig } from './config.js';
 import { crearConsumidor } from './consumidor.js';
 import { baseResponde, crearPool } from './db.js';
 import { crearPublicador } from './publicar.js';
+import { evaluarChecks } from './salud.js';
 import { iniciarScheduler } from './scheduler.js';
 import { crearServicio } from './servicio.js';
 
@@ -34,10 +35,12 @@ crearConsumidor({
 
 const app = createApp({
 	servicio,
-	estaSano: async () => ({
-		database: await baseResponde(pool) ? 'UP' : 'DOWN',
-		messageBroker: consumidorConectado ? 'UP' : 'DOWN',
-	}),
+	healthTimeoutMs: config.healthTimeoutMs,
+	// Cada check con su propio tiempo máximo: una base colgada no arrastra al broker (C2).
+	estaSano: () => evaluarChecks({
+		database: () => baseResponde(pool),
+		messageBroker: () => consumidorConectado,
+	}, config.healthTimeoutMs),
 });
 
 app.listen(config.port, () => {
