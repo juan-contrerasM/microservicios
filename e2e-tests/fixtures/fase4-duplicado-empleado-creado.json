@@ -1,0 +1,19 @@
+{
+  "id": "6f1c2a7e-0b4d-4c55-9a3e-fa5e4d0c0001",
+  "type": "empleado.creado",
+  "version": 1,
+  "occurredAt": "2026-11-11T12:00:00Z",
+  "producer": "empleados-service",
+  "data": {
+    "empleadoId": "EFASE4DUP",
+    "nombre": "Fase",
+    "apellido": "Cuatro",
+    "email": "fase4.duplicado@empresa.com",
+    "numeroEmpleado": "EMP-FASE4-DUP",
+    "cargo": "QA",
+    "area": "Calidad",
+    "departamentoId": "IT",
+    "fechaIngreso": "2026-11-11",
+    "estado": "ACTIVO"
+  }
+}

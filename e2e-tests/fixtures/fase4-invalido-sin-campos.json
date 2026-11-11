@@ -1,0 +1,8 @@
+{
+  "id": "6f1c2a7e-0b4d-4c55-9a3e-fa5e4d0c0003",
+  "type": "empleado.creado",
+  "data": {
+    "empleadoId": "EFASE4INV",
+    "email": "fase4.invalido@empresa.com"
+  }
+}

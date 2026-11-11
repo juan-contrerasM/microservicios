@@ -1,0 +1,13 @@
+{
+  "id": "6f1c2a7e-0b4d-4c55-9a3e-fa5e4d0c0002",
+  "type": "usuario.creado",
+  "version": 1,
+  "occurredAt": "2026-11-11T12:00:05Z",
+  "producer": "auth-service",
+  "data": {
+    "empleadoId": "EFASE4DUP",
+    "email": "fase4.duplicado@empresa.com",
+    "tokenActivacion": "token-de-prueba-fase4-no-valido",
+    "expiraEn": "2026-11-12T12:00:05Z"
+  }
+}
