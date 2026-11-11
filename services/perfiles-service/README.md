@@ -50,3 +50,27 @@ El esquema lo crea Liquibase al arrancar (`001-create-perfiles`), con rollback q
 ```bash
 ./mvnw -q -Dtest=PerfilEventoServiceTest test
 ```
+
+## Imagen Docker
+
+| Etapa | Base | Contenido |
+|---|---|---|
+| `build` | `eclipse-temurin:21.0.9_10-jdk-alpine` | Maven Wrapper, `dependency:go-offline` y `package -DskipTests` |
+| `runtime` | `eclipse-temurin:21.0.9_10-jre-alpine` | JRE, `curl`, `app.jar`, agente OpenTelemetry `2.33.1` y `docker-entrypoint.sh` |
+
+- **Usuario:** `app` de sistema con UID/GID fijos `10001:10001`, sin home ni shell de login
+  (`USER 10001:10001`). `app.jar`, el agente y el entrypoint quedan con dueño `root`, de solo
+  lectura (el entrypoint, 0755). Tomcat y la JVM solo escriben en `/tmp` (1777 en la imagen
+  base). La foto es una URL (`foto_url`) guardada en PostgreSQL; no hay subida de archivos a disco.
+- **Secretos:** `docker-entrypoint.sh` lee `DB_PASSWORD_FILE` y `RABBITMQ_PASSWORD_FILE` y falla
+  con mensaje claro si no puede leerlos. Como el proceso ya no es root, `scripts/setup-secrets.*`
+  deja los archivos 0644 dentro de `secrets/` 0700 (ver
+  `docs/proyecto-final/SEGURIDAD-SECRETOS.md`).
+- **Por qué multi-stage y JRE:** el JDK, Maven, `~/.m2` y el código fuente se quedan en `build`;
+  el JRE basta para ejecutar el fat jar y pesa bastante menos que el JDK.
+- **Por qué no root:** el consumidor de eventos no puede reescribir su jar, el agente ni instalar
+  paquetes.
+- **Base fijada:** versión exacta de Temurin (`21.0.9_10`) en ambas etapas y del agente
+  OpenTelemetry (`ARG OTEL_JAVA_AGENT_VERSION=2.33.1`).
+- `curl` se mantiene porque el healthcheck de Compose ejecuta `curl -f http://localhost:8083/health`.
+- `.dockerignore` deja fuera `target`, `src/test`, IDE, `.env` y `secrets`.
