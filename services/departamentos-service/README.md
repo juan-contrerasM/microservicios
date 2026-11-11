@@ -153,3 +153,27 @@ docker build -t departamentos-service .
 
 Ver `docker-compose.yml` en la raíz del monorepo para levantarlo junto con su base de datos y
 con `empleados-service`.
+
+### Imagen Docker
+
+| Etapa | Base | Contenido |
+|---|---|---|
+| `build` | `golang:1.25.11-alpine` | `go mod download` y `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" ./cmd/api` |
+| `runtime` | `alpine:3.22.2` | Binario estático, `db/migrations/` y `curl` |
+
+- **Usuario:** `app` de sistema con UID/GID fijos `10001:10001`, sin home ni shell de login
+  (`USER 10001:10001`). Binario y migraciones con dueño `root`, de solo lectura; el servicio no
+  escribe en disco (golang-migrate guarda su versión en la tabla `schema_migrations` de MySQL).
+- **Por qué alpine y no distroless:** el healthcheck de Compose ejecuta
+  `curl -f http://localhost:8081/health` y distroless no trae `curl` ni shell. Alpine + `curl`
+  mantiene ese contrato sin añadir un subcomando de healthcheck al binario ni cambiar Compose.
+- **Por qué multi-stage:** el toolchain de Go (cientos de MB), la caché de módulos y el código
+  fuente se quedan en `build`; a `runtime` solo llega un binario estático.
+- **Por qué no root:** el proceso no puede reescribir su binario ni sus migraciones. El UID fijo
+  debe poder leer `/run/secrets/departamentos_db_password` (ver
+  `docs/proyecto-final/SEGURIDAD-SECRETOS.md`).
+- **Base fijada:** Go `1.25.11`, igual que la directiva `go` de `go.mod`; runtime en Alpine
+  `3.22.2`. La etapa `build` usa el sufijo `-alpine` sin versión de Alpine porque no afecta a la
+  imagen final (el binario es estático).
+- `.dockerignore` deja fuera `*_test.go`, `coverage.out`, `.env` y `secrets`; no excluye
+  `internal/httpapi/swagger/`, que se embebe con `go:embed`.

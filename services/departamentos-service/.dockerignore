@@ -1,0 +1,18 @@
+# Contexto mínimo: el build solo necesita go.mod, go.sum, cmd/, internal/
+# (incluidos los archivos go:embed de internal/httpapi/swagger/) y db/migrations/.
+.git
+.gitignore
+.dockerignore
+Dockerfile
+Jenkinsfile
+sonar-project.properties
+**/*_test.go
+coverage.out
+coverage.html
+reports
+bin
+vendor
+*.md
+.env
+.env.*
+secrets
