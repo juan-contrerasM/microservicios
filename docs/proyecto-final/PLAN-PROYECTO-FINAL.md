@@ -202,7 +202,7 @@ anterior solo donde se indica.
 
 Ver evidencias en [`EVIDENCIAS.md`](EVIDENCIAS.md).
 
-### Fase 4 — Eventos, idempotencia y DLQ en todos los productores y consumidores (Ola 1, en curso)
+### Fase 4 — Eventos, idempotencia y DLQ en todos los productores y consumidores (Ola 1, cerrada)
 
 **Frentes:** A y B; integra B. **Estándar:** E11, E12.
 
@@ -437,7 +437,7 @@ alerta real recibida en Discord.
 ## Olas, dependencias y paralelización
 
 ```text
-Ola 1 (ya):   F4 (A+B, en curso)   F5 (A+B)   F7 (C)
+Ola 1:        F4 (A+B, cerrada)    F5 (A+B, cerrada)   F7 (C, cerrada)
 Ola 2:        F6 (A+B)   F8 (A+B)   F11 (D + A/B)   F14 (C)   F9 plantilla (C)
 Ola 3:        F9 completa (C)   F10 (C)   F12 (C + A/B)   F13 (D)
 Ola 4:        F15 (D + A/B)   F16 (todos)

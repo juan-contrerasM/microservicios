@@ -27,10 +27,10 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 | 2 | — | Cero secretos y configuración segura | D | ✅ | Docker Secrets y `*_FILE`; Gitleaks sin hallazgos; BDD 18/18 |
 | 3A | — | Funcionalidad faltante Java/Go | A | ✅ | CRUD Departamentos y modelo normativo de Perfiles |
 | 3B | — | Funcionalidad faltante Node/Python | B | ✅ | Vacaciones modificables, plantillas externas, ciclo de cuenta |
-| 4 | 1 | Eventos, idempotencia, retry y DLQ (E11, E12) | A + B | ✅ | Código y pruebas listos: reintento solo a la cola de origen (corrige el re-fan-out de `ad01d03`), validación de envelope, dedup atómica, correo tras commit, publicación post-commit, `docs/eventos.md`, fixtures `fase4-*`. Validación integrada con RabbitMQ real pendiente (ver `EVIDENCIAS.md`) |
-| 5 | 1 | Contrato HTTP: OpenAPI, errores, health, migraciones (E05, E07–E09) | A + B | ✅ | Health C2 con timeout (corrige el hallazgo de Empleados), errores C3, siete `openapi.yaml` con prueba de drift, `/swagger` agregado en el Gateway, duplicados → 409. Validación con dependencias reales caídas y BDD pendiente (ver `EVIDENCIAS.md`) |
+| 4 | 1 | Eventos, idempotencia, retry y DLQ (E11, E12) | A + B | ✅ | RabbitMQ real: dedup atómica, poison en cuatro DLQ, recuperación transitoria y agotamiento de tres reintentos sin re-fan-out. |
+| 5 | 1 | Contrato HTTP: OpenAPI, errores, health, migraciones (E05, E07–E09) | A + B | ✅ | Siete health 200; Empleados 503 en 2,13 s con PostgreSQL caído; siete contratos Swagger 200 y BDD 18/18. |
 | 6 | 2 | Resiliencia síncrona: CB, timeout y retry (E10) | A + B | ⬜ | Gateway sin circuit breaker ni reintentos |
-| 7 | 1 | Contenerización multi-stage y no root (E01, E02) | C + A + B | ✅ | Siete Dockerfiles multi-stage, UID 10001, bases fijadas, `.dockerignore`; `setup-secrets` deja `secrets/*.txt` en 0644 dentro de `secrets/` 0700 (`--permisos`). `docker compose build` pendiente (ver `EVIDENCIAS.md`) |
+| 7 | 1 | Contenerización multi-stage y no root (E01, E02) | C + A + B | ✅ | Construcción limpia correcta; siete aplicaciones healthy como UID/GID `10001:10001`. |
 | 8 | 2 | Pruebas, cobertura ≥70 % por servicio y BDD (E13–E17) | A + B + D | ⬜ | Gateway, Perfiles y Departamentos con pocas pruebas |
 | 9 | 2–3 | Jenkinsfile y SonarQube en los siete servicios (E18, E19) | C | ⬜ | Hoy solo Empleados y Vacaciones |
 | 10 | 3 | Registry, artefactos, despliegue y rollback | C | ⬜ | Registry en `:5001` |
@@ -43,10 +43,8 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 
 ## Punto actual
 
-**Ola 1 cerrada** (Fases 4, 5 y 7) por decisión del equipo con todas las suites en verde sin Docker.
-Queda una tarea abierta: ejecutar la validación integrada con Docker de `EVIDENCIAS.md` («Ola 1 —
-validación pendiente con Docker») y registrar el resultado. **Ola 2 en curso:** Fases 6, 8, 11, 14 y
-plantilla de la 9.
+**Ola 1 cerrada y validada con Docker**: Fases 4, 5 y 7, stack completo, RabbitMQ real y BDD 18/18.
+**Ola 2 en curso:** Fases 6, 8, 11 y 14, junto con la plantilla de la Fase 9.
 
 ## Decisiones
 
