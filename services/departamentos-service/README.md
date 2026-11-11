@@ -21,10 +21,17 @@ Con el Compose del monorepo, todas las rutas públicas se consumen mediante el G
 
 | Método | Ruta | Descripción | Respuestas |
 |---|---|---|---|
-| `POST` | `/departamentos` | Registra un departamento | `201` creado · `400` datos inválidos o id duplicado |
+| `POST` | `/departamentos` | Registra un departamento | `201` creado · `400` datos inválidos · `409` id duplicado |
 | `GET` | `/departamentos/{id}` | Consulta un departamento por id | `200` · `404` no existe |
 | `GET` | `/departamentos` | Lista todos los departamentos | `200` |
-| `GET` | `/health` | Health check real (hace `PING` a MySQL) | `200` `UP` · `503` `DOWN` |
+| `PUT` | `/departamentos/{id}` | Reemplaza `nombre` y `descripcion` (el id de la ruta manda) | `200` · `400` falta `nombre` · `404` |
+| `DELETE` | `/departamentos/{id}` | Elimina el departamento | `204` · `404` |
+| `GET` | `/health` | Health check C2 (PING a MySQL con plazo de 2 s) | `200` `UP` · `503` `DOWN` |
+
+Todas las operaciones de `/departamentos` exigen `bearerAuth`: el Gateway responde `401` sin
+token o con token inválido y `403` si un `USER` intenta `POST`, `PUT` o `DELETE` (un `USER` solo
+lee). Todas pueden responder `500` (inesperado) y `503` (MySQL caído). Una ruta inexistente
+responde `404` y un método no soportado `405`, también con el formato C3.
 
 Modelo:
 
@@ -32,18 +39,73 @@ Modelo:
 { "id": "IT", "nombre": "Tecnología", "descripcion": "Departamento de TI" }
 ```
 
-Los errores siguen el mismo formato que `empleados-service`: `{"mensaje": "..."}`.
+## Contrato HTTP (Fase 5)
+
+### Error uniforme (contrato C3)
+
+Todos los errores, incluidos los de rutas inexistentes (`404`), métodos no soportados (`405`) y
+panics (`500`), usan el mismo cuerpo que los otros seis servicios (helper `writeError` en
+`internal/httpapi/respond.go`), en lugar del anterior `{"mensaje": "..."}`:
+
+```json
+{ "timestamp": "2026-11-09T12:00:00Z", "status": 409, "error": "Conflict",
+  "message": "ya existe un departamento registrado con ese id", "path": "/departamentos",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736" }
+```
+
+- Un id duplicado pasa de `400` a `409 Conflict`: el contrato C3 reserva `409` para unicidad y así
+  el cliente distingue "datos mal enviados" de "choca con lo existente".
+- Un error de conexión con MySQL (conexión rechazada, host inexistente, conexión rota o plazo
+  vencido) responde `503` con `la base de datos no está disponible`; cualquier otro error responde
+  `500` con `error interno del servidor`. El detalle (SQL, host, error del driver) va solo al log.
+- `traceId` sale del span que abre `otelhttp` (`observability.Handler`), el mismo que se exporta a
+  Zipkin; si la petición no tiene traza se omite.
+- `middleware.Recoverer` de chi se reemplazó por `recoverer`, que responde el panic como `500` C3.
+
+### Health (contrato C2)
+
+```json
+{ "status": "UP", "service": "departamentos-service", "version": "1.0.0",
+  "checks": { "database": "UP" } }
+```
+
+Solo reporta `database`: el servicio no usa RabbitMQ (no produce ni consume eventos). El `PING`
+corre en su propia goroutine con un plazo de 2 s; si MySQL no contesta a tiempo el handler deja de
+esperar y responde `503` en menos de 3 s, aunque el driver no respetara el contexto (por ejemplo,
+un servidor que acepta TCP y nunca contesta). `version` es `httpapi.Version` (igual a
+`info.version` del OpenAPI, lo verifica una prueba), fijable con
+`-ldflags "-X departamentos-service/internal/httpapi.Version=x.y.z"` y sobrescribible con
+`SERVICE_VERSION`.
 
 ## OpenAPI / Swagger
 
-La especificación es un `openapi.yaml` estático embebido en el binario (sin codegen de `swaggo`). Cada endpoint documenta descripción, códigos `200`/`201`/`400`/`404`/`500` y esquemas de entrada/salida.
+[`openapi.yaml`](openapi.yaml), en la raíz de esta carpeta, es el contrato exportado y la fuente
+que se edita. Documenta las seis operaciones con schemas de entrada y salida, ejemplos, todos los
+códigos que realmente pueden devolver (`200`/`201`/`204`, `400`, `401`, `403`, `404`, `409`,
+`500`, `503`), el esquema de seguridad `bearerAuth` (HTTP bearer, JWT) aplicado a las operaciones
+de negocio y `security: []` en `/health`.
+
+El binario sirve una copia idéntica embebida desde `internal/httpapi/swagger/openapi.yaml`:
+`go:embed` no puede leer archivos fuera del paquete y el Dockerfile solo copia `cmd/` e
+`internal/`. Al cambiar el contrato se edita `openapi.yaml` y se copia a
+`internal/httpapi/swagger/`. Las pruebas de `internal/httpapi/openapi_test.go` (sin MySQL ni
+Docker) fallan si:
+
+- las dos copias difieren (drift);
+- el YAML no parsea, `info.version` no coincide con `httpapi.Version` o falta `bearerAuth` o algún
+  campo de `ApiError`;
+- alguna ruta registrada en chi (recorrida con `chi.Walk`) no está documentada; solo se excluyen
+  las técnicas (`/metrics`, `/openapi.yaml`, `/swagger*`);
+- una operación de negocio no exige `bearerAuth` o no documenta `401`, `500`, `503` (y `403` si no
+  es `GET`), o `/health` no es público.
 
 | Recurso | URL interna del contenedor |
 |---|---|
 | Swagger UI | `http://departamentos-service:8081/swagger/index.html` |
 | Spec YAML | `http://departamentos-service:8081/openapi.yaml` |
 
-`/swagger` y `/swagger/` redirigen a la UI.
+`/swagger` y `/swagger/` redirigen a la UI. El servidor del spec es relativo (`/`): Swagger UI
+prueba contra el mismo origen que la sirve.
 
 Estas URLs no son públicas cuando se usa el Compose raíz: el contrato público se valida por
 `http://localhost:8080/departamentos` y con la colección de
@@ -61,7 +123,7 @@ Scaffold del segundo microservicio, en un lenguaje distinto a Java:
 - Endpoints de negocio: `POST /departamentos` (201 / 400), `GET /departamentos/{id}` (200 / 404), `GET /departamentos` (200).
 - `GET /health` real: hace `PING` a MySQL (`200 UP` / `503 DOWN`).
 - Dockerfile multi-stage (build → imagen Alpine con el binario).
-- Unicidad de `id` garantizada por `PRIMARY KEY`; el error 1062 de MySQL se traduce a `400`.
+- Unicidad de `id` garantizada por `PRIMARY KEY`; el error 1062 de MySQL se traduce a `400` (desde la Fase 5, `409`).
 
 ## Variables de entorno
 
@@ -74,6 +136,7 @@ Scaffold del segundo microservicio, en un lenguaje distinto a Java:
 | `DB_USER` | `departamentos` | Usuario |
 | `DB_PASSWORD` | `departamentos` | Contraseña |
 | `CHAOS_LATENCY_MS` | `0` | Solo Reto 8 (caos controlado): retardo fijo en ms para `/departamentos`. `0` o inválido = desactivado |
+| `SERVICE_VERSION` | `httpapi.Version` (`1.0.0`) | `version` que publica `/health` (contrato C2), por ejemplo el tag de la imagen |
 
 En Docker Compose, `DB_HOST` debe ser el nombre del servicio de la base de datos
 (`database-departamentos`), no `localhost` — ver `docker-compose.yml` raíz.
@@ -117,9 +180,18 @@ migrate -path db/migrations -database "mysql://departamentos:departamentos@tcp(l
 
 `id` es la `PRIMARY KEY` de la tabla (restricción real en el esquema, no solo una consulta
 previa). El repositorio (`internal/department/repository.go`) intercepta el error 1062 de MySQL
-(entrada duplicada) y lo traduce a `ErrAlreadyExists` → `400 Bad Request`. Esto evita la ventana
+(entrada duplicada) y lo traduce a `ErrAlreadyExists` → `409 Conflict` (antes de la Fase 5, `400`). Esto evita la ventana
 de condición de carrera entre "consultar si existe" e "insertar" que tendría una comprobación
 solo en aplicación.
+
+`nombre` no lleva `UNIQUE` (revisión E05 de la Fase 5): ni el enunciado ni el servicio definen que
+dos departamentos no puedan llamarse igual, y una restricción nueva podría romper el arranque
+sobre volúmenes con nombres repetidos. Si el equipo decide que el nombre debe ser único, se agrega
+como una migración nueva `0002_*` (con su `.down.sql`) y el handler debe responder `409`.
+
+`internal/db/migrate_test.go` (sin MySQL) verifica que cada `.up.sql` tenga su `.down.sql` no vacío,
+que los nombres sigan `NNNN_descripcion.(up|down).sql` sin versiones repetidas y que `id` sea
+`PRIMARY KEY`.
 
 ## Correr en local (sin Docker)
 
