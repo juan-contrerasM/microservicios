@@ -85,6 +85,16 @@ El envelope es `id` (UUID), `type`, `version` 1, `occurredAt` (UTC), `producer`
 `empleados-service` y `data`. Al arrancar declara el exchange, de forma idempotente. Las colas
 las crean los consumidores.
 
+**Productor E11 (Proyecto final, Fase 4).** La publicación se registra con
+`TransactionSynchronization.afterCommit()` desde `EmpleadoService` (equivalente a
+`@TransactionalEventListener(phase = AFTER_COMMIT)`): un rollback nunca anuncia una fila que no
+existe. Por qué no dentro de la transacción: si el broker fallara a mitad, revertir el alta por un
+problema de mensajería dejaría a RRHH sin el empleado. El costo conocido es el doble write: si el
+proceso muere entre el commit y el envío, el evento se pierde (lo resolvería un outbox). Cada
+mensaje lleva `messageId` = `id` del envelope y modo persistente; `traceparent` lo inyecta el
+agente OpenTelemetry en los headers AMQP. Los consumidores, colas, reintento y DLQ están en
+[`docs/eventos.md`](../../docs/eventos.md).
+
 ## OpenAPI / Swagger (Etapa 4)
 
 Springdoc OpenAPI documenta los endpoints con el contrato vigente, incluidos `PUT` y `DELETE`

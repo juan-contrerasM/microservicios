@@ -64,6 +64,32 @@ Cadena medida: `POST /empleados` (201) → `empleado.creado` → auth publica `u
 
 La suite **no** baja ese intervalo. Deja `POLL_INTENTOS=15` y `POLL_INTERVALO_MS=2000` (30 s, los valores del enunciado). El máximo observado cabe unas 90 veces en ese presupuesto: alcanza para un broker frío o una máquina más lenta, y el caso feliz no espera 30 s. El primer intento es inmediato; si el evento ya está, no hay espera. Si el primer vistazo se adelanta, el siguiente es a los 2 s.
 
+## Fixtures de la Fase 4 (eventos duplicados e inválidos)
+
+`fixtures/` guarda mensajes para republicar a mano en `onboarding.eventos` y comprobar la
+política de [`docs/eventos.md`](../docs/eventos.md). `npm run republicar` usa la API de
+administración de RabbitMQ (`RABBITMQ_MGMT_URL`, default `http://localhost:15672`) con
+`RABBITMQ_USER` y `RABBITMQ_PASSWORD` (o `RABBITMQ_PASSWORD_FILE` apuntando a
+`secrets/rabbitmq_password.txt`); ninguna credencial queda en el repositorio.
+
+| Fixture | Qué comprueba | Comando |
+|---|---|---|
+| `fase4-duplicado-empleado-creado.json` | Mismo `id` dos veces: Auth crea una sola cuenta y publica un solo `usuario.creado`; Perfiles un solo perfil; Vacaciones una sola réplica | `npm run republicar -- fixtures/fase4-duplicado-empleado-creado.json --veces 2` |
+| `fase4-duplicado-usuario-creado.json` | Mismo `id` dos veces: Notificaciones deja una sola fila `SEGURIDAD` y envía un solo correo | `npm run republicar -- fixtures/fase4-duplicado-usuario-creado.json --veces 2` |
+| `fase4-invalido-sin-campos.json` | Envelope sin `version`, `occurredAt` ni `producer`: cada consumidor de `empleado.creado` lo rechaza y queda una copia en `q.auth.dlq`, `q.perfiles.dlq`, `q.notificaciones.dlq` y `q.vacaciones.dlq` | `npm run republicar -- fixtures/fase4-invalido-sin-campos.json` |
+| `fase4-poison-no-json.txt` | Cuerpo que no es JSON: mismo resultado que el anterior, sin bloquear las colas | `npm run republicar -- fixtures/fase4-poison-no-json.txt --routing-key empleado.creado` |
+| `fase4-retry-auth.json` | Alta para forzar un reintento en Auth (por ejemplo con su base detenida) | `npm run republicar -- fixtures/fase4-retry-auth.json` |
+
+Los `id` de los fixtures son fijos: la segunda vez que se corre el comando, **las dos**
+entregas ya son duplicados. Para repetir la prueba desde cero, `--id-nuevo` genera un UUID una
+sola vez y lo usa en todas las repeticiones. Cómo verificar: `GET /notificaciones/EFASE4DUP`
+(una fila por evento), los logs de cada servicio (`Evento <id> (...) procesado` una vez) y la
+pestaña *Queues* de `http://localhost:15672` (contador de mensajes en cada `*.dlq`). Para
+vaciar una DLQ después de revisarla: *Queues → q.X.dlq → Purge*.
+
+`npm run test:unit` también valida los fixtures (`unit/fixtures.test.js`): que los duplicados
+cumplen C1, que el inválido y el poison no, y cómo arma `republicar` la publicación.
+
 ## Qué afirma cada feature
 
 - `00-humo.feature`: `GET /health` del Gateway es 200.

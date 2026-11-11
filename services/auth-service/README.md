@@ -62,6 +62,34 @@ log. Un `id` de evento ya visto se confirma sin repetir el efecto.
 | primer reset desde pendiente, o `vacaciones.finalizadas` desde suspendida | `cuenta.activada` |
 | `vacaciones.iniciadas` desde activa, o `empleado.retirado` | `cuenta.desactivada` |
 
+### Eventos y resiliencia (Proyecto final, Fase 4)
+
+La política común de los cuatro consumidores está en [`docs/eventos.md`](../../docs/eventos.md).
+En este servicio:
+
+- **Envelope validado antes de tocar la base.** Si el cuerpo no es JSON, falta alguno de `id`,
+  `type`, `version`, `occurredAt`, `producer`, `data`, o el `type` no es uno de los cuatro que
+  consume `q.auth`, se hace `reject` sin requeue y el mensaje termina en `q.auth.dlq`. Por qué:
+  un poison nunca va a procesarse bien; reintentarlo solo bloquea la cola (prefetch 1).
+- **Deduplicación atómica.** La marca en `eventos_procesados` y el cambio de la cuenta se hacen
+  en la misma sesión SQLAlchemy y un solo `commit`. Si el commit falla no queda ni la cuenta ni
+  la marca; si dos réplicas reciben el mismo `id`, la PK de `eventos_procesados` hace fallar a
+  la segunda, que reintenta y entonces lo ve como duplicado.
+- **Reintento solo a la cola que falló.** Un fallo (base caída, commit fallido) hace rollback,
+  republica el mensaje en `q.auth.retry` por el exchange por defecto con `x-retry-count + 1` y
+  los headers originales (`traceparent` incluido), y confirma el original. Tras 5 s el TTL lo
+  devuelve a `q.auth` (dead-letter a `""` con routing key `q.auth`). Antes se devolvía al topic
+  con la routing key del evento, lo que re-difundía el reintento a Perfiles, Notificaciones y
+  Vacaciones. Con `x-retry-count` = 3 el siguiente fallo va a `q.auth.dlq`.
+- **Publicación después del commit.** `usuario.creado`, `cuenta.activada` y `cuenta.desactivada`
+  salen después de `sesion.commit()`, tanto desde el consumidor como desde los endpoints. Si el
+  broker falla se registra el error y el cambio de cuenta no se revierte. `traceparent` lo
+  inyecta `PikaInstrumentor` en los headers AMQP.
+- **Arranque con colas antiguas.** Si `q.auth` o `q.auth.retry` existen con otros argumentos
+  (`PRECONDITION_FAILED`), se borran y recrean solo si están vacías; con mensajes dentro el
+  consumidor se queda reintentando con un error que remite a la sección Migración de
+  `docs/eventos.md`.
+
 ## Variables
 
 | Variable | Default | Descripción |

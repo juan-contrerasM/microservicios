@@ -2,8 +2,6 @@ package com.microservicios.perfiles.config;
 
 import java.time.Clock;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
@@ -17,17 +15,28 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * Topología común de los consumidores (ver docs/eventos.md):
+ * <ul>
+ * <li>{@code q.perfiles}: dead-letter a {@code onboarding.dlx} con routing key {@code q.perfiles}.
+ * Un reject sin requeue termina en la DLQ.</li>
+ * <li>{@code q.perfiles.retry}: TTL 5 s y dead-letter al exchange por defecto ({@code ""}) con
+ * routing key {@code q.perfiles}. El reintento vuelve solo a esta cola; si volviera al topic con
+ * la routing key del evento, se re-difundiría a Auth, Notificaciones y Vacaciones.</li>
+ * <li>{@code q.perfiles.dlq}: enlazada a {@code onboarding.dlx} con routing key {@code q.perfiles}.</li>
+ * </ul>
+ * Todo son beans {@code Declarable}: el {@link RabbitAdmin} los vuelve a declarar en cada
+ * reconexión.
+ */
 @Configuration
 @EnableConfigurationProperties(BrokerProperties.class)
 public class BrokerConfig {
 
-	private static final Logger log = LoggerFactory.getLogger(BrokerConfig.class);
-
 	static final String CREADO = "empleado.creado";
 	static final String ACTUALIZADO = "empleado.actualizado";
 	static final String RETIRADO = "empleado.retirado";
-	static final String RETRY_EXCHANGE = "onboarding.retry.q.perfiles";
-	static final String DLX_EXCHANGE = "onboarding.dlx";
+	public static final String DLX_EXCHANGE = "onboarding.dlx";
+	public static final int RETRY_TTL_MS = 5000;
 
 	@Bean
 	public CachingConnectionFactory brokerConnectionFactory(BrokerProperties broker) {
@@ -49,11 +58,23 @@ public class BrokerConfig {
 	}
 
 	@Bean
+	public DirectExchange dlxExchange() {
+		return new DirectExchange(DLX_EXCHANGE, true, false);
+	}
+
+	@Bean
 	public Queue perfilesQueue(BrokerProperties broker) {
-		return QueueBuilder.durable(broker.getQueue())
-				.deadLetterExchange(DLX_EXCHANGE)
-				.deadLetterRoutingKey(broker.getQueue())
-				.build();
+		return colaPrincipal(broker.getQueue());
+	}
+
+	@Bean
+	public Queue perfilesRetryQueue(BrokerProperties broker) {
+		return colaRetry(broker.getQueue());
+	}
+
+	@Bean
+	public Queue perfilesDlq(BrokerProperties broker) {
+		return QueueBuilder.durable(broker.getQueue() + ".dlq").build();
 	}
 
 	@Bean
@@ -72,8 +93,15 @@ public class BrokerConfig {
 	}
 
 	@Bean
+	public Binding bindingDlq(Queue perfilesDlq, DirectExchange dlxExchange, BrokerProperties broker) {
+		return BindingBuilder.bind(perfilesDlq).to(dlxExchange).with(broker.getQueue());
+	}
+
+	@Bean
 	public RabbitAdmin rabbitAdmin(CachingConnectionFactory brokerConnectionFactory) {
 		RabbitAdmin admin = new RabbitAdmin(brokerConnectionFactory);
+		// Si el broker no está o una cola vieja no coincide, el arranque sigue; la migración
+		// de abajo recrea las colas vacías y el contenedor reintenta la conexión.
 		admin.setIgnoreDeclarationExceptions(true);
 		return admin;
 	}
@@ -84,35 +112,33 @@ public class BrokerConfig {
 	}
 
 	@Bean
-	public ApplicationRunner declarePerfilesTopology(RabbitAdmin rabbitAdmin, TopicExchange onboardingExchange,
-			Queue perfilesQueue, Binding bindingCreado, Binding bindingActualizado, Binding bindingRetirado,
-			BrokerProperties broker) {
-		return args -> {
-			try {
-				TopicExchange retryExchange = new TopicExchange(RETRY_EXCHANGE, true, false);
-				DirectExchange dlxExchange = new DirectExchange(DLX_EXCHANGE, true, false);
-				Queue retryQueue = QueueBuilder.durable(broker.getQueue() + ".retry")
-						.ttl(5000)
-						.deadLetterExchange(broker.getExchange())
-						.build();
-				Queue dlq = QueueBuilder.durable(broker.getQueue() + ".dlq").build();
-				rabbitAdmin.declareExchange(onboardingExchange);
-				rabbitAdmin.declareExchange(retryExchange);
-				rabbitAdmin.declareExchange(dlxExchange);
-				rabbitAdmin.declareQueue(perfilesQueue);
-				rabbitAdmin.declareQueue(retryQueue);
-				rabbitAdmin.declareQueue(dlq);
-				rabbitAdmin.declareBinding(bindingCreado);
-				rabbitAdmin.declareBinding(bindingActualizado);
-				rabbitAdmin.declareBinding(bindingRetirado);
-				rabbitAdmin.declareBinding(BindingBuilder.bind(retryQueue).to(retryExchange).with(CREADO));
-				rabbitAdmin.declareBinding(BindingBuilder.bind(retryQueue).to(retryExchange).with(ACTUALIZADO));
-				rabbitAdmin.declareBinding(BindingBuilder.bind(retryQueue).to(retryExchange).with(RETIRADO));
-				rabbitAdmin.declareBinding(BindingBuilder.bind(dlq).to(dlxExchange).with(broker.getQueue()));
-				log.info("Cola declarada: {} en {}", perfilesQueue.getName(), onboardingExchange.getName());
-			} catch (RuntimeException ex) {
-				log.warn("No se pudo declarar q.perfiles al arrancar: {}", ex.getMessage());
-			}
-		};
+	public MigradorColas migradorColas(CachingConnectionFactory brokerConnectionFactory, RabbitAdmin rabbitAdmin) {
+		return new MigradorColas(brokerConnectionFactory, rabbitAdmin);
+	}
+
+	/**
+	 * Recrea al arrancar las colas que existan con argumentos antiguos (PRECONDITION_FAILED),
+	 * solo si están vacías. Con mensajes dentro se registra el error y se deja la decisión
+	 * a una persona (ver la sección Migración de docs/eventos.md).
+	 */
+	@Bean
+	public ApplicationRunner declarePerfilesTopology(MigradorColas migradorColas, Queue perfilesQueue,
+			Queue perfilesRetryQueue, Queue perfilesDlq) {
+		return args -> migradorColas.asegurar(perfilesQueue, perfilesRetryQueue, perfilesDlq);
+	}
+
+	static Queue colaPrincipal(String nombre) {
+		return QueueBuilder.durable(nombre)
+				.deadLetterExchange(DLX_EXCHANGE)
+				.deadLetterRoutingKey(nombre)
+				.build();
+	}
+
+	static Queue colaRetry(String nombre) {
+		return QueueBuilder.durable(nombre + ".retry")
+				.ttl(RETRY_TTL_MS)
+				.deadLetterExchange("")
+				.deadLetterRoutingKey(nombre)
+				.build();
 	}
 }

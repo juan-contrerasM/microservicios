@@ -19,6 +19,34 @@ alta ya dejó un perfil y llega otro `empleado.creado` con otro `id`, tampoco se
 Si `empleado.actualizado` o `empleado.retirado` llegan antes del alta, se registra el error y se
 confirma el mensaje. No se inventa un perfil y no se reencola: un reintento no traería el alta.
 
+### Eventos y resiliencia (Proyecto final, Fase 4)
+
+La política común de los cuatro consumidores está en [`docs/eventos.md`](../../docs/eventos.md).
+En este servicio:
+
+- **Envelope validado antes de tocar la base** (`EnvelopeEntrante`). Si no es JSON, falta alguno
+  de `id`, `type`, `version`, `occurredAt`, `producer`, `data`, o el `type` no es `empleado.*`,
+  se hace `basicReject` sin requeue y el mensaje termina en `q.perfiles.dlq`. Por qué: un
+  poison nunca se va a procesar bien y con prefetch 1 bloquearía la cola.
+- **Deduplicación atómica.** `PerfilEventoService.procesar` es `@Transactional`: la consulta y
+  la inserción en `eventos_procesados` y el cambio del perfil se confirman juntos. Si dos
+  réplicas reciben el mismo `id`, la PK hace fallar a la segunda, que reintenta y lo ve como
+  duplicado.
+- **Reintento solo a esta cola.** Un fallo publica el mensaje en `q.perfiles.retry` por el
+  exchange por defecto con `x-retry-count + 1` y los headers originales (`traceparent`
+  incluido; `x-death` lo gestiona el broker y no se copia), y confirma el original. La cola
+  retry tiene TTL 5 s y dead-letter a `""` con routing key `q.perfiles`. Antes hacía
+  dead-letter al topic con la routing key del evento, y el reintento de Perfiles volvía a
+  llegarle a Auth, Notificaciones y Vacaciones. Con `x-retry-count` = 3 el siguiente fallo va a
+  la DLQ. Si ni siquiera se puede publicar el reintento, el mensaje va a la DLQ: nunca se pierde.
+- **Topología como beans.** Exchange, `onboarding.dlx`, las tres colas y sus bindings son
+  `Declarable`: `RabbitAdmin` los vuelve a declarar en cada reconexión. La reconexión y el
+  `prefetch` 1 los da el contenedor de Spring AMQP.
+- **Arranque con colas antiguas** (`MigradorColas`). Si `q.perfiles` o `q.perfiles.retry`
+  existen con otros argumentos (`PRECONDITION_FAILED`), se borran y recrean solo si están
+  vacías y luego se redeclaran los bindings. Con mensajes dentro se registra el error y se deja
+  la decisión a una persona (sección Migración de `docs/eventos.md`).
+
 ## Endpoints
 
 | Método | Ruta | Respuesta |

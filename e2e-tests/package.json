@@ -9,7 +9,8 @@
   },
   "scripts": {
     "test": "node --env-file-if-exists=.env ./node_modules/@cucumber/cucumber/bin/cucumber.js --exit",
-    "test:unit": "node --test unit/harness.test.js",
+    "test:unit": "node --test unit/harness.test.js unit/fixtures.test.js",
+    "republicar": "node --env-file-if-exists=.env scripts/republicar.js",
     "calibrar": "node --env-file-if-exists=.env scripts/calibrar.js"
   },
   "devDependencies": {

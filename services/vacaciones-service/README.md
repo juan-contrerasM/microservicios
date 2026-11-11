@@ -1,11 +1,10 @@
 # vacaciones-service
-ssssssfdfddfdfdfdfdfvvv
-esto es una prueba
+
 Programa períodos de vacaciones y publica `vacaciones.programadas`. Desde el Reto 5 también
 observa el paso del tiempo: un scheduler inicia y finaliza los períodos y publica
 `vacaciones.iniciadas` y `vacaciones.finalizadas`. Node.js 22, Express y PostgreSQL propio.
 No comparte proceso con el Gateway.
-jkjkjkjk
+
 ## Por qué una réplica y no un GET a empleados
 
 Consultar empleados por HTTP en cada alta daría el estado del momento, pero el período no se
@@ -16,6 +15,36 @@ todavía pasa. Por eso el test de un retirado reintenta.
 
 `empleado.actualizado` no se consume. El email del evento de vacaciones es el que llegó en el
 alta. Si el correo cambia después, el aviso usa el de la réplica.
+
+### Eventos y resiliencia (Proyecto final, Fase 4)
+
+La política común de los cuatro consumidores está en [`docs/eventos.md`](../../docs/eventos.md).
+
+**Como consumidor** (`q.vacaciones`, `src/consumidor.js`):
+
+- **Envelope validado antes de abrir la base.** Si no es JSON, falta alguno de `id`, `type`,
+  `version`, `occurredAt`, `producer`, `data`, o el `type` no es `empleado.creado` /
+  `empleado.retirado`, se hace `reject` sin requeue y el mensaje queda en `q.vacaciones.dlq`.
+- **Deduplicación atómica.** La consulta y la inserción en `eventos_procesados` y el cambio en
+  `empleados_replica` van entre el mismo `BEGIN`/`COMMIT`.
+- **Reintento solo a esta cola.** Un fallo (incluida una base que no acepta conexiones) hace
+  `ROLLBACK`, republica en `q.vacaciones.retry` por el exchange por defecto con
+  `x-retry-count + 1` y los headers originales (`traceparent` incluido), espera la confirmación
+  del broker (canal de confirmaciones) y recién entonces confirma el original. A los 5 s vuelve
+  a `q.vacaciones`. Antes volvía al topic con la routing key del evento y se re-difundía a
+  Auth, Perfiles y Notificaciones. Con `x-retry-count` = 3 el siguiente fallo va a la DLQ.
+- **Nunca un mensaje colgado.** Con prefetch 1, un mensaje sin ack ni reject bloquea la cola:
+  todos los caminos terminan en `ack` o `reject`. Antes, un `pool.connect()` fallido dejaba el
+  mensaje sin respuesta.
+- **Arranque con colas antiguas.** Si una cola existe con otros argumentos
+  (`PRECONDITION_FAILED`) se recrea solo si está vacía; si no, el consumidor sigue reintentando
+  la conexión con un error que remite a la sección Migración de `docs/eventos.md`.
+
+**Como productor** (`src/publicar.js`): `vacaciones.programadas` (alta) y
+`vacaciones.iniciadas`/`vacaciones.finalizadas` (scheduler y POST de desarrollo) se publican
+después del `COMMIT`, con el envelope C1 completo y `messageId` = `id`. El canal es de
+confirmaciones: un `nack` o un canal cerrado se convierte en error que se registra sin revertir el
+período. `traceparent` lo inyecta la instrumentación OTel de amqplib.
 
 ## Días hábiles
 

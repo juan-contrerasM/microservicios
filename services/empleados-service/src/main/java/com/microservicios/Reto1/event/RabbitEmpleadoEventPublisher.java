@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
+import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
@@ -20,6 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Publica en el exchange topic con routing key = {@code type}.
  * Un fallo de red o de serialización queda en el log y no se relanza.
+ * Se invoca después del commit ({@code EmpleadoService#publicarDespuesDelCommit}).
  */
 @Component
 public class RabbitEmpleadoEventPublisher implements EmpleadoEventPublisher {
@@ -97,8 +99,13 @@ public class RabbitEmpleadoEventPublisher implements EmpleadoEventPublisher {
 					PRODUCER,
 					data);
 			byte[] body = objectMapper.writeValueAsBytes(envelope);
+			// messageId = id del envelope: permite rastrear el mensaje en la UI de RabbitMQ y en la DLQ.
+			// traceparent lo inyecta el agente OpenTelemetry en los headers AMQP al enviar.
 			Message message = MessageBuilder.withBody(body)
 					.setContentType(MessageProperties.CONTENT_TYPE_JSON)
+					.setMessageId(envelope.id())
+					.setType(type)
+					.setDeliveryMode(MessageDeliveryMode.PERSISTENT)
 					.build();
 			rabbitTemplate.send(brokerProperties.getExchange(), type, message);
 			log.info("Evento publicado {} para empleado {}", type, empleadoId);
