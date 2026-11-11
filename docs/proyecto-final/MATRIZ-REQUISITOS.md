@@ -3,7 +3,43 @@
 Auditoría inicial sobre la rama `proyecto-final`. Esta matriz se completa con resultados de
 ejecución durante la Fase 1. Los estados iniciales no sustituyen pruebas ni evidencias.
 
-Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidación · ❌ faltante · ⭐ opcional
+Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidación · ❌ faltante · ⭐ opcional ·
+N/A no aplica (con justificación)
+
+## Matriz por servicio — Estándar E01–E25
+
+Cada práctica de los retos aplica a los siete servicios (ver «Principio rector» y la definición de
+E01–E25 en [`PLAN-PROYECTO-FINAL.md`](PLAN-PROYECTO-FINAL.md)). Estado inicial tomado de una auditoría
+del código de la rama `proyecto-final` el 2026-11-11; 🟡 significa que existe algo, pero falta
+revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 en sus filas.**
+
+| ID | Requisito | Empleados | Departamentos | Auth | Perfiles | Vacaciones | Notificaciones | Gateway | Fase |
+|---|---|---|---|---|---|---|---|---|---|
+| E01 | Dockerfile multi-stage, base fijada, `.dockerignore` | 🟡 | 🟡 | ❌ una etapa | 🟡 | ❌ una etapa | ❌ una etapa | ❌ una etapa | 7 |
+| E02 | Usuario no root, `curl`/`wget` | ❌ root | ❌ root | ❌ root | ❌ root | 🟡 `node` | ❌ root | 🟡 `node` | 7 |
+| E03 | Configuración y secretos por env/`*_FILE` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 2 |
+| E04 | Sin `ports:` (solo `expose:`) | ✅ | ❌ 8081 | ✅ | ❌ 8083 | ❌ 8085 | ❌ 8084 | N/A borde | 14 |
+| E05 | BD propia, migraciones con rollback, `UNIQUE` | 🟡 Liquibase | 🟡 golang-migrate | 🟡 Alembic | 🟡 Liquibase | 🟡 node-pg-migrate | 🟡 Alembic | N/A sin BD | 5 |
+| E06 | Healthcheck Compose → `/health` + `service_healthy` | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 14 |
+| E07 | `/health` C2 con 200/503 real | ❌ no responde 503 al caer PostgreSQL | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 propio | 5 |
+| E08 | OpenAPI completo + Swagger UI + `openapi.yaml` + `bearerAuth` | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ falta Swagger agregado `/swagger` | 5 |
+| E09 | Error HTTP C3 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 5 |
+| E10 | Timeout + retry backoff + circuit breaker en clientes HTTP | ✅ Resilience4j → Departamentos | N/A | N/A | N/A | N/A | N/A | ❌ solo timeout de 35 s | 6 |
+| E11 | Productor: envelope, post-commit, traceparent | 🟡 | N/A | 🟡 | N/A | 🟡 | N/A | N/A | 4 |
+| E12 | Consumidor: dedup atómica, retry, DLQ, poison | N/A | N/A | 🟡 `ad01d03` | 🟡 `ad01d03` | 🟡 `ad01d03` | 🟡 `ad01d03` | N/A | 4 |
+| E13 | Unitarias con dobles | 🟡 | 🟡 | ✅ | ❌ 1 archivo | ✅ | ✅ | ❌ 1 archivo | 8 |
+| E14 | Integración con BD/broker reales | 🟡 | ❌ | 🟡 | ❌ | 🟡 | 🟡 | ❌ | 8 |
+| E15 | Cobertura ≥70 % de la lógica de negocio | 🟡 sin medir | 🟡 sin medir | ✅ 72 % | 🟡 sin medir | 🟡 100 % solo módulos seleccionados | ✅ 73 % | 🟡 sin medir | 8 |
+| E16 | Un comando, JUnit + cobertura en ruta documentada | 🟡 | 🟡 | ✅ | 🟡 | ✅ | 🟡 | 🟡 | 8 |
+| E17 | Evidencia de mutación | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 8 |
+| E18 | Jenkinsfile con todas las etapas | 🟡 existe | ❌ | ❌ | ❌ | 🟡 existe | ❌ | ❌ | 9 |
+| E19 | Proyecto SonarQube propio | 🟡 Maven | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | 9 |
+| E20 | Métricas C4 + negocio | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 11 |
+| E21 | Logs C5 en Loki | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 11 |
+| E22 | OpenTelemetry W3C + Zipkin | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 11 |
+| E23 | Stateless, escala con `--scale=2` | 🟡 | ❌ puerto fijo | 🟡 | ❌ puerto fijo | ❌ puerto fijo + scheduler sin lock | ❌ puerto fijo | ❌ puerto host fijo sin balanceador | 12 |
+| E24 | Seguridad de entrada, RBAC/propiedad | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 13 |
+| E25 | README con plantilla C6 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 15 |
 
 ## Funcionalidad
 
@@ -56,7 +92,9 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 | Cobertura ≥70 % por servicio | 🟡 | Auth 72 %, Notificaciones 73 % y Vacaciones 100 % de módulos seleccionados; faltan mediciones comparables de los demás |
 | Health 200/503 y dependencias | ❌ | Empleados retorna 200 en UP, pero al detener PostgreSQL no respondió dentro de 15 s en vez de entregar 503 |
 | Dockerfile por servicio | ✅ | Los siete servicios tienen Dockerfile |
-| Imágenes optimizadas/no-root | 🟡 | Requiere auditoría de cada Dockerfile |
+| Imágenes optimizadas/no-root | ❌ | Gateway, Vacaciones, Auth y Notificaciones tienen una sola etapa; solo los dos servicios Node usan un usuario distinto de root (ver E01/E02) |
+| `openapi.yaml` por servicio | ❌ | Lo exige la estructura de entrega del PDF; hoy hay contrato estático solo en Departamentos (`openapi.yaml`), Gateway y Vacaciones (`openapi.json` dentro de `src/`) |
+| Swagger UI en el Gateway (`/swagger`) | ❌ | El README de referencia del PDF lo enlaza en `localhost:8080/swagger` |
 | Cuatro lenguajes | ✅ | Java, Go, Node.js y Python |
 | Base independiente por servicio | 🟡 | Arquitectura existente; falta revalidar aislamiento y secretos |
 
@@ -73,6 +111,11 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 | Deploy automatizado | ❌ | No hay etapa final con smoke/rollback |
 | Trigger por webhook | 🟡 | Hay polling/hook local; falta webhook final verificable |
 | `docker compose up --build` completo | ✅ | Siete servicios construyen, BDD pasa y Jenkins arranca tras normalizar el entrypoint |
+| Seis redes del PDF | ❌ | Hoy existe una sola red `microservices-network` |
+| Puertos del PDF sin colisión | ❌ | Jenkins en 9090 (PDF: 8090) y Prometheus en 9091 (PDF: 9090); Registry inexistente (PDF: 5001) |
+| Solo el Gateway publica puerto de negocio | ❌ | Departamentos 8081, Perfiles 8083, Notificaciones 8084 y Vacaciones 8085 publicados por el commit `b28c220` |
+| Etapa E2E serializada en pipelines | ❌ | Necesaria al tener siete pipelines compartiendo el stack |
+| Escaneo de dependencias e imágenes | ❌ | Ningún pipeline ejecuta SCA ni Trivy |
 
 ## Observabilidad
 
@@ -103,8 +146,9 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 
 | Requisito | Estado inicial | Evidencia actual / brecha |
 |---|---|---|
-| Circuit breaker con fallback | ✅ | Resilience4j en Empleados→Departamentos |
-| Timeouts y reintentos | ✅ | Implementados en la comunicación síncrona crítica |
+| Circuit breaker con fallback | 🟡 | Resilience4j en Empleados→Departamentos; el Gateway no tiene circuit breaker hacia los backends |
+| Timeouts y reintentos | 🟡 | Completos en Empleados→Departamentos; el Gateway solo tiene un timeout de 35 s, sin reintentos |
+| Publicación de eventos post-commit | 🟡 | Sin auditar en Empleados, Auth y Vacaciones |
 | Servicios stateless | 🟡 | Auditar scheduler, consumers y estado temporal por instancia |
 | Load balancer | ❌ | No implementado |
 | Réplicas horizontales | ❌ | No existe prueba con múltiples instancias |
@@ -120,6 +164,8 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 | `docs/eventos.md` | ❌ | Falta catálogo implementado en formato final |
 | Guías de terceros | 🟡 | Hay guías parciales; falta conjunto final |
 | Scripts/seed idempotente | ❌ | Falta estructura final requerida |
+| README por servicio con plantilla común | 🟡 | Existen siete README de distinta profundidad; falta la plantilla C6 |
+| Equivalencia con la estructura de referencia del PDF | ❌ | Documentar `services/`↔`microservicios/` y `observability/`↔`observabilidad/` |
 | Paquete `.zip`/`.tar.gz` limpio | ❌ | Se genera únicamente en Fase 14 |
 
 ## Condiciones detectadas del entorno de baseline
@@ -128,5 +174,4 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 - Punto estable: etiqueta local `reto8-completo` sobre `b28c220`.
 - Node, Java, Go y Python no están instalados en el host actual.
 - Las pruebas del baseline se ejecutarán en contenedores reproducibles.
-- GitHub rechazó el push con 403 porque `SebasGalleS` no tiene permiso sobre el remoto actual.
-- La publicación remota de rama/etiqueta queda pendiente de permiso del propietario.
+- La rama `proyecto-final` y la etiqueta `reto8-completo` ya están publicadas en el remoto (verificado el 2026-11-11).

@@ -14,9 +14,15 @@ datos entre servicios.
 
 Documentos de referencia que SIEMPRE hay que leer antes de tocar código:
 
-- Reto 8 (vigente, en implementación): [`docs/reto8/PLAN-RETO8.md`](docs/reto8/PLAN-RETO8.md),
+- **Proyecto final (vigente, rama `proyecto-final`):**
+  [`docs/proyecto-final/PLAN-PROYECTO-FINAL.md`](docs/proyecto-final/PLAN-PROYECTO-FINAL.md),
+  [`docs/proyecto-final/STATUS.md`](docs/proyecto-final/STATUS.md),
+  [`docs/proyecto-final/MATRIZ-REQUISITOS.md`](docs/proyecto-final/MATRIZ-REQUISITOS.md) y
+  [`docs/proyecto-final/proyectoFinal.pdf`](docs/proyecto-final/proyectoFinal.pdf). Toda práctica de
+  un reto aplica a los siete servicios (estándar E01–E25 del plan).
+  **Actualiza `STATUS.md` y la matriz por servicio en el mismo commit/PR que cierra o avanza una fase.**
+- Reto 8 (cerrado): [`docs/reto8/PLAN-RETO8.md`](docs/reto8/PLAN-RETO8.md),
   [`docs/reto8/STATUS.md`](docs/reto8/STATUS.md) y [`docs/reto8/reto8.pdf`](docs/reto8/reto8.pdf).
-  **Actualiza `docs/reto8/STATUS.md` en el mismo commit/PR que cierra o avanza una fase.**
 - Reto 7 (cerrado): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md),
   [`docs/reto7/STATUS.md`](docs/reto7/STATUS.md), [`docs/reto7/reto7.pdf`](docs/reto7/reto7.pdf).
 - Reto 6 (cerrado): [`docs/reto6/PLAN-RETO6.md`](docs/reto6/PLAN-RETO6.md),
@@ -96,12 +102,12 @@ vive solo en el compose: no es un módulo bajo `services/`.
 
 ## Flujo de trabajo entre varias personas
 
-1. Antes de empezar una etapa, revisa `docs/reto7/STATUS.md` para ver qué sigue disponible y qué
-   ya está tomado/hecho. El Reto 6 quedó cerrado, fases 7 y 8 incluidas, en `docs/reto6/STATUS.md`.
+1. Antes de empezar una etapa, revisa `docs/proyecto-final/STATUS.md` para ver qué sigue disponible
+   y qué ya está tomado/hecho, y toma un paquete de trabajo (`N.SERV`) del plan.
 2. Trabaja dentro de la carpeta del servicio que te corresponde; evita tocar otro módulo salvo que
    la etapa lo requiera explícitamente (p. ej. `docker-compose.yml` raíz sí lo tocan varias etapas).
-3. Al terminar una etapa, actualiza `docs/reto7/STATUS.md` (marca la etapa, agrega notas de
-   decisiones tomadas) en el mismo commit.
+3. Al terminar una etapa, actualiza `docs/proyecto-final/STATUS.md` y `MATRIZ-REQUISITOS.md` (marca
+   la etapa, agrega notas de decisiones tomadas) en el mismo commit.
 4. Las decisiones técnicas del enunciado vigente se documentan en el README de cada servicio
    afectado, con el "por qué", no solo el "qué". El Gateway **no** se implementa con Spring Cloud
    Gateway: repetiría Java/Spring Boot.
