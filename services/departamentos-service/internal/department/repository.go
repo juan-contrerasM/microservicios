@@ -29,7 +29,7 @@ func NewRepository(db *sql.DB) *Repository {
 // Create inserta un departamento nuevo. La unicidad de id la garantiza la
 // PRIMARY KEY de la tabla (ver db/migrations/0001_*.up.sql), no esta
 // función: aquí solo se traduce el error 1062 de MySQL (entrada duplicada)
-// a ErrAlreadyExists para que la capa HTTP responda 400 con un mensaje
+// a ErrAlreadyExists para que la capa HTTP responda 409 con un mensaje
 // claro, en vez de un 500 genérico.
 func (r *Repository) Create(ctx context.Context, d Department) (Department, error) {
 	_, err := r.db.ExecContext(ctx,

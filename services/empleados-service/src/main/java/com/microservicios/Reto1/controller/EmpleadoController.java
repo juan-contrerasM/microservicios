@@ -16,18 +16,19 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.microservicios.Reto1.config.OpenApiConfig;
 import com.microservicios.Reto1.dto.ActualizarEmpleadoRequest;
-import com.microservicios.Reto1.dto.RetirarEmpleadoRequest;
 import com.microservicios.Reto1.dto.ApiError;
-import com.microservicios.Reto1.dto.ApiValidationError;
 import com.microservicios.Reto1.dto.CircuitBreakerStatus;
 import com.microservicios.Reto1.dto.ReconciliacionResultado;
+import com.microservicios.Reto1.dto.RetirarEmpleadoRequest;
 import com.microservicios.Reto1.model.Empleado;
 import com.microservicios.Reto1.model.EstadoEmpleado;
 import com.microservicios.Reto1.service.EmpleadoService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -38,15 +39,57 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 /**
- * Endpoints HTTP para el registro y consulta de empleados.
+ * Endpoints HTTP para el registro y consulta de empleados. Las respuestas 401,
+ * 403, 500 y 503 comunes a todas las operaciones las añade
+ * {@link OpenApiConfig#respuestasComunesDeError()}.
  */
 @RestController
 @RequestMapping("/empleados")
 @Tag(name = "Empleados", description = "Registro y consulta de empleados")
-@SecurityRequirement(name = "BearerAuth")
+@SecurityRequirement(name = OpenApiConfig.BEARER_AUTH)
 public class EmpleadoController {
 
 	private static final String JSON = "application/json";
+
+	private static final String EMPLEADO_EJEMPLO = """
+			{
+			  "id": "E001",
+			  "nombre": "Juan",
+			  "apellido": "Pérez",
+			  "email": "juan.perez@empresa.com",
+			  "numeroEmpleado": "EMP-2026-001",
+			  "cargo": "Desarrollador Senior",
+			  "area": "Tecnología",
+			  "departamentoId": "IT",
+			  "fechaIngreso": "2026-02-10",
+			  "estado": "ACTIVO",
+			  "fechaRetiro": null
+			}
+			""";
+	private static final String ERROR_VALIDACION = """
+			{"timestamp":"2026-11-09T12:00:00Z","status":400,"error":"Bad Request",\
+			"message":"La solicitud contiene campos inválidos: email: El email no tiene un formato válido",\
+			"path":"/empleados","traceId":"4bf92f3577b34da6a3ce929d0e0e4736"}""";
+	private static final String ERROR_DEPARTAMENTO = """
+			{"timestamp":"2026-11-09T12:00:00Z","status":400,"error":"Bad Request",\
+			"message":"El departamento con id XX no existe",\
+			"path":"/empleados","traceId":"4bf92f3577b34da6a3ce929d0e0e4736"}""";
+	private static final String ERROR_DUPLICADO = """
+			{"timestamp":"2026-11-09T12:00:00Z","status":409,"error":"Conflict",\
+			"message":"Ya existe un empleado registrado con ese email",\
+			"path":"/empleados","traceId":"4bf92f3577b34da6a3ce929d0e0e4736"}""";
+	private static final String ERROR_NO_EXISTE = """
+			{"timestamp":"2026-11-09T12:00:00Z","status":404,"error":"Not Found",\
+			"message":"El empleado con id E999 no existe",\
+			"path":"/empleados/E999","traceId":"4bf92f3577b34da6a3ce929d0e0e4736"}""";
+	private static final String ERROR_RANGO = """
+			{"timestamp":"2026-11-09T12:00:00Z","status":400,"error":"Bad Request",\
+			"message":"Los parámetros desde y hasta deben enviarse juntos",\
+			"path":"/empleados","traceId":"4bf92f3577b34da6a3ce929d0e0e4736"}""";
+	private static final String ERROR_YA_RETIRADO = """
+			{"timestamp":"2026-11-09T12:00:00Z","status":400,"error":"Bad Request",\
+			"message":"El empleado con id E001 ya está retirado",\
+			"path":"/empleados/E001","traceId":"4bf92f3577b34da6a3ce929d0e0e4736"}""";
 
 	private final EmpleadoService empleadoService;
 
@@ -59,8 +102,9 @@ public class EmpleadoController {
 	 * valida, o PENDIENTE_VALIDACION cuando la dependencia no está disponible.
 	 *
 	 * @param empleado datos del empleado a registrar
-	 * @return el empleado registrado con código 201, o 400 si el id,
-	 *         el email o el numeroEmpleado ya existen
+	 * @return el empleado registrado con código 201, 400 si los datos o el
+	 *         departamento son inválidos, o 409 si el id, el email o el
+	 *         numeroEmpleado ya existen
 	 */
 	@PostMapping
 	@Operation(
@@ -71,20 +115,18 @@ public class EmpleadoController {
 					+ "usa timeout de 5s, hasta 4 intentos con backoff 1s→2s→4s y Circuit Breaker.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "201", description = "Empleado registrado",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class),
+							examples = @ExampleObject(value = EMPLEADO_EJEMPLO))),
 			@ApiResponse(responseCode = "400",
-					description = "Campos inválidos, JSON mal formado, id/email/numeroEmpleado "
-							+ "duplicado, o departamento inexistente",
-					content = @Content(mediaType = JSON, schema = @Schema(oneOf = {
-							ApiError.class, ApiValidationError.class }),
+					description = "Campos inválidos, JSON mal formado o departamento inexistente",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
 							examples = {
-									@ExampleObject(name = "duplicado",
-											value = "{\"mensaje\":\"Ya existe un empleado registrado con ese email\"}"),
-									@ExampleObject(name = "departamentoInexistente",
-											value = "{\"mensaje\":\"El departamento con id XX no existe\"}")
+									@ExampleObject(name = "campoInvalido", value = ERROR_VALIDACION),
+									@ExampleObject(name = "departamentoInexistente", value = ERROR_DEPARTAMENTO)
 							})),
-			@ApiResponse(responseCode = "500", description = "Error interno",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
+			@ApiResponse(responseCode = "409", description = "id, email o numeroEmpleado ya registrados",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
+							examples = @ExampleObject(value = ERROR_DUPLICADO)))
 	})
 	public ResponseEntity<Empleado> registrar(
 			@io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -121,12 +163,11 @@ public class EmpleadoController {
 	@Operation(summary = "Consultar empleado por id")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Empleado encontrado",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class),
+							examples = @ExampleObject(value = EMPLEADO_EJEMPLO))),
 			@ApiResponse(responseCode = "404", description = "No existe un empleado con ese id",
 					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
-							examples = @ExampleObject(value = "{\"mensaje\":\"El empleado con id E999 no existe\"}"))),
-			@ApiResponse(responseCode = "500", description = "Error interno",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
+							examples = @ExampleObject(value = ERROR_NO_EXISTE)))
 	})
 	public ResponseEntity<Empleado> consultar(
 			@Parameter(description = "Identificador del empleado", example = "E001", required = true)
@@ -147,12 +188,11 @@ public class EmpleadoController {
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Listado de empleados",
 					content = @Content(mediaType = JSON,
-							array = @io.swagger.v3.oas.annotations.media.ArraySchema(
-									schema = @Schema(implementation = Empleado.class)))),
+							array = @ArraySchema(schema = @Schema(implementation = Empleado.class)),
+							examples = @ExampleObject(value = "[" + EMPLEADO_EJEMPLO + "]"))),
 			@ApiResponse(responseCode = "400", description = "Estado o rango de fechas inválido",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class))),
-			@ApiResponse(responseCode = "500", description = "Error interno",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
+							examples = @ExampleObject(value = ERROR_RANGO)))
 	})
 	public ResponseEntity<List<Empleado>> listar(
 			@Parameter(description = "Filtra por estado. Para la auditoría de bajas: RETIRADO")
@@ -174,17 +214,29 @@ public class EmpleadoController {
 					+ "validar contra departamentos. Tras persistir publica empleado.actualizado.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Empleado actualizado",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class),
+							examples = @ExampleObject(value = EMPLEADO_EJEMPLO))),
 			@ApiResponse(responseCode = "400",
-					description = "Campo inválido, email o numeroEmpleado duplicado, o departamento inexistente",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class))),
+					description = "Campo inválido, JSON mal formado o departamento inexistente",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
+							examples = @ExampleObject(value = ERROR_DEPARTAMENTO))),
 			@ApiResponse(responseCode = "404", description = "No existe un empleado con ese id",
 					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
-							examples = @ExampleObject(value = "{\"mensaje\":\"El empleado con id E999 no existe\"}")))
+							examples = @ExampleObject(value = ERROR_NO_EXISTE))),
+			@ApiResponse(responseCode = "409", description = "email o numeroEmpleado ya usados por otro empleado",
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
+							examples = @ExampleObject(value = ERROR_DUPLICADO)))
 	})
 	public ResponseEntity<Empleado> actualizar(
 			@Parameter(description = "Identificador del empleado", example = "E001", required = true)
 			@PathVariable String id,
+			@io.swagger.v3.oas.annotations.parameters.RequestBody(
+					required = true,
+					content = @Content(mediaType = JSON,
+							schema = @Schema(implementation = ActualizarEmpleadoRequest.class),
+							examples = @ExampleObject(value = """
+									{ "cargo": "Líder Técnico", "area": "Tecnología" }
+									""")))
 			@Valid @RequestBody ActualizarEmpleadoRequest cambios) {
 		return ResponseEntity.ok(empleadoService.actualizar(id, cambios));
 	}
@@ -202,14 +254,19 @@ public class EmpleadoController {
 					content = @Content(mediaType = JSON, schema = @Schema(implementation = Empleado.class))),
 			@ApiResponse(responseCode = "400", description = "El empleado ya estaba retirado",
 					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
-							examples = @ExampleObject(
-									value = "{\"mensaje\":\"El empleado con id E001 ya está retirado\"}"))),
+							examples = @ExampleObject(value = ERROR_YA_RETIRADO))),
 			@ApiResponse(responseCode = "404", description = "No existe un empleado con ese id",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class)))
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ApiError.class),
+							examples = @ExampleObject(value = ERROR_NO_EXISTE)))
 	})
 	public ResponseEntity<Empleado> retirar(
 			@Parameter(description = "Identificador del empleado", example = "E001", required = true)
 			@PathVariable String id,
+			@io.swagger.v3.oas.annotations.parameters.RequestBody(
+					required = false,
+					content = @Content(mediaType = JSON,
+							schema = @Schema(implementation = RetirarEmpleadoRequest.class),
+							examples = @ExampleObject(value = "{ \"motivo\": \"RENUNCIA\" }")))
 			@RequestBody(required = false) RetirarEmpleadoRequest solicitud) {
 		String motivo = solicitud == null ? null : solicitud.getMotivo();
 		return ResponseEntity.ok(empleadoService.retirar(id, motivo));
@@ -249,7 +306,8 @@ public class EmpleadoController {
 					+ "un departamento por defecto ni se borra en silencio.")
 	@ApiResponses({
 			@ApiResponse(responseCode = "200", description = "Resultado del barrido de reconciliación",
-					content = @Content(mediaType = JSON, schema = @Schema(implementation = ReconciliacionResultado.class)))
+					content = @Content(mediaType = JSON, schema = @Schema(implementation = ReconciliacionResultado.class),
+							examples = @ExampleObject(value = "{\"pendientesEvaluados\":2,\"reconciliados\":1}")))
 	})
 	public ResponseEntity<ReconciliacionResultado> reconciliar() {
 		return ResponseEntity.ok(empleadoService.reconciliarPendientes());

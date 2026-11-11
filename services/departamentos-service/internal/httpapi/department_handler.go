@@ -24,12 +24,12 @@ func NewDepartmentHandler(svc *department.Service) *DepartmentHandler {
 }
 
 // Create atiende POST /departamentos: decodifica el cuerpo JSON, delega el
-// registro en el servicio y responde 201 con el departamento creado, o 400
-// si los datos son inválidos o el id ya existe.
+// registro en el servicio y responde 201 con el departamento creado, 400 si
+// los datos son inválidos o 409 si el id ya existe (contrato C3).
 func (h *DepartmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var input department.Department
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeError(w, http.StatusBadRequest, "cuerpo de la petición inválido")
+		writeError(w, r, http.StatusBadRequest, "cuerpo de la petición inválido")
 		return
 	}
 
@@ -38,11 +38,11 @@ func (h *DepartmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeJSON(w, http.StatusCreated, created)
 	case errors.Is(err, department.ErrValidation):
-		writeError(w, http.StatusBadRequest, "el departamento requiere al menos 'id' y 'nombre'")
+		writeError(w, r, http.StatusBadRequest, "el departamento requiere al menos 'id' y 'nombre'")
 	case errors.Is(err, department.ErrAlreadyExists):
-		writeError(w, http.StatusBadRequest, "ya existe un departamento registrado con ese id")
+		writeError(w, r, http.StatusConflict, "ya existe un departamento registrado con ese id")
 	default:
-		writeError(w, http.StatusInternalServerError, "error interno registrando el departamento")
+		writeInternalError(w, r, "registrando departamento", err)
 	}
 }
 
@@ -56,9 +56,9 @@ func (h *DepartmentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeJSON(w, http.StatusOK, found)
 	case errors.Is(err, department.ErrNotFound):
-		writeError(w, http.StatusNotFound, "el departamento con id "+id+" no existe")
+		writeError(w, r, http.StatusNotFound, "el departamento con id "+id+" no existe")
 	default:
-		writeError(w, http.StatusInternalServerError, "error interno consultando el departamento")
+		writeInternalError(w, r, "consultando departamento", err)
 	}
 }
 
@@ -67,17 +67,19 @@ func (h *DepartmentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 func (h *DepartmentHandler) List(w http.ResponseWriter, r *http.Request) {
 	all, err := h.svc.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "error interno listando departamentos")
+		writeInternalError(w, r, "listando departamentos", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, all)
 }
 
+// Update atiende PUT /departamentos/{id}: el id de la ruta manda sobre el del
+// cuerpo. Responde 200, 400 si falta el nombre o 404 si no existe.
 func (h *DepartmentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var input department.Department
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeError(w, http.StatusBadRequest, "cuerpo de la petición inválido")
+		writeError(w, r, http.StatusBadRequest, "cuerpo de la petición inválido")
 		return
 	}
 	updated, err := h.svc.Update(r.Context(), id, input)
@@ -85,14 +87,15 @@ func (h *DepartmentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		writeJSON(w, http.StatusOK, updated)
 	case errors.Is(err, department.ErrValidation):
-		writeError(w, http.StatusBadRequest, "el departamento requiere 'nombre'")
+		writeError(w, r, http.StatusBadRequest, "el departamento requiere 'nombre'")
 	case errors.Is(err, department.ErrNotFound):
-		writeError(w, http.StatusNotFound, "el departamento con id "+id+" no existe")
+		writeError(w, r, http.StatusNotFound, "el departamento con id "+id+" no existe")
 	default:
-		writeError(w, http.StatusInternalServerError, "error interno actualizando el departamento")
+		writeInternalError(w, r, "actualizando departamento", err)
 	}
 }
 
+// Delete atiende DELETE /departamentos/{id}: responde 204 sin cuerpo o 404.
 func (h *DepartmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	err := h.svc.Delete(r.Context(), id)
@@ -100,10 +103,10 @@ func (h *DepartmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, department.ErrValidation):
-		writeError(w, http.StatusBadRequest, "el id del departamento es obligatorio")
+		writeError(w, r, http.StatusBadRequest, "el id del departamento es obligatorio")
 	case errors.Is(err, department.ErrNotFound):
-		writeError(w, http.StatusNotFound, "el departamento con id "+id+" no existe")
+		writeError(w, r, http.StatusNotFound, "el departamento con id "+id+" no existe")
 	default:
-		writeError(w, http.StatusInternalServerError, "error interno eliminando el departamento")
+		writeInternalError(w, r, "eliminando departamento", err)
 	}
 }

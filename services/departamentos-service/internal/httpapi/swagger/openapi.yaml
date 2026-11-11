@@ -3,25 +3,37 @@ info:
   title: departamentos-service
   version: 1.0.0
   description: |
-    API REST del servicio de departamentos (Go + chi + MySQL).
-    Cada departamento se identifica por un `id` enviado por el cliente
-    (PRIMARY KEY en el esquema; un duplicado responde 400).
+    API REST del servicio de departamentos (Go + chi + MySQL). Es la fuente de
+    verdad de los departamentos; empleados-service valida contra él el
+    `departamentoId` de cada alta.
+
+    Cada departamento se identifica por un `id` enviado por el cliente (PRIMARY
+    KEY en el esquema): un id duplicado responde 409.
+
+    Todos los errores usan el formato uniforme `ApiError` (contrato C3). 401 y
+    403 los emite el API Gateway: 401 sin token o token inválido, 403 cuando un
+    USER intenta crear, modificar o eliminar (un USER solo lee). 503 indica que
+    MySQL no está disponible. `GET /health` es público (contrato C2).
+
+    Este archivo es el contrato exportado (`services/departamentos-service/openapi.yaml`);
+    el servicio sirve una copia idéntica embebida en `/openapi.yaml` y Swagger UI
+    en `/swagger/index.html`.
 servers:
-  - url: http://departamentos-service:8081
-    description: Red de Docker. El puerto no está publicado; el tráfico público entra por el Gateway en /departamentos.
+  - url: /
+    description: Mismo origen que sirve la documentación (el servicio o el Gateway)
 security:
-  - BearerAuth: []
+  - bearerAuth: []
 tags:
   - name: Departamentos
-    description: Registro y consulta de departamentos
+    description: Registro, consulta, actualización y eliminación de departamentos
   - name: Salud
-    description: Health check real contra MySQL
+    description: Health check real contra MySQL (contrato C2)
 paths:
   /departamentos:
     post:
       tags: [Departamentos]
       summary: Registrar departamento
-      description: Crea un departamento. `id` y `nombre` son obligatorios.
+      description: Crea un departamento. `id` y `nombre` son obligatorios; se recortan los espacios.
       operationId: crearDepartamento
       requestBody:
         required: true
@@ -42,25 +54,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Departamento"
+              example:
+                id: IT
+                nombre: Tecnología
+                descripcion: Departamento de TI
         "400":
-          description: Datos inválidos o id duplicado
+          description: JSON mal formado, o falta `id` o `nombre`
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/ApiError"
               examples:
-                duplicado:
-                  value:
-                    mensaje: ya existe un departamento registrado con ese id
                 invalido:
                   value:
-                    mensaje: el departamento requiere al menos 'id' y 'nombre'
-        "500":
-          description: Error interno
+                    timestamp: "2026-11-09T12:00:00Z"
+                    status: 400
+                    error: Bad Request
+                    message: el departamento requiere al menos 'id' y 'nombre'
+                    path: /departamentos
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                malFormado:
+                  value:
+                    timestamp: "2026-11-09T12:00:00Z"
+                    status: 400
+                    error: Bad Request
+                    message: cuerpo de la petición inválido
+                    path: /departamentos
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        "401":
+          $ref: "#/components/responses/NoAutenticado"
+        "403":
+          $ref: "#/components/responses/SinPermiso"
+        "409":
+          description: Ya existe un departamento con ese `id`
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/ApiError"
+              example:
+                timestamp: "2026-11-09T12:00:00Z"
+                status: 409
+                error: Conflict
+                message: ya existe un departamento registrado con ese id
+                path: /departamentos
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        "500":
+          $ref: "#/components/responses/ErrorInterno"
+        "503":
+          $ref: "#/components/responses/BaseNoDisponible"
     get:
       tags: [Departamentos]
       summary: Listar departamentos
@@ -75,25 +116,26 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Departamento"
+              example:
+                - id: IT
+                  nombre: Tecnología
+                  descripcion: Departamento de TI
+                - id: RRHH
+                  nombre: Recursos Humanos
+                  descripcion: ""
+        "401":
+          $ref: "#/components/responses/NoAutenticado"
         "500":
-          description: Error interno
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/ErrorInterno"
+        "503":
+          $ref: "#/components/responses/BaseNoDisponible"
   /departamentos/{id}:
+    parameters:
+      - $ref: "#/components/parameters/DepartamentoId"
     get:
       tags: [Departamentos]
       summary: Consultar departamento por id
       operationId: obtenerDepartamento
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: Identificador del departamento
-          schema:
-            type: string
-          example: IT
       responses:
         "200":
           description: Departamento encontrado
@@ -101,32 +143,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Departamento"
-        "404":
-          description: No existe un departamento con ese id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
               example:
-                mensaje: el departamento con id XX no existe
+                id: IT
+                nombre: Tecnología
+                descripcion: Departamento de TI
+        "401":
+          $ref: "#/components/responses/NoAutenticado"
+        "404":
+          $ref: "#/components/responses/NoExiste"
         "500":
-          description: Error interno
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/ErrorInterno"
+        "503":
+          $ref: "#/components/responses/BaseNoDisponible"
     put:
       tags: [Departamentos]
       summary: Actualizar departamento
+      description: |
+        Reemplaza `nombre` y `descripcion`. El `id` de la ruta manda: un `id` en el
+        cuerpo se ignora. `nombre` es obligatorio.
       operationId: actualizarDepartamento
-      parameters:
-        - $ref: "#/components/parameters/DepartamentoId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/DepartamentoActualizacion"
+            example:
+              nombre: Tecnología e Innovación
+              descripcion: Área tecnológica actualizada
       responses:
         "200":
           description: Departamento actualizado
@@ -134,23 +178,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Departamento"
-        "400": { description: Datos inválidos }
-        "404": { description: Departamento inexistente }
+              example:
+                id: IT
+                nombre: Tecnología e Innovación
+                descripcion: Área tecnológica actualizada
+        "400":
+          description: JSON mal formado o falta `nombre`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+              example:
+                timestamp: "2026-11-09T12:00:00Z"
+                status: 400
+                error: Bad Request
+                message: el departamento requiere 'nombre'
+                path: /departamentos/IT
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        "401":
+          $ref: "#/components/responses/NoAutenticado"
+        "403":
+          $ref: "#/components/responses/SinPermiso"
+        "404":
+          $ref: "#/components/responses/NoExiste"
+        "500":
+          $ref: "#/components/responses/ErrorInterno"
+        "503":
+          $ref: "#/components/responses/BaseNoDisponible"
     delete:
       tags: [Departamentos]
       summary: Eliminar departamento
+      description: Borra la fila. Responde 204 sin cuerpo.
       operationId: eliminarDepartamento
-      parameters:
-        - $ref: "#/components/parameters/DepartamentoId"
       responses:
-        "204": { description: Departamento eliminado }
-        "404": { description: Departamento inexistente }
+        "204":
+          description: Departamento eliminado
+        "401":
+          $ref: "#/components/responses/NoAutenticado"
+        "403":
+          $ref: "#/components/responses/SinPermiso"
+        "404":
+          $ref: "#/components/responses/NoExiste"
+        "500":
+          $ref: "#/components/responses/ErrorInterno"
+        "503":
+          $ref: "#/components/responses/BaseNoDisponible"
   /health:
     get:
       security: []
       tags: [Salud]
       summary: Health check
-      description: Hace PING a MySQL. No basta con que el proceso HTTP responda.
+      description: |
+        Hace PING a MySQL con un plazo de 2 s: responde en menos de 3 s aunque la
+        base cuelgue. No requiere JWT; Docker Compose lo usa como healthcheck.
       operationId: health
       responses:
         "200":
@@ -158,26 +238,107 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthUp"
+                $ref: "#/components/schemas/Health"
+              example:
+                status: UP
+                service: departamentos-service
+                version: 1.0.0
+                checks:
+                  database: UP
         "503":
-          description: No hay conexión a MySQL
+          description: MySQL no respondió o no lo hizo a tiempo
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthDown"
+                $ref: "#/components/schemas/Health"
+              example:
+                status: DOWN
+                service: departamentos-service
+                version: 1.0.0
+                checks:
+                  database: DOWN
 components:
   parameters:
     DepartamentoId:
       name: id
       in: path
       required: true
-      schema: { type: string }
+      description: Identificador del departamento
+      schema:
+        type: string
+      example: IT
   securitySchemes:
-    BearerAuth:
+    bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
       description: Access JWT emitido por auth-service y validado por el API Gateway
+  responses:
+    NoAutenticado:
+      description: Sin token, token inválido o expirado (lo responde el API Gateway)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            timestamp: "2026-11-09T12:00:00Z"
+            status: 401
+            error: Unauthorized
+            message: No autenticado
+            path: /departamentos
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    SinPermiso:
+      description: El rol del token no permite escribir; solo ADMIN (lo responde el API Gateway)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            timestamp: "2026-11-09T12:00:00Z"
+            status: 403
+            error: Forbidden
+            message: No tiene permisos para realizar esta operación
+            path: /departamentos
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    NoExiste:
+      description: No existe un departamento con ese id
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            timestamp: "2026-11-09T12:00:00Z"
+            status: 404
+            error: Not Found
+            message: el departamento con id XX no existe
+            path: /departamentos/XX
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    ErrorInterno:
+      description: Error inesperado, sin detalles internos
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            timestamp: "2026-11-09T12:00:00Z"
+            status: 500
+            error: Internal Server Error
+            message: error interno del servidor
+            path: /departamentos
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    BaseNoDisponible:
+      description: MySQL no está disponible
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            timestamp: "2026-11-09T12:00:00Z"
+            status: 503
+            error: Service Unavailable
+            message: la base de datos no está disponible
+            path: /departamentos
+            traceId: 4bf92f3577b34da6a3ce929d0e0e4736
   schemas:
     Departamento:
       type: object
@@ -185,41 +346,82 @@ components:
       properties:
         id:
           type: string
+          maxLength: 50
           description: Identificador único (PRIMARY KEY)
           example: IT
         nombre:
           type: string
+          maxLength: 150
           description: Nombre del departamento
           example: Tecnología
         descripcion:
           type: string
+          maxLength: 500
           description: Descripción libre, opcional
           example: Departamento de TI
     DepartamentoActualizacion:
       type: object
       required: [nombre]
       properties:
-        nombre: { type: string, example: Tecnología e Innovación }
-        descripcion: { type: string, example: Área tecnológica actualizada }
-    Error:
-      type: object
-      required: [mensaje]
-      properties:
-        mensaje:
+        nombre:
           type: string
-          example: ya existe un departamento registrado con ese id
-    HealthUp:
+          maxLength: 150
+          example: Tecnología e Innovación
+        descripcion:
+          type: string
+          maxLength: 500
+          example: Área tecnológica actualizada
+    ApiError:
       type: object
+      description: Error HTTP uniforme (contrato C3). Sin trazas de pila ni detalles internos.
+      required: [timestamp, status, error, message, path]
       properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Instante UTC del error (RFC 3339)
+          example: "2026-11-09T12:00:00Z"
         status:
-          type: string
-          example: UP
-    HealthDown:
-      type: object
-      properties:
-        status:
-          type: string
-          example: DOWN
+          type: integer
+          description: Código HTTP
+          example: 404
         error:
           type: string
-          example: no se pudo conectar a la base de datos
+          description: Frase estándar del código HTTP
+          example: Not Found
+        message:
+          type: string
+          description: Mensaje legible para el cliente
+          example: el departamento con id XX no existe
+        path:
+          type: string
+          description: Ruta de la petición
+          example: /departamentos/XX
+        traceId:
+          type: string
+          description: Trace id de OpenTelemetry (32 hex). Se omite si la petición no tiene traza.
+          example: 4bf92f3577b34da6a3ce929d0e0e4736
+    Health:
+      type: object
+      description: Estado de salud (contrato C2)
+      required: [status, service, version, checks]
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
+          example: UP
+        service:
+          type: string
+          example: departamentos-service
+        version:
+          type: string
+          description: Versión del servicio desplegado
+          example: 1.0.0
+        checks:
+          type: object
+          description: Estado de cada dependencia real (solo MySQL)
+          properties:
+            database:
+              type: string
+              enum: [UP, DOWN]
+              example: UP

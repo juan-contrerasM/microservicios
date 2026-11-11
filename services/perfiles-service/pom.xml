@@ -56,6 +56,13 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Fase 5: @WebMvcTest + MockMvc para probar el contrato HTTP (errores C3,
+		     health C2 y drift del openapi.yaml) sin base de datos ni Docker. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-webmvc-test</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 	<build>
 		<plugins>

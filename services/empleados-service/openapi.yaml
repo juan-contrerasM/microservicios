@@ -1,0 +1,999 @@
+openapi: 3.1.0
+info:
+  description: |
+    API REST del servicio de empleados (Java 21 / Spring Boot + PostgreSQL).
+    POST /empleados responde 201. El estado queda ACTIVO si departamentos
+    confirma el departamento, o PENDIENTE_VALIDACION si el circuito está
+    abierto o la llamada falla. Departamento inexistente responde 400;
+    id, email o numeroEmpleado duplicado responde 409. PUT actualiza solo
+    los campos enviados y publica empleado.actualizado; no pasa el estado
+    a RETIRADO. DELETE es baja lógica: RETIRADO, fechaRetiro y
+    empleado.retirado (motivo RENUNCIA si el cuerpo no lo trae). Un segundo
+    DELETE responde 400. GET /empleados acepta estado, desde y hasta.
+
+    Todos los errores usan el formato uniforme ApiError (contrato C3).
+    401 y 403 los emite el API Gateway: 401 sin token o token inválido,
+    403 cuando un USER intenta una operación de escritura. 503 indica que
+    PostgreSQL no está disponible. GET /health es público (contrato C2).
+  title: empleados-service
+  version: 0.0.1-SNAPSHOT
+servers:
+- description: Mismo origen que sirve la documentación
+  url: /
+tags:
+- description: Registro y consulta de empleados
+  name: Empleados
+- description: Health check real contra PostgreSQL y RabbitMQ (contrato C2)
+  name: Salud
+paths:
+  /empleados:
+    get:
+      description: "Sin parámetros devuelve todos. `estado=RETIRADO` devuelve solo\
+        \ las bajas lógicas. `desde` y `hasta` (AAAA-MM-DD) incluyen ambos extremos\
+        \ y comparan la fecha de `fechaRetiro`, no la hora. Deben enviarse juntos."
+      operationId: listar
+      parameters:
+      - description: "Filtra por estado. Para la auditoría de bajas: RETIRADO"
+        in: query
+        name: estado
+        required: false
+        schema:
+          type: string
+          description: Estado del empleado. ACTIVO cuando departamentos valida el
+            departamento; PENDIENTE_VALIDACION cuando el Circuit Breaker está OPEN
+            o la llamada falló (Reto 3); RETIRADO es la baja lógica (Reto 4). EN_VACACIONES
+            queda para el Reto 5.
+          enum:
+          - ACTIVO
+          - PENDIENTE_VALIDACION
+          - EN_VACACIONES
+          - RETIRADO
+      - description: "Inicio del rango de fechaRetiro, inclusive (AAAA-MM-DD)"
+        example: 2026-01-01
+        in: query
+        name: desde
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: "Fin del rango de fechaRetiro, inclusive (AAAA-MM-DD)"
+        example: 2026-12-31
+        in: query
+        name: hasta
+        required: false
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+              - id: E001
+                nombre: Juan
+                apellido: Pérez
+                email: juan.perez@empresa.com
+                numeroEmpleado: EMP-2026-001
+                cargo: Desarrollador Senior
+                area: Tecnología
+                departamentoId: IT
+                fechaIngreso: 2026-02-10
+                estado: ACTIVO
+                fechaRetiro: null
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Empleado"
+          description: Listado de empleados
+        "400":
+          content:
+            application/json:
+              example:
+                timestamp: 2026-11-09T12:00:00Z
+                status: 400
+                error: Bad Request
+                message: Los parámetros desde y hasta deben enviarse juntos
+                path: /empleados
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: Estado o rango de fechas inválido
+        "401":
+          content:
+            application/json:
+              example:
+                error: Unauthorized
+                message: No autenticado
+                path: /empleados
+                status: 401
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Sin token, token inválido o expirado (lo responde el API Gateway)"
+        "500":
+          content:
+            application/json:
+              example:
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /empleados
+                status: 500
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Error inesperado, sin detalles internos"
+        "503":
+          content:
+            application/json:
+              example:
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: /empleados
+                status: 503
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: PostgreSQL no está disponible
+      security:
+      - bearerAuth: []
+      summary: Listar empleados
+      tags:
+      - Empleados
+    post:
+      description: "Registra un empleado nuevo. El estado enviado en el cuerpo se\
+        \ ignora: queda ACTIVO si departamentos-service confirma el departamento,\
+        \ o PENDIENTE_VALIDACION si la dependencia no está disponible. La validació\
+        n usa timeout de 5s, hasta 4 intentos con backoff 1s→2s→4s y Circuit Breaker."
+      operationId: registrar
+      requestBody:
+        content:
+          application/json:
+            example:
+              id: E001
+              nombre: Juan
+              apellido: Pérez
+              email: juan.perez@empresa.com
+              numeroEmpleado: EMP-2026-001
+              cargo: Desarrollador Senior
+              area: Tecnología
+              departamentoId: IT
+              fechaIngreso: 2026-02-10
+              estado: ACTIVO
+            schema:
+              $ref: "#/components/schemas/Empleado"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              example:
+                id: E001
+                nombre: Juan
+                apellido: Pérez
+                email: juan.perez@empresa.com
+                numeroEmpleado: EMP-2026-001
+                cargo: Desarrollador Senior
+                area: Tecnología
+                departamentoId: IT
+                fechaIngreso: 2026-02-10
+                estado: ACTIVO
+                fechaRetiro: null
+              schema:
+                $ref: "#/components/schemas/Empleado"
+          description: Empleado registrado
+        "400":
+          content:
+            application/json:
+              examples:
+                campoInvalido:
+                  description: campoInvalido
+                  value:
+                    timestamp: 2026-11-09T12:00:00Z
+                    status: 400
+                    error: Bad Request
+                    message: "La solicitud contiene campos inválidos: email: El email\
+                      \ no tiene un formato válido"
+                    path: /empleados
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                departamentoInexistente:
+                  description: departamentoInexistente
+                  value:
+                    timestamp: 2026-11-09T12:00:00Z
+                    status: 400
+                    error: Bad Request
+                    message: El departamento con id XX no existe
+                    path: /empleados
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Campos inválidos, JSON mal formado o departamento inexistente"
+        "401":
+          content:
+            application/json:
+              example:
+                error: Unauthorized
+                message: No autenticado
+                path: /empleados
+                status: 401
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Sin token, token inválido o expirado (lo responde el API Gateway)"
+        "403":
+          content:
+            application/json:
+              example:
+                error: Forbidden
+                message: No tiene permisos para realizar esta operación
+                path: /empleados
+                status: 403
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "El rol del token no permite la operación: solo ADMIN escribe\
+            \ (lo responde el API Gateway)"
+        "409":
+          content:
+            application/json:
+              example:
+                timestamp: 2026-11-09T12:00:00Z
+                status: 409
+                error: Conflict
+                message: Ya existe un empleado registrado con ese email
+                path: /empleados
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "id, email o numeroEmpleado ya registrados"
+        "500":
+          content:
+            application/json:
+              example:
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /empleados
+                status: 500
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Error inesperado, sin detalles internos"
+        "503":
+          content:
+            application/json:
+              example:
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: /empleados
+                status: 503
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: PostgreSQL no está disponible
+      security:
+      - bearerAuth: []
+      summary: Registrar empleado
+      tags:
+      - Empleados
+  /empleados/circuit-breaker:
+    get:
+      description: "Expone el estado (CLOSED/OPEN/HALF_OPEN) del circuito que protege\
+        \ la llamada a departamentos-service, sin depender solo de logs."
+      operationId: estadoCircuitBreaker
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                name: departamentos
+                state: CLOSED
+              schema:
+                $ref: "#/components/schemas/CircuitBreakerStatus"
+          description: Estado del circuito
+        "401":
+          content:
+            application/json:
+              example:
+                error: Unauthorized
+                message: No autenticado
+                path: /empleados/circuit-breaker
+                status: 401
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Sin token, token inválido o expirado (lo responde el API Gateway)"
+        "500":
+          content:
+            application/json:
+              example:
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /empleados/circuit-breaker
+                status: 500
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Error inesperado, sin detalles internos"
+      security:
+      - bearerAuth: []
+      summary: Estado del Circuit Breaker de departamentos
+      tags:
+      - Empleados
+  /empleados/reconciliar:
+    post:
+      description: "Vuelve a consultar departamentos para cada empleado pendiente.\
+        \ Si el departamento existe, el empleado pasa a ACTIVO. Si no, o si departamentos\
+        \ sigue sin disponibilidad, se deja PENDIENTE_VALIDACION: nunca se le asigna\
+        \ un departamento por defecto ni se borra en silencio."
+      operationId: reconciliar
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                pendientesEvaluados: 2
+                reconciliados: 1
+              schema:
+                $ref: "#/components/schemas/ReconciliacionResultado"
+          description: Resultado del barrido de reconciliación
+        "401":
+          content:
+            application/json:
+              example:
+                error: Unauthorized
+                message: No autenticado
+                path: /empleados/reconciliar
+                status: 401
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Sin token, token inválido o expirado (lo responde el API Gateway)"
+        "403":
+          content:
+            application/json:
+              example:
+                error: Forbidden
+                message: No tiene permisos para realizar esta operación
+                path: /empleados/reconciliar
+                status: 403
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "El rol del token no permite la operación: solo ADMIN escribe\
+            \ (lo responde el API Gateway)"
+        "500":
+          content:
+            application/json:
+              example:
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /empleados/reconciliar
+                status: 500
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Error inesperado, sin detalles internos"
+        "503":
+          content:
+            application/json:
+              example:
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: /empleados/reconciliar
+                status: 503
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: PostgreSQL no está disponible
+      security:
+      - bearerAuth: []
+      summary: Reconciliar empleados PENDIENTE_VALIDACION
+      tags:
+      - Empleados
+  /empleados/{id}:
+    delete:
+      description: "Pasa el estado a RETIRADO, guarda fechaRetiro en UTC y publica\
+        \ empleado.retirado con motivo (RENUNCIA si el cuerpo no lo trae). La fila\
+        \ permanece. Un segundo DELETE responde 400 y no publica."
+      operationId: retirar
+      parameters:
+      - description: Identificador del empleado
+        example: E001
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            example:
+              motivo: RENUNCIA
+            schema:
+              $ref: "#/components/schemas/RetirarEmpleadoRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Empleado"
+          description: Empleado retirado
+        "400":
+          content:
+            application/json:
+              example:
+                timestamp: 2026-11-09T12:00:00Z
+                status: 400
+                error: Bad Request
+                message: El empleado con id E001 ya está retirado
+                path: /empleados/E001
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: El empleado ya estaba retirado
+        "401":
+          content:
+            application/json:
+              example:
+                error: Unauthorized
+                message: No autenticado
+                path: "/empleados/{id}"
+                status: 401
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Sin token, token inválido o expirado (lo responde el API Gateway)"
+        "403":
+          content:
+            application/json:
+              example:
+                error: Forbidden
+                message: No tiene permisos para realizar esta operación
+                path: "/empleados/{id}"
+                status: 403
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "El rol del token no permite la operación: solo ADMIN escribe\
+            \ (lo responde el API Gateway)"
+        "404":
+          content:
+            application/json:
+              example:
+                timestamp: 2026-11-09T12:00:00Z
+                status: 404
+                error: Not Found
+                message: El empleado con id E999 no existe
+                path: /empleados/E999
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: No existe un empleado con ese id
+        "500":
+          content:
+            application/json:
+              example:
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: "/empleados/{id}"
+                status: 500
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Error inesperado, sin detalles internos"
+        "503":
+          content:
+            application/json:
+              example:
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: "/empleados/{id}"
+                status: 503
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: PostgreSQL no está disponible
+      security:
+      - bearerAuth: []
+      summary: Retirar empleado
+      tags:
+      - Empleados
+    get:
+      operationId: consultar
+      parameters:
+      - description: Identificador del empleado
+        example: E001
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                id: E001
+                nombre: Juan
+                apellido: Pérez
+                email: juan.perez@empresa.com
+                numeroEmpleado: EMP-2026-001
+                cargo: Desarrollador Senior
+                area: Tecnología
+                departamentoId: IT
+                fechaIngreso: 2026-02-10
+                estado: ACTIVO
+                fechaRetiro: null
+              schema:
+                $ref: "#/components/schemas/Empleado"
+          description: Empleado encontrado
+        "401":
+          content:
+            application/json:
+              example:
+                error: Unauthorized
+                message: No autenticado
+                path: "/empleados/{id}"
+                status: 401
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Sin token, token inválido o expirado (lo responde el API Gateway)"
+        "404":
+          content:
+            application/json:
+              example:
+                timestamp: 2026-11-09T12:00:00Z
+                status: 404
+                error: Not Found
+                message: El empleado con id E999 no existe
+                path: /empleados/E999
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: No existe un empleado con ese id
+        "500":
+          content:
+            application/json:
+              example:
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: "/empleados/{id}"
+                status: 500
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Error inesperado, sin detalles internos"
+        "503":
+          content:
+            application/json:
+              example:
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: "/empleados/{id}"
+                status: 503
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: PostgreSQL no está disponible
+      security:
+      - bearerAuth: []
+      summary: Consultar empleado por id
+      tags:
+      - Empleados
+    put:
+      description: "Actualiza solo los campos enviados. El id de la ruta no cambia\
+        \ y este método no pasa el estado a RETIRADO. Si cambia departamentoId, se\
+        \ vuelve a validar contra departamentos. Tras persistir publica empleado.actualizado."
+      operationId: actualizar
+      parameters:
+      - description: Identificador del empleado
+        example: E001
+        in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            example:
+              cargo: Líder Técnico
+              area: Tecnología
+            schema:
+              $ref: "#/components/schemas/ActualizarEmpleadoRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                id: E001
+                nombre: Juan
+                apellido: Pérez
+                email: juan.perez@empresa.com
+                numeroEmpleado: EMP-2026-001
+                cargo: Desarrollador Senior
+                area: Tecnología
+                departamentoId: IT
+                fechaIngreso: 2026-02-10
+                estado: ACTIVO
+                fechaRetiro: null
+              schema:
+                $ref: "#/components/schemas/Empleado"
+          description: Empleado actualizado
+        "400":
+          content:
+            application/json:
+              example:
+                timestamp: 2026-11-09T12:00:00Z
+                status: 400
+                error: Bad Request
+                message: El departamento con id XX no existe
+                path: /empleados
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Campo inválido, JSON mal formado o departamento inexistente"
+        "401":
+          content:
+            application/json:
+              example:
+                error: Unauthorized
+                message: No autenticado
+                path: "/empleados/{id}"
+                status: 401
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Sin token, token inválido o expirado (lo responde el API Gateway)"
+        "403":
+          content:
+            application/json:
+              example:
+                error: Forbidden
+                message: No tiene permisos para realizar esta operación
+                path: "/empleados/{id}"
+                status: 403
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "El rol del token no permite la operación: solo ADMIN escribe\
+            \ (lo responde el API Gateway)"
+        "404":
+          content:
+            application/json:
+              example:
+                timestamp: 2026-11-09T12:00:00Z
+                status: 404
+                error: Not Found
+                message: El empleado con id E999 no existe
+                path: /empleados/E999
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: No existe un empleado con ese id
+        "409":
+          content:
+            application/json:
+              example:
+                timestamp: 2026-11-09T12:00:00Z
+                status: 409
+                error: Conflict
+                message: Ya existe un empleado registrado con ese email
+                path: /empleados
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: email o numeroEmpleado ya usados por otro empleado
+        "500":
+          content:
+            application/json:
+              example:
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: "/empleados/{id}"
+                status: 500
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: "Error inesperado, sin detalles internos"
+        "503":
+          content:
+            application/json:
+              example:
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: "/empleados/{id}"
+                status: 503
+                timestamp: 2026-11-09T12:00:00Z
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: "#/components/schemas/ApiError"
+          description: PostgreSQL no está disponible
+      security:
+      - bearerAuth: []
+      summary: Actualizar empleado
+      tags:
+      - Empleados
+  /health:
+    get:
+      description: "Verifica PostgreSQL (database) y RabbitMQ (messageBroker) con\
+        \ un tiempo máximo de 2 s en total: responde en menos de 3 s aunque una dependencia\
+        \ cuelgue. No requiere JWT; Docker Compose lo usa como healthcheck del contenedor."
+      operationId: health
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                status: UP
+                service: empleados-service
+                version: 0.0.1-SNAPSHOT
+                checks:
+                  database: UP
+                  messageBroker: UP
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+          description: Todas las dependencias están UP
+        "503":
+          content:
+            application/json:
+              example:
+                status: DOWN
+                service: empleados-service
+                version: 0.0.1-SNAPSHOT
+                checks:
+                  database: DOWN
+                  messageBroker: UP
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+          description: Alguna dependencia está DOWN o no respondió a tiempo
+      summary: Health check
+      tags:
+      - Salud
+components:
+  schemas:
+    ActualizarEmpleadoRequest:
+      type: object
+      description: Campos opcionales de un empleado. Los omitidos conservan su valor.
+      properties:
+        apellido:
+          type: string
+          example: Pérez
+        area:
+          type: string
+          example: Tecnología
+        cargo:
+          type: string
+          example: Desarrollador Senior
+        departamentoId:
+          type: string
+          example: IT
+        email:
+          type: string
+          format: email
+          example: juan.perez@empresa.com
+        fechaIngreso:
+          type: string
+          format: date
+          example: 2026-03-01
+        nombre:
+          type: string
+          example: Juan Carlos
+        numeroEmpleado:
+          type: string
+          example: EMP-2026-001
+    ApiError:
+      type: object
+      description: Error HTTP uniforme (contrato C3). Sin trazas de pila ni detalles
+        internos.
+      properties:
+        error:
+          type: string
+          description: Frase estándar del código HTTP
+          example: Not Found
+        message:
+          type: string
+          description: Mensaje legible para el cliente
+          example: El empleado con id E999 no existe
+        path:
+          type: string
+          description: Ruta de la petición
+          example: /empleados/E999
+        status:
+          type: integer
+          format: int32
+          description: Código HTTP
+          example: 404
+        timestamp:
+          type: string
+          description: Instante UTC del error (ISO-8601)
+          example: 2026-11-09T12:00:00Z
+        traceId:
+          type: string
+          description: Trace id de OpenTelemetry (32 hex). Se omite si la petición
+            no trae contexto de traza.
+          example: 4bf92f3577b34da6a3ce929d0e0e4736
+      required:
+      - error
+      - message
+      - path
+      - status
+      - timestamp
+    CircuitBreakerStatus:
+      type: object
+      description: Estado observable del Circuit Breaker que protege la llamada a
+        departamentos
+      properties:
+        name:
+          type: string
+          description: Nombre de la instancia del circuito
+          example: departamentos
+        state:
+          type: string
+          description: Estado del circuito
+          example: CLOSED
+    Empleado:
+      type: object
+      description: Empleado registrado en el sistema. El id lo envía el cliente; no
+        se autogenera.
+      properties:
+        apellido:
+          type: string
+          description: Apellido
+          example: Pérez
+          minLength: 1
+        area:
+          type: string
+          description: Área a la que pertenece
+          example: Tecnología
+          minLength: 1
+        cargo:
+          type: string
+          description: Cargo actual
+          example: Desarrollador Senior
+          minLength: 1
+        departamentoId:
+          type: string
+          description: Identificador del departamento asociado
+          example: IT
+          minLength: 1
+        email:
+          type: string
+          format: email
+          description: Correo único
+          example: juan.perez@empresa.com
+          minLength: 1
+        estado:
+          type: string
+          description: En el registro el servicio lo asigna. DELETE lo pasa a RETIRADO;
+            el PUT no cambia este campo.
+          enum:
+          - ACTIVO
+          - PENDIENTE_VALIDACION
+          - EN_VACACIONES
+          - RETIRADO
+          example: ACTIVO
+        fechaIngreso:
+          type: string
+          format: date
+          description: Fecha de ingreso (ISO AAAA-MM-DD)
+          example: 2026-02-10
+        fechaRetiro:
+          type:
+          - string
+          - "null"
+          format: date-time
+          description: Momento UTC del retiro lógico. Nulo mientras el empleado no
+            está retirado.
+          example: 2026-09-26T14:05:00Z
+        id:
+          type: string
+          description: Identificador único
+          example: E001
+          minLength: 1
+        nombre:
+          type: string
+          description: Nombre
+          example: Juan
+          minLength: 1
+        numeroEmpleado:
+          type: string
+          description: Código corporativo único
+          example: EMP-2026-001
+          minLength: 1
+      required:
+      - apellido
+      - area
+      - cargo
+      - departamentoId
+      - email
+      - estado
+      - fechaIngreso
+      - id
+      - nombre
+      - numeroEmpleado
+    HealthResponse:
+      type: object
+      description: Estado de salud (contrato C2). UP solo si todas las dependencias
+        reales están UP.
+      properties:
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+          description: "Estado de cada dependencia: database (PostgreSQL) y messageBroker\
+            \ (RabbitMQ)"
+          example:
+            database: UP
+            messageBroker: UP
+        service:
+          type: string
+          description: Nombre del servicio
+          example: empleados-service
+        status:
+          type: string
+          description: UP o DOWN
+          enum:
+          - UP
+          - DOWN
+          example: UP
+        version:
+          type: string
+          description: Versión del artefacto desplegado
+          example: 0.0.1-SNAPSHOT
+      required:
+      - checks
+      - service
+      - status
+      - version
+    ReconciliacionResultado:
+      type: object
+      description: Resultado de un barrido de reconciliación de empleados PENDIENTE_VALIDACION
+      properties:
+        pendientesEvaluados:
+          type: integer
+          format: int32
+          description: Empleados en PENDIENTE_VALIDACION antes del barrido
+          example: 3
+        reconciliados:
+          type: integer
+          format: int32
+          description: Empleados que pasaron a ACTIVO tras revalidar el departamento
+          example: 2
+    RetirarEmpleadoRequest:
+      type: object
+      description: "Motivo opcional del retiro. Si se omite, el evento publica RENUNCIA."
+      properties:
+        motivo:
+          type: string
+          example: RENUNCIA
+  securitySchemes:
+    bearerAuth:
+      bearerFormat: JWT
+      description: Access JWT emitido por auth-service y validado por el API Gateway
+      scheme: bearer
+      type: http
