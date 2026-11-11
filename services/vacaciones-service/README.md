@@ -193,3 +193,24 @@ pruebas fijan el comportamiento real: igual se acepta, anterior se rechaza.
 `EN_CURSO`). La tabla de casos prueba `seSolapan` y `periodoQueBloquea`, que hoy replican esa
 condición. Si alguien cambia una sin la otra, las unitarias siguen en verde. Solo una prueba de
 integración contra Postgres (o la BDD) detecta esa divergencia.
+
+## Imagen Docker
+
+| Etapa | Base | Contenido |
+|---|---|---|
+| `deps` | `node:22.21.1-alpine3.22` | `npm ci --omit=dev` sobre `package-lock.json` |
+| `runtime` | `node:22.21.1-alpine3.22` | `node`, `curl`, `node_modules` de producción, `package.json`, `migrations/` y `src/` |
+
+- **Usuario:** `app` con UID/GID fijos `10001:10001` (`USER 10001:10001`). Código y migraciones
+  con dueño `root`, de solo lectura para el proceso; el servicio no escribe en disco (las
+  migraciones se aplican con la API programática de node-pg-migrate y su estado vive en la tabla
+  `pgmigrations`).
+- **Por qué multi-stage:** las devDependencies y la caché de npm nunca llegan a `runtime`; ahí
+  además se borran `npm`, `npx`, `corepack` y `yarn`, que no se usan para arrancar. Menos tamaño
+  y menos paquetes que reporte el escáner de imagen.
+- **Por qué no root:** el proceso comprometido no puede reescribir su código, sus migraciones ni
+  instalar paquetes. El UID numérico fijo debe poder leer `/run/secrets/*` (ver
+  `docs/proyecto-final/SEGURIDAD-SECRETOS.md`).
+- **Base fijada:** tag completo de Node y Alpine, para builds reproducibles.
+- `curl` se mantiene porque el healthcheck de Compose ejecuta `curl -f http://localhost:8085/health`.
+- `.dockerignore` deja fuera `node_modules`, `tests`, `reports`, `coverage`, `.env` y `secrets`.
