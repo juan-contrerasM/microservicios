@@ -14,10 +14,10 @@ import (
 //go:embed swagger/openapi.yaml swagger/index.html
 var swaggerFS embed.FS
 
-func serveOpenAPISpec(w http.ResponseWriter, _ *http.Request) {
+func serveOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 	data, err := swaggerFS.ReadFile("swagger/openapi.yaml")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "no se pudo leer la especificación OpenAPI")
+		writeError(w, r, http.StatusInternalServerError, "no se pudo leer la especificación OpenAPI")
 		return
 	}
 	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
@@ -25,10 +25,10 @@ func serveOpenAPISpec(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write(data)
 }
 
-func serveSwaggerUI(w http.ResponseWriter, _ *http.Request) {
+func serveSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	data, err := swaggerFS.ReadFile("swagger/index.html")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "no se pudo leer Swagger UI")
+		writeError(w, r, http.StatusInternalServerError, "no se pudo leer Swagger UI")
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

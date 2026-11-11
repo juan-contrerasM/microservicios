@@ -12,10 +12,10 @@ type Department struct {
 }
 
 var (
-	// ErrAlreadyExists se devuelve al intentar registrar un id ya usado.
+	// ErrAlreadyExists se devuelve al intentar registrar un id ya usado (HTTP 409).
 	// La garantía real es la restricción UNIQUE del esquema (ver
 	// db/migrations/0001_create_departamentos.up.sql); esta comprobación
-	// en código solo sirve para dar un mensaje 400 descriptivo en el caso
+	// en código solo sirve para dar un mensaje 409 descriptivo en el caso
 	// común, no para garantizar la unicidad bajo concurrencia.
 	ErrAlreadyExists = errors.New("ya existe un departamento registrado con ese id")
 	// ErrNotFound se devuelve cuando el departamento no existe.
