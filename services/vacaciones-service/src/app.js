@@ -67,6 +67,14 @@ export function createApp({ servicio, estaSano }) {
 		}
 	});
 
+	app.put('/vacaciones/:id', async (req, res, next) => {
+		try {
+			res.status(200).json(await servicio.actualizar(req.params.id, req.body ?? {}));
+		} catch (error) {
+			next(error);
+		}
+	});
+
 	// Endpoints de desarrollo: disparan a mano la misma transición y el mismo evento que el cron.
 	// El Gateway los deja solo al rol ADMIN; el servicio no repite el RBAC.
 	app.post('/vacaciones/:id/forzar-inicio', async (req, res, next) => {

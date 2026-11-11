@@ -12,11 +12,48 @@ export function crearServicio({ pool, publicar, ahora = () => new Date(), repo =
 		programar: (body) => programar(pool, publicar, ahora, repo, body),
 		obtener: (id) => conCliente(pool, (client) => obtenerOFallar(repo, client, id)),
 		listar: (empleadoId) => conCliente(pool, (client) => repo.listarPeriodos(client, empleadoId)),
+		actualizar: (id, body) => actualizar(pool, ahora, repo, id, body),
 		cancelar: (id) => cancelar(pool, ahora, repo, id),
 		forzarInicio: transiciones.forzarInicio,
 		forzarFin: transiciones.forzarFin,
 		ejecutarCiclo: transiciones.ejecutarCiclo,
 	};
+}
+
+async function actualizar(pool, ahora, repo, id, body) {
+	const fechaInicio = parseFecha(body?.fechaInicio);
+	const fechaFin = parseFecha(body?.fechaFin);
+	const hoy = hoyUtc(ahora());
+	if (!fechaInicio || !fechaFin || fechaFin < fechaInicio) {
+		throw new ErrorApi(400, { mensaje: 'La fechaFin no puede ser anterior a la fechaInicio' });
+	}
+	if (fechaInicio < hoy) {
+		throw new ErrorApi(400, { mensaje: 'La fechaInicio no puede ser anterior a la fecha actual' });
+	}
+	const client = await pool.connect();
+	try {
+		await client.query('BEGIN');
+		const periodo = await obtenerOFallar(repo, client, id);
+		if (periodo.estado !== 'PROGRAMADA' || periodo.fechaInicio <= hoy) {
+			throw new ErrorApi(400, { mensaje: 'Solo se puede modificar un período PROGRAMADA que aún no ha iniciado' });
+		}
+		const conflicto = await repo.buscarConflictoExcluyendo(
+			client, periodo.empleadoId, fechaInicio, fechaFin, id,
+		);
+		if (conflicto) {
+			throw new ErrorApi(400, { mensaje: 'El empleado ya tiene vacaciones en ese rango', periodoEnConflicto: conflicto });
+		}
+		const actualizado = await repo.actualizarPeriodo(client, id, {
+			fechaInicio, fechaFin, diasHabiles: diasHabiles(fechaInicio, fechaFin),
+		});
+		await client.query('COMMIT');
+		return actualizado;
+	} catch (error) {
+		await client.query('ROLLBACK');
+		throw error;
+	} finally {
+		client.release();
+	}
 }
 
 async function programar(pool, publicar, ahora, repo, body) {

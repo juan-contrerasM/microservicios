@@ -37,6 +37,18 @@ export async function buscarConflicto(client, empleadoId, fechaInicio, fechaFin)
 	return resultado.rowCount === 0 ? null : aPeriodo(resultado.rows[0]);
 }
 
+export async function buscarConflictoExcluyendo(client, empleadoId, fechaInicio, fechaFin, idExcluido) {
+	const resultado = await client.query(
+		`SELECT * FROM vacaciones
+		 WHERE empleado_id = $1 AND id <> $4
+		   AND estado IN ('PROGRAMADA', 'EN_CURSO')
+		   AND fecha_inicio <= $3 AND fecha_fin >= $2
+		 LIMIT 1`,
+		[empleadoId, fechaInicio, fechaFin, idExcluido],
+	);
+	return resultado.rowCount === 0 ? null : aPeriodo(resultado.rows[0]);
+}
+
 export async function siguienteNumero(client, anio) {
 	const resultado = await client.query(
 		`INSERT INTO secuencias (anio, ultimo) VALUES ($1, 1)
@@ -76,6 +88,16 @@ export async function marcarCancelada(client, id) {
 	const resultado = await client.query(
 		`UPDATE vacaciones SET estado = 'CANCELADA' WHERE id = $1 RETURNING *`,
 		[id],
+	);
+	return aPeriodo(resultado.rows[0]);
+}
+
+export async function actualizarPeriodo(client, id, periodo) {
+	const resultado = await client.query(
+		`UPDATE vacaciones
+		 SET fecha_inicio = $2, fecha_fin = $3, dias_habiles = $4
+		 WHERE id = $1 RETURNING *`,
+		[id, periodo.fechaInicio, periodo.fechaFin, periodo.diasHabiles],
 	);
 	return aPeriodo(resultado.rows[0]);
 }

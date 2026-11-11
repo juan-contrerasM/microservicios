@@ -142,6 +142,65 @@
           }
         }
       },
+      "put": {
+        "tags": [
+          "Vacaciones"
+        ],
+        "summary": "Modificar las fechas de un período PROGRAMADA que aún no inicia",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActualizarVacaciones"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Período actualizado con sus días hábiles recalculados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Fechas inválidas, período iniciado, estado no modificable o solapamiento",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVacaciones"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorSimple"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Vacaciones"
@@ -366,6 +425,25 @@
             "type": "string",
             "format": "date",
             "example": "2027-03-30"
+          }
+        }
+      },
+      "ActualizarVacaciones": {
+        "type": "object",
+        "required": [
+          "fechaInicio",
+          "fechaFin"
+        ],
+        "properties": {
+          "fechaInicio": {
+            "type": "string",
+            "format": "date",
+            "example": "2027-04-05"
+          },
+          "fechaFin": {
+            "type": "string",
+            "format": "date",
+            "example": "2027-04-16"
           }
         }
       },

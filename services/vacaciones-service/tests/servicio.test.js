@@ -19,6 +19,7 @@ function armar({ empleado = ACTIVO, conflicto = null, periodo = null, publicar }
 	const repo = {
 		obtenerEmpleado: async () => empleado,
 		buscarConflicto: async () => conflicto,
+		buscarConflictoExcluyendo: async () => conflicto,
 		siguienteNumero: async () => 7,
 		insertarPeriodo: async (_c, fila) => {
 			insertados.push(fila);
@@ -26,6 +27,7 @@ function armar({ empleado = ACTIVO, conflicto = null, periodo = null, publicar }
 		},
 		obtenerPeriodo: async () => periodo,
 		marcarCancelada: async () => ({ ...periodo, estado: 'CANCELADA' }),
+		actualizarPeriodo: async (_c, _id, cambios) => ({ ...periodo, ...cambios }),
 		listarPeriodos: async () => [],
 	};
 	const eventos = [];
@@ -152,4 +154,27 @@ test('obtener un id inexistente responde 404', async () => {
 		rechazaCon(404, 'El período de vacaciones con id NO-EXISTE no existe'),
 	);
 	assert.deepEqual(await servicio.listar('E001'), []);
+});
+
+test('actualizar un PROGRAMADA futuro cambia fechas y recalcula días hábiles', async () => {
+	const futuro = { id: 'V-2027-0001', empleadoId: 'E001', estado: 'PROGRAMADA', fechaInicio: '2027-03-15', fechaFin: '2027-03-30' };
+	const { servicio, sentencias } = armar({ periodo: futuro });
+	const actualizado = await servicio.actualizar(futuro.id, { fechaInicio: '2027-04-05', fechaFin: '2027-04-09' });
+	assert.equal(actualizado.fechaInicio, '2027-04-05');
+	assert.equal(actualizado.diasHabiles, 5);
+	assert.deepEqual(sentencias, ['BEGIN', 'COMMIT']);
+});
+
+test('actualizar rechaza períodos iniciados y solapamientos', async () => {
+	const iniciado = { id: 'V-1', empleadoId: 'E001', estado: 'EN_CURSO', fechaInicio: HOY, fechaFin: '2026-10-10' };
+	await assert.rejects(
+		armar({ periodo: iniciado }).servicio.actualizar('V-1', { fechaInicio: '2027-04-05', fechaFin: '2027-04-09' }),
+		rechazaCon(400, 'Solo se puede modificar un período PROGRAMADA que aún no ha iniciado'),
+	);
+	const futuro = { ...iniciado, estado: 'PROGRAMADA', fechaInicio: '2027-03-15' };
+	const conflicto = { id: 'V-2', estado: 'PROGRAMADA', fechaInicio: '2027-04-06', fechaFin: '2027-04-07' };
+	await assert.rejects(
+		armar({ periodo: futuro, conflicto }).servicio.actualizar('V-1', { fechaInicio: '2027-04-05', fechaFin: '2027-04-09' }),
+		(error) => error.status === 400 && error.body.periodoEnConflicto.id === 'V-2',
+	);
 });
