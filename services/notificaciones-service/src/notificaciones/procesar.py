@@ -4,23 +4,9 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from notificaciones.modelos import Destinatario, Notificacion
+from notificaciones.plantillas import renderizar
 
 logger = logging.getLogger("notificaciones")
-
-TIPO_SEGURIDAD = "SEGURIDAD"
-TIPO_CUENTA = "CUENTA"
-TIPO_VACACIONES = "VACACIONES"
-
-ASUNTO_SEGURIDAD = "Seguridad"
-ASUNTO_CUENTA = "Cuenta"
-ASUNTO_PROGRAMADAS = "Vacaciones programadas"
-ASUNTO_INICIADAS = "Vacaciones iniciadas"
-ASUNTO_FINALIZADAS = "Vacaciones finalizadas"
-
-MENSAJE_RESET = "Para establecer o restablecer su contraseña ingrese a https://app.empresa.com/reset?token={token}"
-MENSAJE_DESACTIVADA = "Su cuenta fue desactivada"
-MENSAJE_ACTIVADA = "Bienvenido de regreso. Su cuenta ha sido reactivada"
-
 
 class Resultado(Enum):
     PROCESADO = "procesado"
@@ -79,8 +65,8 @@ def _usuario_creado(repositorio, data: dict, ahora: datetime, enviar) -> Resulta
     email = data.get("email") or _email_guardado(repositorio, empleado_id)
     if not email:
         return _sin_destinatario("usuario.creado", empleado_id)
-    mensaje = MENSAJE_RESET.format(token=data["tokenActivacion"])
-    _registrar(repositorio, TIPO_SEGURIDAD, email, mensaje, ahora, empleado_id, enviar, ASUNTO_SEGURIDAD)
+    tipo, asunto, mensaje = renderizar("usuario.creado", data)
+    _registrar(repositorio, tipo, email, mensaje, ahora, empleado_id, enviar, asunto)
     return Resultado.PROCESADO
 
 
@@ -89,49 +75,48 @@ def _usuario_recuperacion(repositorio, data: dict, ahora: datetime, enviar) -> R
     guardado = repositorio.buscar_destinatario_por_email(email)
     if guardado is None:
         return _sin_destinatario("usuario.recuperacion", email)
-    mensaje = MENSAJE_RESET.format(token=data["tokenRecuperacion"])
-    _registrar(repositorio, TIPO_SEGURIDAD, email, mensaje, ahora, guardado.empleado_id, enviar, ASUNTO_SEGURIDAD)
+    tipo, asunto, mensaje = renderizar("usuario.recuperacion", data)
+    _registrar(repositorio, tipo, email, mensaje, ahora, guardado.empleado_id, enviar, asunto)
     return Resultado.PROCESADO
 
 
 def _cuenta_desactivada(repositorio, data: dict, ahora: datetime, enviar) -> Resultado:
-    return _cuenta(repositorio, "cuenta.desactivada", data, MENSAJE_DESACTIVADA, ahora, enviar)
+    return _cuenta(repositorio, "cuenta.desactivada", data, ahora, enviar)
 
 
 def _cuenta_activada(repositorio, data: dict, ahora: datetime, enviar) -> Resultado:
-    return _cuenta(repositorio, "cuenta.activada", data, MENSAJE_ACTIVADA, ahora, enviar)
+    return _cuenta(repositorio, "cuenta.activada", data, ahora, enviar)
 
 
-def _cuenta(repositorio, evento: str, data: dict, mensaje: str, ahora: datetime, enviar) -> Resultado:
+def _cuenta(repositorio, evento: str, data: dict, ahora: datetime, enviar) -> Resultado:
     empleado_id = data["empleadoId"]
     email = data.get("email") or _email_guardado(repositorio, empleado_id)
     if not email:
         return _sin_destinatario(evento, empleado_id)
-    _registrar(repositorio, TIPO_CUENTA, email, mensaje, ahora, empleado_id, enviar, ASUNTO_CUENTA)
+    tipo, asunto, mensaje = renderizar(evento, data)
+    _registrar(repositorio, tipo, email, mensaje, ahora, empleado_id, enviar, asunto)
     return Resultado.PROCESADO
 
 
 def _vacaciones_programadas(repositorio, data: dict, ahora: datetime, enviar) -> Resultado:
-    mensaje = f"Sus vacaciones del {data.get('fechaInicio')} al {data.get('fechaFin')} han sido programadas"
-    return _vacaciones(repositorio, "vacaciones.programadas", data, mensaje, ASUNTO_PROGRAMADAS, ahora, enviar)
+    return _vacaciones(repositorio, "vacaciones.programadas", data, ahora, enviar)
 
 
 def _vacaciones_iniciadas(repositorio, data: dict, ahora: datetime, enviar) -> Resultado:
-    mensaje = f"Sus vacaciones del {data.get('fechaInicio')} al {data.get('fechaFin')} han iniciado"
-    return _vacaciones(repositorio, "vacaciones.iniciadas", data, mensaje, ASUNTO_INICIADAS, ahora, enviar)
+    return _vacaciones(repositorio, "vacaciones.iniciadas", data, ahora, enviar)
 
 
 def _vacaciones_finalizadas(repositorio, data: dict, ahora: datetime, enviar) -> Resultado:
-    mensaje = f"Sus vacaciones finalizaron el {data.get('fechaFin')}"
-    return _vacaciones(repositorio, "vacaciones.finalizadas", data, mensaje, ASUNTO_FINALIZADAS, ahora, enviar)
+    return _vacaciones(repositorio, "vacaciones.finalizadas", data, ahora, enviar)
 
 
-def _vacaciones(repositorio, evento: str, data: dict, mensaje: str, asunto: str, ahora: datetime, enviar) -> Resultado:
+def _vacaciones(repositorio, evento: str, data: dict, ahora: datetime, enviar) -> Resultado:
     empleado_id = data.get("empleadoId")
     email = data.get("email") or _email_guardado(repositorio, empleado_id)
     if not email:
         return _sin_destinatario(evento, empleado_id)
-    _registrar(repositorio, TIPO_VACACIONES, email, mensaje, ahora, empleado_id, enviar, asunto)
+    tipo, asunto, mensaje = renderizar(evento, data)
+    _registrar(repositorio, tipo, email, mensaje, ahora, empleado_id, enviar, asunto)
     return Resultado.PROCESADO
 
 

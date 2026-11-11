@@ -259,6 +259,7 @@ services:
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       SMTP_FROM: ${SMTP_FROM:-onboarding@empresa.com}
+      NOTIFICACIONES_TEMPLATES_FILE: /app/config/templates.json
       OTEL_SERVICE_NAME: notificaciones-service
       OTEL_EXPORTER_ZIPKIN_ENDPOINT: ${OTEL_EXPORTER_ZIPKIN_ENDPOINT:-http://zipkin:9411/api/v2/spans}
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
@@ -266,6 +267,8 @@ services:
       LOG_FORMAT: json
     ports:
       - "8084:8084"
+    volumes:
+      - ./services/notificaciones-service/config/templates.json:/app/config/templates.json:ro
     secrets:
       - notificaciones_db_password
       - rabbitmq_password

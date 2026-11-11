@@ -1,0 +1,9 @@
+{
+  "usuario.creado": {"tipo": "SEGURIDAD", "asunto": "Seguridad", "mensaje": "Para establecer o restablecer su contraseña ingrese a https://app.empresa.com/reset?token={tokenActivacion}"},
+  "usuario.recuperacion": {"tipo": "SEGURIDAD", "asunto": "Seguridad", "mensaje": "Para establecer o restablecer su contraseña ingrese a https://app.empresa.com/reset?token={tokenRecuperacion}"},
+  "cuenta.desactivada": {"tipo": "CUENTA", "asunto": "Cuenta", "mensaje": "Su cuenta fue desactivada"},
+  "cuenta.activada": {"tipo": "CUENTA", "asunto": "Cuenta", "mensaje": "Bienvenido de regreso. Su cuenta ha sido reactivada"},
+  "vacaciones.programadas": {"tipo": "VACACIONES", "asunto": "Vacaciones programadas", "mensaje": "Sus vacaciones del {fechaInicio} al {fechaFin} han sido programadas"},
+  "vacaciones.iniciadas": {"tipo": "VACACIONES", "asunto": "Vacaciones iniciadas", "mensaje": "Sus vacaciones del {fechaInicio} al {fechaFin} han iniciado"},
+  "vacaciones.finalizadas": {"tipo": "VACACIONES", "asunto": "Vacaciones finalizadas", "mensaje": "Sus vacaciones finalizaron el {fechaFin}"}
+}
