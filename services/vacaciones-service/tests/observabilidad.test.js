@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createApp } from '../src/app.js';
+import { createApp, VERSION } from '../src/app.js';
 
 test('health detallado y metrics Prometheus son públicos', async (t) => {
 	const app = createApp({
@@ -15,7 +15,7 @@ test('health detallado y metrics Prometheus son públicos', async (t) => {
 	const health = await fetch(`${base}/health`);
 	assert.equal(health.status, 200);
 	assert.deepEqual(await health.json(), {
-		status: 'UP', service: 'vacaciones-service',
+		status: 'UP', service: 'vacaciones-service', version: VERSION,
 		checks: { database: 'UP', messageBroker: 'UP' },
 	});
 

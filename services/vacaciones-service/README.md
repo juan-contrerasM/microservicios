@@ -56,13 +56,14 @@ festivos. Del 15 al 30 de marzo de 2027 son 12.
 | Método | Ruta | Respuesta |
 |---|---|---|
 | `POST` | `/vacaciones` | 201, estado `PROGRAMADA`. Después del commit publica el evento. Si el broker falla, el período queda |
-| `GET` | `/vacaciones/{id}` | 200, o 404 `{"mensaje":"El período de vacaciones con id {id} no existe"}` |
+| `GET` | `/vacaciones/{id}` | 200, o 404 con `message` `El período de vacaciones con id {id} no existe` |
 | `GET` | `/vacaciones?empleadoId={id}` | 200, arreglo (vacío si no hay) |
 | `GET` | `/vacaciones` | 200, arreglo |
 | `DELETE` | `/vacaciones/{id}` | 200 y `CANCELADA` si está `PROGRAMADA` y `fechaInicio` es posterior a hoy (UTC). Si no, 400. No publica evento |
-| `POST` | `/vacaciones/{id}/forzar-inicio` | **Desarrollo, solo ADMIN.** 200 y `EN_CURSO`, publica `vacaciones.iniciadas`. 400 `{"mensaje":"Solo se puede forzar el inicio de un período PROGRAMADA"}` si no está `PROGRAMADA`. 404 si no existe |
-| `POST` | `/vacaciones/{id}/forzar-fin` | **Desarrollo, solo ADMIN.** 200 y `FINALIZADA`, publica `vacaciones.finalizadas`. 400 `{"mensaje":"Solo se puede forzar el fin de un período EN_CURSO"}` si no está `EN_CURSO`. 404 si no existe |
-| `GET` | `/health` | 200 solo si PostgreSQL responde y el consumidor está conectado |
+| `POST` | `/vacaciones/{id}/forzar-inicio` | **Desarrollo, solo ADMIN.** 200 y `EN_CURSO`, publica `vacaciones.iniciadas`. 400 `Solo se puede forzar el inicio de un período PROGRAMADA` si no está `PROGRAMADA`. 404 si no existe |
+| `POST` | `/vacaciones/{id}/forzar-fin` | **Desarrollo, solo ADMIN.** 200 y `FINALIZADA`, publica `vacaciones.finalizadas`. 400 `Solo se puede forzar el fin de un período EN_CURSO` si no está `EN_CURSO`. 404 si no existe |
+| `PUT` | `/vacaciones/{id}` | 200 con las fechas nuevas y `diasHabiles` recalculado si está `PROGRAMADA` y no ha iniciado. 400 por fechas, estado o solapamiento; 404 si no existe |
+| `GET` | `/health` | 200 si PostgreSQL responde y el consumidor está conectado; 503 si no, en menos de 3 s |
 | `GET` | `/openapi.json` | Especificación OpenAPI |
 | `GET` | `/swagger/index.html` | Swagger UI. `/swagger` redirige ahí |
 
@@ -87,7 +88,39 @@ El evento, según el catálogo:
 ```
 
 `fechaFin` puede ser igual a `fechaInicio` (un período de un día, el paso 12 del PDF). Una
-`fechaFin` anterior responde 400 `{"mensaje":"La fechaFin no puede ser anterior a la fechaInicio"}`.
+`fechaFin` anterior responde 400 con `message` `La fechaFin no puede ser anterior a la fechaInicio`.
+
+## Contrato HTTP (Fase 5 del proyecto final)
+
+**Health (C2).** `GET /health` responde `{"status","service","version","checks":{"database","messageBroker"}}`;
+`version` sale de `package.json`. Cada check corre con su propio tiempo máximo
+(`HEALTH_TIMEOUT_MS`, 2 s, `salud.js`) y el endpoint tiene una guarda externa de 2,5 s. Por qué:
+`pg` no trae timeout de conexión por defecto, así que con PostgreSQL colgado `SELECT 1` podía no
+resolver nunca y el healthcheck de Docker se quedaba esperando en vez de ver un 503.
+
+**Errores (C3).** `errores.js` (`manejarError` y `rutaNoEncontrada`) responde todo error como
+`{"timestamp","status","error","message","path","traceId"}`. El servicio sigue lanzando
+`ErrorApi(status, {mensaje, ...})`; el middleware pasa `mensaje` a `message` y deja los demás campos
+como extensión (el 400 de solapamiento conserva `periodoEnConflicto`). JSON mal formado → 400,
+ruta inexistente → 404, PostgreSQL caído (`ECONNREFUSED`, SQLSTATE `08xxx`/`57P0x`, timeout del
+pool) → 503, cualquier otra excepción → 500 `Error interno del servidor`. La traza de pila solo va
+al log. `traceId` es el del span activo de OpenTelemetry o, si no hay, el del header `traceparent`.
+Las respuestas 2xx no cambian.
+
+**OpenAPI (E08).** `src/openapi.json` es la fuente que sirve la app (la imagen solo copia `src/`).
+Cada operación documenta ejemplos y todos sus códigos: 400 con un ejemplo por validación (fechas,
+fecha pasada, empleado inexistente, retirado, solapamiento con `periodoEnConflicto`, JSON inválido),
+404, 500 y 503, más 401 y 403 que responde el Gateway. `BearerAuth` es global y `/health` lo anula.
+[`openapi.yaml`](openapi.yaml) es la copia exportada: `npm run openapi:export` la regenera y
+`tests/contrato.test.js` falla si difiere de `GET /openapi.json` o si el contrato no es un OpenAPI
+válido (`@apidevtools/swagger-parser`). `yaml` y `swagger-parser` son `devDependencies`: la imagen
+(`npm ci --omit=dev`) no las instala.
+
+**Migraciones (E05).** `001_inicial.cjs` tiene `down`. La unicidad vive en las PK: período por `id`,
+réplica por `empleado_id`, secuencia por año y evento procesado por `id` (deduplicación). No se
+agrega `UNIQUE` al email de la réplica: la llenan eventos y un `UNIQUE` haría fallar el consumidor
+con eventos desordenados. El solapamiento de períodos lo valida el servicio dentro de la transacción.
+`tests/migraciones.test.js` ejecuta `up` y `down` contra un `pgm` falso, sin PostgreSQL.
 
 ## Scheduler (Reto 5)
 
@@ -169,6 +202,7 @@ instancia ejecute el job (ShedLock, Reto 31). Este reto acepta una sola instanci
 | `BROKER_EXCHANGE` | `onboarding.eventos` | Exchange topic |
 | `BROKER_QUEUE` | `q.vacaciones` | Bindings: `empleado.creado`, `empleado.retirado` |
 | `VACACIONES_CRON` | `* * * * *` | Frecuencia del scheduler (ver arriba) |
+| `HEALTH_TIMEOUT_MS` | `2000` (default) | Tiempo máximo de cada check de `/health` |
 
 El esquema lo aplica node-pg-migrate al arrancar (`migrations/001_inicial.cjs`). El archivo es CommonJS porque el migrador carga las revisiones con `require`. El `down` borra las cuatro tablas.
 
@@ -198,9 +232,11 @@ falla una prueba **o** si la cobertura de líneas baja del 70 % (`--test-coverag
 | `tests/servicio.test.js` | `programar` y `cancelar` con dobles: el camino feliz publica; solapamiento, retirado, inexistente y fechas inválidas responden 400, hacen `ROLLBACK` o ni abren transacción, y **no publican** |
 | `tests/transiciones.test.js` | Scheduler y `forzar-*`: inicia una sola vez aunque el job corra dos veces, no finaliza el día de `fechaFin`, no toca `CANCELADA`, 400/404 fuera de estado, broker caído no revierte |
 | `tests/openapi.test.js` | El contrato declara `BearerAuth` y deja `/health` público |
+| `tests/contrato.test.js` | Health 200/503 y < 3 s con la dependencia colgada, errores C3 (404, 400 con `periodoEnConflicto`, JSON inválido, 503, 500 sin pila), drift y validez del OpenAPI |
+| `tests/migraciones.test.js` | Cada migración exporta `up`/`down`, `down` borra lo que crea `up`, PK donde hay unicidad |
 
 **Qué se mide y qué no.** La cobertura se limita a la lógica de dominio: `validar.js`,
-`fechas.js`, `servicio.js` y `transiciones.js`. Quedan fuera, a propósito, `app.js` (cableado
+`fechas.js`, `servicio.js` y `transiciones.js`, más `errores.js` y `salud.js` (contrato HTTP). Quedan fuera, a propósito, `app.js` (cableado
 de Express: rutas → servicio), `db.js`, `config.js`, `index.js`, `scheduler.js` (solo programa
 `node-cron` y llama a `ejecutarCiclo`, que sí está probado), `consumidor.js`, `publicar.js` y
 `repositorio.js`. Son código de integración: probarlos con dobles solo comprobaría que el doble

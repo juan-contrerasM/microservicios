@@ -1,4 +1,10 @@
 import jwt from 'jsonwebtoken';
+import { enviarError } from './errors.js';
+
+const NO_AUTENTICADO = 'No autenticado';
+const SIN_PERMISO = 'No tiene permisos para realizar esta operación';
+// RFC 6750: un 401 de API Bearer indica el esquema esperado.
+const DESAFIO = { 'WWW-Authenticate': 'Bearer' };
 
 const PUBLICAS = new Set([
 	'POST /auth/login',
@@ -51,7 +57,7 @@ export function exigirAcceso(secret) {
 		const header = req.get('authorization') || '';
 		const match = /^Bearer\s+(\S+)$/i.exec(header);
 		if (!match) {
-			res.status(401).json({ status: 401, mensaje: 'No autenticado' });
+			enviarError(req, res, 401, NO_AUTENTICADO, DESAFIO);
 			return;
 		}
 
@@ -59,15 +65,12 @@ export function exigirAcceso(secret) {
 		try {
 			payload = leerAccessToken(match[1], secret);
 		} catch {
-			res.status(401).json({ status: 401, mensaje: 'No autenticado' });
+			enviarError(req, res, 401, NO_AUTENTICADO, DESAFIO);
 			return;
 		}
 
 		if (!autorizado(req.method, req.path, payload)) {
-			res.status(403).json({
-				status: 403,
-				mensaje: 'No tiene permisos para realizar esta operación',
-			});
+			enviarError(req, res, 403, SIN_PERMISO);
 			return;
 		}
 

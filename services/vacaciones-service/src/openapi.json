@@ -3,7 +3,7 @@
   "info": {
     "title": "vacaciones-service",
     "version": "1.0.0",
-    "description": "Períodos de vacaciones. El empleado se valida contra la réplica local (empleado.creado y empleado.retirado), no con un GET a empleados. POST publica vacaciones.programadas después del commit. DELETE cancela y no publica evento. Un scheduler (node-cron, VACACIONES_CRON) pasa PROGRAMADA → EN_CURSO al llegar fechaInicio y EN_CURSO → FINALIZADA cuando fechaFin ya pasó, publicando vacaciones.iniciadas y vacaciones.finalizadas."
+    "description": "Períodos de vacaciones. El empleado se valida contra la réplica local (empleado.creado y empleado.retirado), no con un GET a empleados. POST publica vacaciones.programadas después del commit. DELETE cancela y no publica evento. Un scheduler (node-cron, VACACIONES_CRON) pasa PROGRAMADA → EN_CURSO al llegar fechaInicio y EN_CURSO → FINALIZADA cuando fechaFin ya pasó, publicando vacaciones.iniciadas y vacaciones.finalizadas. Errores según el contrato C3: {timestamp, status, error, message, path, traceId}; el 400 por solapamiento agrega periodoEnConflicto. 401 y 403 los responde el API Gateway, que valida el JWT y el rol antes de llegar al servicio."
   },
   "security": [
     {
@@ -43,7 +43,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Arreglo de períodos",
+            "description": "Arreglo de períodos (vacío si no hay)",
             "content": {
               "application/json": {
                 "schema": {
@@ -51,9 +51,29 @@
                   "items": {
                     "$ref": "#/components/schemas/Periodo"
                   }
-                }
+                },
+                "example": [
+                  {
+                    "id": "V-2027-0001",
+                    "empleadoId": "E001",
+                    "fechaInicio": "2027-03-15",
+                    "fechaFin": "2027-03-30",
+                    "estado": "PROGRAMADA",
+                    "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                    "diasHabiles": 12
+                  }
+                ]
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/BaseNoDisponible"
           }
         }
       },
@@ -80,24 +100,122 @@
         },
         "responses": {
           "201": {
-            "description": "Período creado",
+            "description": "Período creado en estado PROGRAMADA",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "PROGRAMADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
                 }
               }
             }
           },
           "400": {
-            "description": "Fecha inválida, fechaFin anterior a fechaInicio, solapamiento, empleado inexistente o retirado. fechaFin igual a fechaInicio es válido (período de un día).",
+            "description": "Validación de negocio",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorVacaciones"
+                  "$ref": "#/components/schemas/ErrorConflicto"
+                },
+                "examples": {
+                  "fechas": {
+                    "summary": "fechaFin anterior a fechaInicio (o fecha ausente / inválida)",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "La fechaFin no puede ser anterior a la fechaInicio",
+                      "path": "/vacaciones",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                    }
+                  },
+                  "pasada": {
+                    "summary": "fechaInicio en el pasado",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "La fechaInicio no puede ser anterior a la fecha actual",
+                      "path": "/vacaciones",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                    }
+                  },
+                  "empleadoInexistente": {
+                    "summary": "Empleado que no está en la réplica local",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "El empleado con id E999 no existe",
+                      "path": "/vacaciones",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                    }
+                  },
+                  "empleadoRetirado": {
+                    "summary": "Empleado RETIRADO",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "El empleado con id E001 está retirado",
+                      "path": "/vacaciones",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                    }
+                  },
+                  "solapamiento": {
+                    "summary": "Período en conflicto con otro PROGRAMADA o EN_CURSO",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "El empleado ya tiene un período que se solapa con las fechas solicitadas",
+                      "path": "/vacaciones",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+                      "periodoEnConflicto": {
+                        "id": "V-2027-0001",
+                        "empleadoId": "E001",
+                        "fechaInicio": "2027-03-15",
+                        "fechaFin": "2027-03-30",
+                        "estado": "PROGRAMADA",
+                        "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                        "diasHabiles": 12
+                      }
+                    }
+                  },
+                  "json": {
+                    "summary": "Cuerpo que no es JSON",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "El cuerpo de la petición no es JSON válido",
+                      "path": "/vacaciones",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                    }
+                  }
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/BaseNoDisponible"
           }
         }
       }
@@ -126,19 +244,30 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "PROGRAMADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
                 }
               }
             }
           },
           "404": {
-            "description": "No existe",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorSimple"
-                }
-              }
-            }
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/BaseNoDisponible"
           }
         }
       },
@@ -164,6 +293,10 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ActualizarVacaciones"
+              },
+              "example": {
+                "fechaInicio": "2027-04-05",
+                "fechaFin": "2027-04-16"
               }
             }
           }
@@ -175,29 +308,109 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-04-05",
+                  "fechaFin": "2027-04-16",
+                  "estado": "PROGRAMADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 10
                 }
               }
             }
           },
           "400": {
-            "description": "Fechas inválidas, período iniciado, estado no modificable o solapamiento",
+            "description": "Validación de negocio",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorVacaciones"
+                  "$ref": "#/components/schemas/ErrorConflicto"
+                },
+                "examples": {
+                  "fechas": {
+                    "summary": "fechaFin anterior a fechaInicio (o fecha ausente / inválida)",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "La fechaFin no puede ser anterior a la fechaInicio",
+                      "path": "/vacaciones/V-2027-0001",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                    }
+                  },
+                  "pasada": {
+                    "summary": "fechaInicio en el pasado",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "La fechaInicio no puede ser anterior a la fecha actual",
+                      "path": "/vacaciones/V-2027-0001",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                    }
+                  },
+                  "estado": {
+                    "summary": "Período que ya inició o no está PROGRAMADA",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "Solo se puede modificar un período PROGRAMADA que aún no ha iniciado",
+                      "path": "/vacaciones/V-2027-0001",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                    }
+                  },
+                  "solapamiento": {
+                    "summary": "Las fechas nuevas chocan con otro período del empleado",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "El empleado ya tiene vacaciones en ese rango",
+                      "path": "/vacaciones/V-2027-0001",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+                      "periodoEnConflicto": {
+                        "id": "V-2027-0002",
+                        "empleadoId": "E001",
+                        "fechaInicio": "2027-03-15",
+                        "fechaFin": "2027-03-30",
+                        "estado": "PROGRAMADA",
+                        "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                        "diasHabiles": 12
+                      }
+                    }
+                  },
+                  "json": {
+                    "summary": "Cuerpo que no es JSON",
+                    "value": {
+                      "timestamp": "2026-11-09T12:00:00.000Z",
+                      "status": 400,
+                      "error": "Bad Request",
+                      "message": "El cuerpo de la petición no es JSON válido",
+                      "path": "/vacaciones/V-2027-0001",
+                      "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                    }
+                  }
                 }
               }
             }
           },
           "404": {
-            "description": "No existe",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorSimple"
-                }
-              }
-            }
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/BaseNoDisponible"
           }
         }
       },
@@ -225,6 +438,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "CANCELADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
                 }
               }
             }
@@ -234,20 +456,33 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorSimple"
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "timestamp": "2026-11-09T12:00:00.000Z",
+                  "status": 400,
+                  "error": "Bad Request",
+                  "message": "Solo se puede cancelar un período PROGRAMADA que aún no ha iniciado",
+                  "path": "/vacaciones/V-2027-0001",
+                  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
                 }
               }
             }
           },
           "404": {
-            "description": "No existe",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorSimple"
-                }
-              }
-            }
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/BaseNoDisponible"
           }
         }
       }
@@ -277,6 +512,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "EN_CURSO",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
                 }
               }
             }
@@ -286,23 +530,33 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorSimple"
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
-                  "mensaje": "Solo se puede forzar el inicio de un período PROGRAMADA"
+                  "timestamp": "2026-11-09T12:00:00.000Z",
+                  "status": 400,
+                  "error": "Bad Request",
+                  "message": "Solo se puede forzar el inicio de un período PROGRAMADA",
+                  "path": "/vacaciones/V-2027-0001/forzar-inicio",
+                  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
                 }
               }
             }
           },
           "404": {
-            "description": "No existe",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorSimple"
-                }
-              }
-            }
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/BaseNoDisponible"
           }
         }
       }
@@ -332,6 +586,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "FINALIZADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
                 }
               }
             }
@@ -341,23 +604,33 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorSimple"
+                  "$ref": "#/components/schemas/Error"
                 },
                 "example": {
-                  "mensaje": "Solo se puede forzar el fin de un período EN_CURSO"
+                  "timestamp": "2026-11-09T12:00:00.000Z",
+                  "status": 400,
+                  "error": "Bad Request",
+                  "message": "Solo se puede forzar el fin de un período EN_CURSO",
+                  "path": "/vacaciones/V-2027-0001/forzar-fin",
+                  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
                 }
               }
             }
           },
           "404": {
-            "description": "No existe",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorSimple"
-                }
-              }
-            }
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/BaseNoDisponible"
           }
         }
       }
@@ -376,21 +649,40 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Health"
+                },
+                "example": {
+                  "status": "UP",
+                  "service": "vacaciones-service",
+                  "version": "1.0.0",
+                  "checks": {
+                    "database": "UP",
+                    "messageBroker": "UP"
+                  }
                 }
               }
             }
           },
           "503": {
-            "description": "DOWN",
+            "description": "Alguna dependencia está DOWN",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Health"
+                },
+                "example": {
+                  "status": "DOWN",
+                  "service": "vacaciones-service",
+                  "version": "1.0.0",
+                  "checks": {
+                    "database": "DOWN",
+                    "messageBroker": "UP"
+                  }
                 }
               }
             }
           }
-        }
+        },
+        "description": "Cada check tiene un tiempo máximo (HEALTH_TIMEOUT_MS, 2 s): responde en menos de 3 s aunque la base cuelgue."
       }
     }
   },
@@ -484,37 +776,214 @@
             "type": "integer",
             "example": 12
           }
-        }
-      },
-      "ErrorSimple": {
-        "type": "object",
-        "properties": {
-          "mensaje": {
-            "type": "string"
-          }
-        }
-      },
-      "ErrorVacaciones": {
-        "type": "object",
-        "properties": {
-          "mensaje": {
-            "type": "string"
-          },
-          "periodoEnConflicto": {
-            "$ref": "#/components/schemas/Periodo"
-          }
+        },
+        "example": {
+          "id": "V-2027-0001",
+          "empleadoId": "E001",
+          "fechaInicio": "2027-03-15",
+          "fechaFin": "2027-03-30",
+          "estado": "PROGRAMADA",
+          "fechaCreacion": "2026-11-09T12:00:00.000Z",
+          "diasHabiles": 12
         }
       },
       "Health": {
         "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version",
+          "checks"
+        ],
         "properties": {
           "status": {
             "type": "string",
+            "enum": [
+              "UP",
+              "DOWN"
+            ],
             "example": "UP"
           },
           "service": {
             "type": "string",
             "example": "vacaciones-service"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          },
+          "checks": {
+            "type": "object",
+            "required": [
+              "database",
+              "messageBroker"
+            ],
+            "properties": {
+              "database": {
+                "type": "string",
+                "enum": [
+                  "UP",
+                  "DOWN"
+                ],
+                "example": "UP"
+              },
+              "messageBroker": {
+                "type": "string",
+                "enum": [
+                  "UP",
+                  "DOWN"
+                ],
+                "example": "UP"
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "description": "Error uniforme del sistema (contrato C3). Sin trazas de pila ni detalles internos.",
+        "required": [
+          "timestamp",
+          "status",
+          "error",
+          "message",
+          "path",
+          "traceId"
+        ],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-09T12:00:00.000Z"
+          },
+          "status": {
+            "type": "integer",
+            "example": 404
+          },
+          "error": {
+            "type": "string",
+            "example": "Not Found"
+          },
+          "message": {
+            "type": "string",
+            "example": "El período de vacaciones con id V-2027-0001 no existe"
+          },
+          "path": {
+            "type": "string",
+            "example": "/vacaciones/V-2027-0001"
+          },
+          "traceId": {
+            "type": "string",
+            "nullable": true,
+            "example": "4bf92f3577b34da6a3ce929d0e0e4736"
+          }
+        }
+      },
+      "ErrorConflicto": {
+        "description": "Error C3 del solapamiento: agrega el período que bloquea las fechas pedidas.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Error"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "periodoEnConflicto": {
+                "$ref": "#/components/schemas/Periodo"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "responses": {
+      "NoAutenticado": {
+        "description": "Sin token o token inválido. Lo responde el API Gateway",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 401,
+              "error": "Unauthorized",
+              "message": "No autenticado",
+              "path": "/vacaciones",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        }
+      },
+      "SinPermiso": {
+        "description": "El rol USER solo puede leer. Lo responde el API Gateway",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 403,
+              "error": "Forbidden",
+              "message": "No tiene permisos para realizar esta operación",
+              "path": "/vacaciones",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        }
+      },
+      "NoEncontrado": {
+        "description": "El período no existe",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 404,
+              "error": "Not Found",
+              "message": "El período de vacaciones con id V-2027-0001 no existe",
+              "path": "/vacaciones/V-2027-0001",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        }
+      },
+      "ErrorInterno": {
+        "description": "Error inesperado",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 500,
+              "error": "Internal Server Error",
+              "message": "Error interno del servidor",
+              "path": "/vacaciones",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        }
+      },
+      "BaseNoDisponible": {
+        "description": "PostgreSQL no responde",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 503,
+              "error": "Service Unavailable",
+              "message": "La base de datos no está disponible",
+              "path": "/vacaciones",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
           }
         }
       }

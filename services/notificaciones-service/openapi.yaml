@@ -1,0 +1,283 @@
+openapi: 3.1.0
+info:
+  title: notificaciones-service
+  description: Historial de notificaciones del onboarding. Consume la cola q.notificaciones y expone consultas de solo lectura.
+    Los errores siguen el contrato C3 (timestamp, status, error, message, path, traceId).
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      tags:
+      - Salud
+      summary: Health check contra PostgreSQL y el consumidor de RabbitMQ
+      description: 200 si PostgreSQL responde y el consumidor está conectado; 503 si alguno está DOWN. El check de base tiene
+        un tiempo máximo, así que responde en menos de 3 s aunque la base cuelgue.
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRespuesta'
+        '503':
+          description: Alguna dependencia está DOWN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRespuesta'
+              example:
+                status: DOWN
+                service: notificaciones-service
+                version: 1.0.0
+                checks:
+                  database: DOWN
+                  messageBroker: UP
+  /notificaciones:
+    get:
+      tags:
+      - Notificaciones
+      summary: Listar notificaciones. Arreglo vacío si no hay.
+      operationId: listar_notificaciones_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/NotificacionRespuesta'
+                type: array
+                title: Response Listar Notificaciones Get
+        '401':
+          description: Sin token o token inválido. Lo responde el API Gateway antes de llegar al servicio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 401
+                error: Unauthorized
+                message: No autenticado
+                path: /notificaciones
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '500':
+          description: Error inesperado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 500
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /notificaciones
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '503':
+          description: PostgreSQL no disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 503
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: /notificaciones
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+      security:
+      - BearerAuth: []
+  /notificaciones/{empleado_id}:
+    get:
+      tags:
+      - Notificaciones
+      summary: Listar las notificaciones de un empleado. Vacío no es 404.
+      operationId: listar_de_empleado_notificaciones__empleado_id__get
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: empleado_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Empleado Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificacionRespuesta'
+                title: Response Listar De Empleado Notificaciones  Empleado Id  Get
+        '401':
+          description: Sin token o token inválido. Lo responde el API Gateway antes de llegar al servicio
+          content:
+            application/json:
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 401
+                error: Unauthorized
+                message: No autenticado
+                path: /notificaciones/E001
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+        '500':
+          description: Error inesperado
+          content:
+            application/json:
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 500
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /notificaciones/E001
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+        '503':
+          description: PostgreSQL no disponible
+          content:
+            application/json:
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 503
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: /notificaciones/E001
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+components:
+  schemas:
+    ChecksSalud:
+      properties:
+        database:
+          type: string
+          title: Database
+          examples:
+          - UP
+        messageBroker:
+          type: string
+          title: Messagebroker
+          examples:
+          - UP
+      type: object
+      required:
+      - database
+      - messageBroker
+      title: ChecksSalud
+    ErrorRespuesta:
+      properties:
+        timestamp:
+          type: string
+          title: Timestamp
+        status:
+          type: integer
+          title: Status
+        error:
+          type: string
+          title: Error
+        message:
+          type: string
+          title: Message
+        path:
+          type: string
+          title: Path
+        traceId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Traceid
+      type: object
+      required:
+      - timestamp
+      - status
+      - error
+      - message
+      - path
+      title: ErrorRespuesta
+      description: Cuerpo de error común a los siete servicios.
+      examples:
+      - error: Not Found
+        message: Recurso no encontrado
+        path: /notificaciones/E001/x
+        status: 404
+        timestamp: '2026-11-09T12:00:00.000Z'
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    HealthRespuesta:
+      properties:
+        status:
+          type: string
+          title: Status
+        service:
+          type: string
+          title: Service
+        version:
+          type: string
+          title: Version
+        checks:
+          $ref: '#/components/schemas/ChecksSalud'
+      type: object
+      required:
+      - status
+      - service
+      - version
+      - checks
+      title: HealthRespuesta
+      examples:
+      - checks:
+          database: UP
+          messageBroker: UP
+        service: notificaciones-service
+        status: UP
+        version: 1.0.0
+    NotificacionRespuesta:
+      properties:
+        id:
+          type: string
+          title: Id
+        tipo:
+          type: string
+          title: Tipo
+          description: 'Tipo definido por la plantilla del evento: SEGURIDAD, CUENTA o VACACIONES'
+        destinatario:
+          type: string
+          title: Destinatario
+        mensaje:
+          type: string
+          title: Mensaje
+        fechaEnvio:
+          type: string
+          format: date-time
+          title: Fechaenvio
+        empleadoId:
+          type: string
+          title: Empleadoid
+      type: object
+      required:
+      - id
+      - tipo
+      - destinatario
+      - mensaje
+      - fechaEnvio
+      - empleadoId
+      title: NotificacionRespuesta
+      examples:
+      - destinatario: ana.perez@empresa.com
+        empleadoId: E001
+        fechaEnvio: '2026-11-09T12:00:01Z'
+        id: 0b8f6c1e-3c1a-4f7e-9d2a-2f0c5d1e7a10
+        mensaje: Sus vacaciones del 2027-03-15 al 2027-03-30 han sido programadas
+        tipo: VACACIONES
+  securitySchemes:
+    BearerAuth:
+      type: http
+      description: Access JWT validado por el API Gateway
+      scheme: bearer

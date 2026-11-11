@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     auth_admin_usuario: str = "admin"
     auth_admin_email: str = "admin@empresa.com"
     auth_admin_password: str = ""
+    # Tiempo máximo por check de /health (C2: la respuesta debe llegar en < 3 s).
+    health_timeout_seconds: float = 2.0
 
     def amqp_url(self) -> str:
         partes = urlsplit(self.broker_url)

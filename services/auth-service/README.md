@@ -39,7 +39,7 @@ El Gateway no recorta el prefijo. Este proceso escucha las rutas ya con `/auth`.
 | `POST` | `/auth/recover-password` | 200 con el mismo mensaje exista o no el correo. Publica `usuario.recuperacion` solo si la cuenta está pendiente o activa |
 | `POST` | `/auth/reset-password` | 200 `Contraseña actualizada`. 400 si el token no vale, si la clave no cumple la política, o si el estado no admite el cambio |
 | `POST` | `/auth/change-password` | Exige access token. 200, o 400 si la clave actual no coincide o la nueva no cumple la política |
-| `GET` | `/health` | 200 solo si PostgreSQL responde y el consumidor está conectado. Lo usa Docker, no el Gateway |
+| `GET` | `/health` | 200 solo si PostgreSQL responde y el consumidor está conectado; 503 si no, en menos de 3 s. Lo usa Docker, no el Gateway |
 | `GET` | `/docs` | Swagger de FastAPI. `/swagger` redirige aquí |
 
 `usuario` del login es el email del empleado, o `admin` en la semilla. `sub` del access token
@@ -49,6 +49,47 @@ La política de contraseña es mínimo 8 caracteres, una mayúscula, una minúsc
 
 El commit de la cuenta va primero. Si el publish falla, la fila queda y el error queda en el
 log. Un `id` de evento ya visto se confirma sin repetir el efecto.
+
+## Contrato HTTP (Fase 5 del proyecto final)
+
+**Health (C2).** `GET /health` responde
+`{"status","service","version","checks":{"database","messageBroker"}}`: 200 si ambos están `UP`,
+503 si alguno está `DOWN`. El `SELECT 1` corre en un hilo aparte con tiempo máximo
+`HEALTH_TIMEOUT_SECONDS` (2 s por defecto, `salud.py`) y el endpoint tiene además una guarda
+externa de 2,5 s. Por qué: con PostgreSQL colgado (TCP sin respuesta) el driver puede tardar
+minutos en rendirse; Docker y el balanceador necesitan un 503 rápido, no un timeout propio.
+
+**Errores (C3).** Todo error sale como
+`{"timestamp","status","error","message","path","traceId"}` (`errores.py`):
+
+| Origen | Código |
+|---|---|
+| Cuerpo ausente, campo faltante o JSON mal formado (`RequestValidationError`) | 400 (no el 422 por defecto de FastAPI) |
+| Credenciales inválidas, cuenta no activa, token ausente o inválido en `change-password` | 401 con `WWW-Authenticate: Bearer` |
+| Ruta inexistente (incluido `/auth/register`) / método no permitido | 404 / 405 |
+| PostgreSQL caído (`OperationalError`, `InterfaceError`, timeout del pool) | 503 |
+| Cualquier otra excepción | 500 `Error interno del servidor` |
+
+`traceId` sale del span activo de OpenTelemetry; si no hay span, del header `traceparent`. Nunca
+se devuelve la traza de pila ni el mensaje del driver (host, usuario, SQL): eso queda solo en el
+log, correlacionable por el mismo `traceId`. Las respuestas 200 conservan `{"mensaje": ...}`.
+
+**OpenAPI (E08).** FastAPI genera el contrato desde el código; cada operación declara su modelo
+de respuesta, ejemplos y todos los códigos que devuelve (sin el 422, que se quita en
+`ajustar_openapi`). `BearerAuth` solo aparece en `/auth/change-password`; `/health`, `login`,
+`recover-password` y `reset-password` son públicos. Se conserva el nombre `BearerAuth` (y no
+`bearerAuth`) porque es el que usan los otros seis contratos del sistema.
+
+La copia versionada es [`openapi.yaml`](openapi.yaml). Se regenera con
+`PYTHONPATH=src python -m auth_service.contrato` (o `--check` para solo verificar).
+`tests/test_contrato_http.py` falla si el YAML difiere de lo que sirve `GET /openapi.json`, así
+que un endpoint nuevo obliga a regenerarlo en el mismo commit. Swagger UI interactiva: `/docs`
+(o `/swagger`), y agregada en el Gateway en `GET /swagger`.
+
+**Migraciones (E05).** `001_inicial` tiene `downgrade` (borra índice y tablas) y declara la
+unicidad en el esquema: `empleado_id` es PK (el usuario del login) y `ix_cuentas_email` es
+`UNIQUE`. `tests/test_migraciones.py` genera el DDL de ida y vuelta con Alembic en modo offline
+(`--sql`), sin PostgreSQL, y verifica ambas cosas.
 
 ## Cola
 
@@ -107,6 +148,7 @@ En este servicio:
 | `BROKER_EXCHANGE` | `onboarding.eventos` | Exchange topic |
 | `BROKER_QUEUE` | `q.auth` | Cola durable |
 | `CONSUMER_DISABLED` | `false` | `true` solo en pruebas. En ese caso `/health` no exige la cola |
+| `HEALTH_TIMEOUT_SECONDS` | `2.0` | Tiempo máximo del check de base en `/health` |
 
 El esquema lo crea Alembic al arrancar (`alembic upgrade head`). El downgrade borra las dos tablas.
 

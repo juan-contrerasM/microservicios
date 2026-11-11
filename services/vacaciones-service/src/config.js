@@ -32,5 +32,7 @@ export function loadConfig(env = process.env) {
 		queue: env.BROKER_QUEUE || 'q.vacaciones',
 		// Por defecto cada minuto, para probar en desarrollo sin esperar un día.
 		cron: env.VACACIONES_CRON || '* * * * *',
+		// Tiempo máximo por check de /health (C2: la respuesta debe llegar en < 3 s).
+		healthTimeoutMs: Number(env.HEALTH_TIMEOUT_MS || 2_000),
 	};
 }

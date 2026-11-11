@@ -46,7 +46,7 @@ Then('eventualmente el retiro bloquea el inicio de sesión', async function () {
       auth: false,
       body: { usuario: this.empleado.email, contrasena: this.entorno.userPassword },
     });
-    return respuesta.status === 401 && respuesta.cuerpo?.mensaje === 'La cuenta no está activa';
+    return respuesta.status === 401 && (respuesta.cuerpo?.message ?? respuesta.cuerpo?.mensaje) === 'La cuenta no está activa';
   }, {
     intentos: this.entorno.pollIntentos,
     intervaloMs: this.entorno.pollIntervaloMs,

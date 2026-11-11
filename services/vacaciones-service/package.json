@@ -9,8 +9,9 @@
   },
   "scripts": {
     "start": "node --import ./src/telemetria.js src/index.js",
+    "openapi:export": "node scripts/exportar-openapi.js",
     "pretest": "node -e \"require('node:fs').mkdirSync('reports',{recursive:true})\"",
-    "test": "node --test --experimental-test-coverage --test-coverage-include=src/validar.js --test-coverage-include=src/fechas.js --test-coverage-include=src/transiciones.js --test-coverage-include=src/servicio.js --test-coverage-include=src/consumidor.js --test-coverage-include=src/publicar.js --test-coverage-lines=70 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
+    "test": "node --test --experimental-test-coverage --test-coverage-include=src/validar.js --test-coverage-include=src/fechas.js --test-coverage-include=src/transiciones.js --test-coverage-include=src/servicio.js --test-coverage-include=src/consumidor.js --test-coverage-include=src/publicar.js --test-coverage-include=src/errores.js --test-coverage-include=src/salud.js --test-coverage-lines=70 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
@@ -23,5 +24,9 @@
     "node-pg-migrate": "^7.9.1",
     "pg": "^8.13.1",
     "prom-client": "^15.1.3"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "10.1.1",
+    "yaml": "2.6.1"
   }
 }

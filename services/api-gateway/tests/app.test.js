@@ -3,7 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
-import { createApp } from '../src/app.js';
+import { createApp, VERSION } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 
 const SECRET = 'secreto-de-prueba';
@@ -136,7 +136,7 @@ describe('api-gateway', () => {
 
 	it('GET /health es propio y no depende de los backends', async () => {
 		const res = await request(app).get('/health').expect(200);
-		assert.deepEqual(res.body, { status: 'UP', service: 'api-gateway', checks: { process: 'UP' } });
+		assert.deepEqual(res.body, { status: 'UP', service: 'api-gateway', version: VERSION, checks: { process: 'UP' } });
 		assert.match(res.headers['content-type'], /json/);
 	});
 
@@ -225,8 +225,9 @@ describe('api-gateway destino caído', () => {
 			.expect(503);
 		assert.match(res.headers['content-type'], /json/);
 		assert.equal(res.body.status, 503);
-		assert.equal(res.body.servicio, 'departamentos-service');
-		assert.equal(res.body.mensaje, 'El servicio de departamentos no está disponible');
+		assert.equal(res.body.error, 'Service Unavailable');
+		assert.equal(res.body.path, '/departamentos');
+		assert.equal(res.body.message, 'El servicio de departamentos no está disponible');
 		assert.doesNotMatch(res.text, /<html/i);
 	});
 
@@ -246,8 +247,7 @@ describe('api-gateway destino caído', () => {
 			.send({ id: 'E001' })
 			.expect(503);
 
-		assert.equal(res.body.servicio, 'empleados-service');
-		assert.equal(res.body.mensaje, 'El servicio de empleados no está disponible');
+		assert.equal(res.body.message, 'El servicio de empleados no está disponible');
 	});
 
 	it('POST /auth/login responde 503 identificando auth-service', async () => {
@@ -265,8 +265,7 @@ describe('api-gateway destino caído', () => {
 			.send({ usuario: 'admin', contrasena: 'Admin1234!' })
 			.expect(503);
 
-		assert.equal(res.body.servicio, 'auth-service');
-		assert.equal(res.body.mensaje, 'El servicio de auth no está disponible');
+		assert.equal(res.body.message, 'El servicio de auth no está disponible');
 	});
 
 	it('GET /health sigue UP cuando los destinos no responden', async () => {
@@ -320,7 +319,10 @@ describe('api-gateway JWT y RBAC', () => {
 	it('sin header responde 401 y no proxea', async () => {
 		const antes = empleadosHits;
 		const res = await request(app).get('/empleados').expect(401);
-		assert.deepEqual(res.body, { status: 401, mensaje: 'No autenticado' });
+		assert.equal(res.body.status, 401);
+		assert.equal(res.body.message, 'No autenticado');
+		assert.equal(res.body.path, '/empleados');
+		assert.equal(res.headers['www-authenticate'], 'Bearer');
 		assert.equal(empleadosHits, antes);
 	});
 
@@ -331,7 +333,7 @@ describe('api-gateway JWT y RBAC', () => {
 			.get('/empleados')
 			.set('Authorization', `Bearer ${alterado}`)
 			.expect(401);
-		assert.equal(res.body.mensaje, 'No autenticado');
+		assert.equal(res.body.message, 'No autenticado');
 	});
 
 	it('un token de reset no sirve como Bearer', async () => {
@@ -340,7 +342,7 @@ describe('api-gateway JWT y RBAC', () => {
 			.get('/empleados')
 			.set('Authorization', `Bearer ${reset}`)
 			.expect(401);
-		assert.equal(res.body.mensaje, 'No autenticado');
+		assert.equal(res.body.message, 'No autenticado');
 	});
 
 	it('USER no puede borrar un empleado', async () => {
@@ -349,10 +351,9 @@ describe('api-gateway JWT y RBAC', () => {
 			.delete('/empleados/E001')
 			.set('Authorization', userBearer)
 			.expect(403);
-		assert.deepEqual(res.body, {
-			status: 403,
-			mensaje: 'No tiene permisos para realizar esta operación',
-		});
+		assert.equal(res.body.status, 403);
+		assert.equal(res.body.error, 'Forbidden');
+		assert.equal(res.body.message, 'No tiene permisos para realizar esta operación');
 		assert.equal(empleadosHits, antes);
 	});
 

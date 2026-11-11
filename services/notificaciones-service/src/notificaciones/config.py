@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     smtp_host: str = ""
     smtp_port: int = 1025
     smtp_from: str = "onboarding@empresa.com"
+    # Tiempo máximo por check de /health (C2: la respuesta debe llegar en < 3 s).
+    health_timeout_seconds: float = 2.0
 
     def amqp_url(self) -> str:
         partes = urlsplit(self.broker_url)

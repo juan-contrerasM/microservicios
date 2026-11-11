@@ -3,12 +3,14 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exigirAcceso } from './auth.js';
+import { manejarError, rutaNoEncontrada } from './errors.js';
 import { backendProxy } from './proxy.js';
 import { metricsHandler, metricsMiddleware } from './metricas.js';
+import { swaggerRouter } from './swagger.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const openapi = readFileSync(join(dir, 'openapi.json'), 'utf8');
-const swaggerHtml = readFileSync(join(dir, 'swagger.html'), 'utf8');
+export const VERSION = JSON.parse(readFileSync(join(dir, '..', 'package.json'), 'utf8')).version;
 
 export function createApp({
 	empleadosUrl,
@@ -19,6 +21,9 @@ export function createApp({
 	authUrl,
 	jwtSecret,
 	proxyTimeoutMs = 35_000,
+	rutasOpenapi = {},
+	swaggerTimeoutMs = 3_000,
+	fetchImpl = fetch,
 }) {
 	if (!jwtSecret) {
 		throw new Error('La variable de entorno JWT_SECRET es obligatoria');
@@ -32,21 +37,30 @@ export function createApp({
 	app.use(metricsMiddleware);
 	app.get('/metrics', metricsHandler);
 
+	// Health propio del proceso, sin ping a los backends: si un destino cae, el borde sigue UP (C2).
 	app.get('/health', (_req, res) => {
-		res.status(200).json({ status: 'UP', service: 'api-gateway', checks: { process: 'UP' } });
+		res.status(200).json({ status: 'UP', service: 'api-gateway', version: VERSION, checks: { process: 'UP' } });
 	});
 
 	app.get('/openapi.json', (_req, res) => {
 		res.type('application/json').send(openapi);
 	});
 
-	app.get(['/swagger', '/swagger/'], (_req, res) => {
-		res.redirect(302, '/swagger/index.html');
-	});
-
-	app.get('/swagger/index.html', (_req, res) => {
-		res.type('html').send(swaggerHtml);
-	});
+	// Swagger UI agregada de los siete contratos; pública como /health y /metrics.
+	app.use(swaggerRouter({
+		propio: openapi,
+		backends: {
+			'auth-service': authUrl,
+			'empleados-service': empleadosUrl,
+			'departamentos-service': departamentosUrl,
+			'perfiles-service': perfilesUrl,
+			'vacaciones-service': vacacionesUrl,
+			'notificaciones-service': notificacionesUrl,
+		},
+		rutasOpenapi,
+		timeoutMs: swaggerTimeoutMs,
+		fetchImpl,
+	}));
 
 	app.use(exigirAcceso(jwtSecret));
 
@@ -98,12 +112,8 @@ export function createApp({
 		}));
 	}
 
-	app.use((req, res) => {
-		res.status(404).json({
-			status: 404,
-			mensaje: 'Recurso no encontrado',
-		});
-	});
+	app.use(rutaNoEncontrada);
+	app.use(manejarError);
 
 	return app;
 }

@@ -1,0 +1,491 @@
+openapi: 3.1.0
+info:
+  title: auth-service
+  description: 'Identidad del onboarding. Emite JWT y administra el ciclo de vida de la cuenta. No existe /auth/register:
+    las cuentas nacen del evento empleado.creado. Los errores siguen el contrato C3 (timestamp, status, error, message, path,
+    traceId).'
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      tags:
+      - Salud
+      summary: Health check contra PostgreSQL y el consumidor
+      description: 200 si PostgreSQL responde y el consumidor está conectado a RabbitMQ; 503 si alguno está DOWN. Cada check
+        tiene un tiempo máximo, así que responde en menos de 3 s aunque la base cuelgue.
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRespuesta'
+        '503':
+          description: Alguna dependencia está DOWN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthRespuesta'
+              example:
+                status: DOWN
+                service: auth-service
+                version: 1.0.0
+                checks:
+                  database: DOWN
+                  messageBroker: UP
+  /auth/login:
+    post:
+      tags:
+      - Auth
+      summary: Verifica credenciales y retorna un access JWT
+      operationId: login_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginCuerpo'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginRespuesta'
+        '400':
+          description: Cuerpo inválido o campos faltantes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 400
+                error: Bad Request
+                message: 'Petición inválida: usuario: es obligatorio'
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '401':
+          description: Credenciales inválidas o cuenta no activa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 401
+                error: Unauthorized
+                message: Credenciales inválidas
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '500':
+          description: Error inesperado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 500
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '503':
+          description: La base de datos no está disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 503
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+  /auth/recover-password:
+    post:
+      tags:
+      - Auth
+      summary: Publica usuario.recuperacion si la cuenta puede recibir el enlace
+      description: Siempre responde 200 con el mismo mensaje, exista o no el correo (no revela cuentas).
+      operationId: recover_auth_recover_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecuperarCuerpo'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MensajeRespuesta'
+              example:
+                mensaje: Si el correo existe, se envió un enlace de recuperación
+        '400':
+          description: Cuerpo inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 400
+                error: Bad Request
+                message: 'Petición inválida: email: es obligatorio'
+                path: /auth/recover-password
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '500':
+          description: Error inesperado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 500
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '503':
+          description: La base de datos no está disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 503
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+  /auth/reset-password:
+    post:
+      tags:
+      - Auth
+      summary: Establece la contraseña con el token de activación o recuperación
+      description: Con el token de activación pasa la cuenta de PENDIENTE_ACTIVACION a ACTIVA y publica cuenta.activada.
+      operationId: reset_auth_reset_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetCuerpo'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MensajeRespuesta'
+        '400':
+          description: Token inválido o expirado, contraseña fuera de política o cuenta en un estado que no lo admite
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 400
+                error: Bad Request
+                message: El token de recuperación no es válido o expiró
+                path: /auth/reset-password
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '500':
+          description: Error inesperado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 500
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '503':
+          description: La base de datos no está disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 503
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+  /auth/change-password:
+    post:
+      tags:
+      - Auth
+      summary: Cambia la contraseña del sujeto del access token
+      operationId: change_auth_change_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioCuerpo'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MensajeRespuesta'
+        '400':
+          description: Contraseña actual incorrecta, nueva fuera de política o cuenta no activa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 400
+                error: Bad Request
+                message: La contraseña actual no es correcta
+                path: /auth/change-password
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '401':
+          description: Sin token o token inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 401
+                error: Unauthorized
+                message: No autenticado
+                path: /auth/change-password
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '500':
+          description: Error inesperado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 500
+                error: Internal Server Error
+                message: Error interno del servidor
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '503':
+          description: La base de datos no está disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorRespuesta'
+              example:
+                timestamp: '2026-11-09T12:00:00.000Z'
+                status: 503
+                error: Service Unavailable
+                message: La base de datos no está disponible
+                path: /auth/login
+                traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+      security:
+      - BearerAuth: []
+components:
+  schemas:
+    CambioCuerpo:
+      properties:
+        contrasenaActual:
+          type: string
+          title: Contrasenaactual
+        contrasenaNueva:
+          type: string
+          title: Contrasenanueva
+          description: Mínimo 8 caracteres con mayúscula, minúscula y dígito
+      type: object
+      required:
+      - contrasenaActual
+      - contrasenaNueva
+      title: CambioCuerpo
+      examples:
+      - contrasenaActual: Actual1234!
+        contrasenaNueva: Nueva1234!
+    ChecksSalud:
+      properties:
+        database:
+          type: string
+          title: Database
+          examples:
+          - UP
+        messageBroker:
+          type: string
+          title: Messagebroker
+          examples:
+          - UP
+      type: object
+      required:
+      - database
+      - messageBroker
+      title: ChecksSalud
+    ErrorRespuesta:
+      properties:
+        timestamp:
+          type: string
+          title: Timestamp
+        status:
+          type: integer
+          title: Status
+        error:
+          type: string
+          title: Error
+        message:
+          type: string
+          title: Message
+        path:
+          type: string
+          title: Path
+        traceId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Traceid
+      type: object
+      required:
+      - timestamp
+      - status
+      - error
+      - message
+      - path
+      title: ErrorRespuesta
+      description: Cuerpo de error común a los siete servicios.
+      examples:
+      - error: Unauthorized
+        message: Credenciales inválidas
+        path: /auth/login
+        status: 401
+        timestamp: '2026-11-09T12:00:00.000Z'
+        traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+    HealthRespuesta:
+      properties:
+        status:
+          type: string
+          title: Status
+        service:
+          type: string
+          title: Service
+        version:
+          type: string
+          title: Version
+        checks:
+          $ref: '#/components/schemas/ChecksSalud'
+      type: object
+      required:
+      - status
+      - service
+      - version
+      - checks
+      title: HealthRespuesta
+      examples:
+      - checks:
+          database: UP
+          messageBroker: UP
+        service: auth-service
+        status: UP
+        version: 1.0.0
+    LoginCuerpo:
+      properties:
+        usuario:
+          type: string
+          title: Usuario
+          description: Email o id de empleado de la cuenta
+        contrasena:
+          type: string
+          title: Contrasena
+      type: object
+      required:
+      - usuario
+      - contrasena
+      title: LoginCuerpo
+      examples:
+      - contrasena: Admin1234!
+        usuario: admin
+    LoginRespuesta:
+      properties:
+        token:
+          type: string
+          title: Token
+        tokenType:
+          type: string
+          title: Tokentype
+          default: Bearer
+        expiresIn:
+          type: integer
+          title: Expiresin
+          description: Segundos de vida del access token
+        role:
+          type: string
+          title: Role
+          description: ADMIN o USER
+      type: object
+      required:
+      - token
+      - expiresIn
+      - role
+      title: LoginRespuesta
+      examples:
+      - expiresIn: 3600
+        role: ADMIN
+        token: eyJhbGciOiJIUzI1NiJ9.acceso.firma
+        tokenType: Bearer
+    MensajeRespuesta:
+      properties:
+        mensaje:
+          type: string
+          title: Mensaje
+      type: object
+      required:
+      - mensaje
+      title: MensajeRespuesta
+      examples:
+      - mensaje: Contraseña actualizada
+    RecuperarCuerpo:
+      properties:
+        email:
+          type: string
+          title: Email
+      type: object
+      required:
+      - email
+      title: RecuperarCuerpo
+      examples:
+      - email: ana.perez@empresa.com
+    ResetCuerpo:
+      properties:
+        token:
+          type: string
+          title: Token
+          description: Token de activación (usuario.creado) o de recuperación (usuario.recuperacion)
+        contrasena:
+          type: string
+          title: Contrasena
+          description: Mínimo 8 caracteres con mayúscula, minúscula y dígito
+      type: object
+      required:
+      - token
+      - contrasena
+      title: ResetCuerpo
+      examples:
+      - contrasena: Nueva1234!
+        token: eyJhbGciOiJIUzI1NiJ9.reset.firma
+  securitySchemes:
+    BearerAuth:
+      type: http
+      description: Access JWT emitido por POST /auth/login
+      scheme: bearer

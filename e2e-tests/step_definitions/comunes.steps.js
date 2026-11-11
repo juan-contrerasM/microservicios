@@ -56,7 +56,10 @@ Then('la respuesta debe tener código {int}', function (codigo) {
 
 Then('el mensaje debe ser {string}', function (esperado) {
   const respuesta = exigirRespuesta(this);
-  const mensaje = respuesta.cuerpo && typeof respuesta.cuerpo === 'object' ? respuesta.cuerpo.mensaje : undefined;
+  // Errores C3 (Fase 5) traen `message`; las respuestas 200 de auth conservan `mensaje`.
+  const mensaje = respuesta.cuerpo && typeof respuesta.cuerpo === 'object'
+    ? respuesta.cuerpo.message ?? respuesta.cuerpo.mensaje
+    : undefined;
   assert.equal(mensaje, esperado, `esperado ${JSON.stringify(esperado)}, obtenido ${JSON.stringify(mensaje)}`);
 });
 

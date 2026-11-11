@@ -19,7 +19,7 @@ def test_la_semilla_guarda_hash_y_el_login_firma_admin():
         health = cliente.get("/health")
 
     assert mal.status_code == 401
-    assert mal.json()["mensaje"] == "Credenciales inválidas"
+    assert mal.json()["message"] == "Credenciales inválidas"
 
     cuerpo = bien.json()
     assert bien.status_code == 200
