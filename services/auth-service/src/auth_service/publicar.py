@@ -12,6 +12,8 @@ logger = logging.getLogger("auth")
 
 
 class PublicadorRabbit:
+    """Publica el envelope C1 completo. Quien llama lo invoca después del commit."""
+
     def __init__(self, settings):
         self._settings = settings
 
@@ -36,7 +38,13 @@ class PublicadorRabbit:
                 exchange=self._settings.broker_exchange,
                 routing_key=evento.tipo,
                 body=json.dumps(envelope).encode("utf-8"),
-                properties=pika.BasicProperties(content_type="application/json", delivery_mode=2),
+                # traceparent/tracestate los inyecta PikaInstrumentor (telemetria.py) en headers.
+                properties=pika.BasicProperties(
+                    content_type="application/json",
+                    delivery_mode=2,
+                    message_id=envelope["id"],
+                    type=evento.tipo,
+                ),
             )
         finally:
             if conexion.is_open:
