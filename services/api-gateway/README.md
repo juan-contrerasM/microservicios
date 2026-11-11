@@ -113,7 +113,25 @@ La imagen se construye desde el compose raíz (`build: ./services/api-gateway`).
 docker build -t api-gateway ./services/api-gateway
 ```
 
-`node:22-alpine` + `curl` para el healthcheck de Compose.
+### Imagen Docker
+
+| Etapa | Base | Contenido |
+|---|---|---|
+| `deps` | `node:22.21.1-alpine3.22` | `npm ci --omit=dev` sobre `package-lock.json` |
+| `runtime` | `node:22.21.1-alpine3.22` | `node`, `curl`, `node_modules` de producción, `package.json` y `src/` |
+
+- **Usuario:** `app` con UID/GID fijos `10001:10001` (`USER 10001:10001`). El código queda con
+  dueño `root`, de solo lectura para el proceso; el Gateway no escribe en disco.
+- **Por qué multi-stage:** npm, su caché y cualquier artefacto de instalación se quedan en
+  `deps`; en `runtime` además se borran `npm`, `npx`, `corepack` y `yarn`, que no se usan para
+  arrancar (`CMD ["node", ...]`). Menos tamaño y menos paquetes que reporte el escáner de imagen.
+- **Por qué no root:** si el proceso se ve comprometido no puede modificar su propio código ni
+  instalar paquetes. Un UID numérico fijo permite verificar `runAsNonRoot` y leer los secretos
+  montados en `/run/secrets` (ver `docs/proyecto-final/SEGURIDAD-SECRETOS.md`).
+- **Base fijada:** tag completo de Node y Alpine; nada de `latest` ni `22-alpine` flotante, para
+  que dos builds del mismo commit den la misma imagen.
+- `curl` se mantiene porque el healthcheck de Compose ejecuta `curl -f http://localhost:8080/health`.
+- `.dockerignore` deja fuera `node_modules`, pruebas, reportes, `.env` y `secrets`.
 
 ## Qué se implementó en la Etapa 1
 

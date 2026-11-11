@@ -1,7 +1,17 @@
+# Contexto mínimo: el build solo necesita package*.json y src/.
 node_modules
-npm-debug.log
+npm-debug.log*
+.npm
 .git
 .gitignore
-tests
-*.md
 .dockerignore
+Dockerfile
+Jenkinsfile
+sonar-project.properties
+tests
+coverage
+reports
+*.md
+.env
+.env.*
+secrets
