@@ -95,7 +95,7 @@ def _manejador(sesiones, enviar, queue="q.notificaciones"):
 
 
 def _declarar_topologia(canal, exchange: str, queue: str) -> None:
-	retry_exchange = f"{RETRY_EXCHANGE_PREFIX}.{queue}"
+    retry_exchange = f"{RETRY_EXCHANGE_PREFIX}.{queue}"
     canal.exchange_declare(exchange=exchange, exchange_type="topic", durable=True)
     canal.exchange_declare(exchange=retry_exchange, exchange_type="topic", durable=True)
     canal.exchange_declare(exchange=DLX_EXCHANGE, exchange_type="direct", durable=True)
