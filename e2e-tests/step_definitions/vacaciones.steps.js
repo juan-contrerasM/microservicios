@@ -63,7 +63,7 @@ Then('eventualmente el empleado no puede iniciar sesión porque la cuenta no est
       auth: false,
       body: { usuario: this.empleado.email, contrasena: this.entorno.userPassword },
     });
-    return respuesta.status === 401 && respuesta.cuerpo?.mensaje === 'La cuenta no está activa';
+    return respuesta.status === 401 && (respuesta.cuerpo?.message ?? respuesta.cuerpo?.mensaje) === 'La cuenta no está activa';
   }, {
     intentos: this.entorno.pollIntentos,
     intervaloMs: this.entorno.pollIntervaloMs,
