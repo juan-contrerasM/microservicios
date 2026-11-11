@@ -107,3 +107,28 @@ pytest
 Los tests de unidad cubren cada fila de la tabla, que `empleado.creado` y `empleado.retirado` no dejan fila, que el mismo `id` no deja dos y que una recuperación sin destinatario previo se confirma sin fila. La corrida contra el broker
 está en [`docs/reto4/EVIDENCIAS.md`](../../docs/reto4/EVIDENCIAS.md): el mismo envelope publicado
 dos veces deja una sola fila.
+
+## Imagen Docker
+
+| Etapa | Base | Contenido |
+|---|---|---|
+| `build` | `python:3.12.12-slim-bookworm` | venv en `/opt/venv` con `pip install -r requirements.txt` |
+| `runtime` | `python:3.12.12-slim-bookworm` | `/opt/venv`, `curl`, `alembic.ini`, `alembic/`, `config/` y `src/` |
+
+- **Usuario:** `app` de sistema con UID/GID fijos `10001:10001`, sin home ni shell de login
+  (`USER 10001:10001`). El código queda con dueño `root`, de solo lectura; por eso
+  `PYTHONDONTWRITEBYTECODE=1`. El servicio no escribe en disco: la deduplicación y las
+  notificaciones viven en PostgreSQL y el correo sale por SMTP.
+- **Plantillas:** `config/templates.json` se copia como valor por defecto
+  (`NOTIFICACIONES_TEMPLATES_FILE=/app/config/templates.json`) y Compose monta encima la copia
+  del repositorio con `:ro`. El proceso solo la lee, así que basta con que el archivo del host sea
+  legible (0644, el modo normal de un checkout).
+- **Por qué multi-stage:** pip, su caché y los artefactos de instalación quedan en `build`; a
+  `runtime` solo llega el venv, sin pytest ni dependencias de prueba.
+- **Por qué no root:** el consumidor que procesa eventos del broker no puede modificar su código,
+  sus dependencias ni sus plantillas. El UID fijo debe poder leer `/run/secrets/*` (ver
+  `docs/proyecto-final/SEGURIDAD-SECRETOS.md`).
+- **Base fijada:** parche exacto de Python y versión de Debian en ambas etapas; el venv solo es
+  portable entre etapas con el mismo intérprete en la misma ruta.
+- `curl` se mantiene porque el healthcheck de Compose ejecuta `curl -f http://localhost:8084/health`.
+- `.dockerignore` deja fuera `tests`, `reports`, cachés de pytest, `.venv`, `.env` y `secrets`.
