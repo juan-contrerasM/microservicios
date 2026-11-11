@@ -411,13 +411,39 @@ El `Dockerfile` descarga las dependencias antes de copiar el código fuente:
 
 ```dockerfile
 COPY pom.xml .
-RUN chmod +x mvnw && ./mvnw -q -B dependency:go-offline
+RUN sed -i 's/\r$//' mvnw \
+    && chmod +x mvnw \
+    && ./mvnw -q -B dependency:go-offline
 COPY src src
 ```
 
 La primera construcción descarga las dependencias del proyecto. Mientras `pom.xml`, Maven Wrapper y la imagen base no cambien, Docker reutiliza esa capa y solo recompila el código modificado. Esto reduce el tiempo de las construcciones posteriores.
 
 La caché no se reutiliza si se ejecuta la construcción con `--no-cache`, se limpia la caché de Docker o cambia alguno de los archivos copiados antes de `dependency:go-offline`.
+
+### Imagen Docker
+
+| Etapa | Base | Contenido |
+|---|---|---|
+| `build` | `eclipse-temurin:21.0.9_10-jdk-alpine` | Maven Wrapper, `dependency:go-offline` y `package -DskipTests` |
+| `runtime` | `eclipse-temurin:21.0.9_10-jre-alpine` | JRE, `curl`, `app.jar`, agente OpenTelemetry `2.33.1` y `docker-entrypoint.sh` |
+
+- **Usuario:** `app` de sistema con UID/GID fijos `10001:10001`, sin home ni shell de login
+  (`USER 10001:10001`). `app.jar`, el agente y el entrypoint quedan con dueño `root`, de solo
+  lectura (el entrypoint, 0755). Tomcat y la JVM solo escriben en `/tmp`, que en la imagen base
+  es 1777; el servicio no guarda archivos propios.
+- **Secretos:** `docker-entrypoint.sh` sigue leyendo `DB_PASSWORD_FILE` y
+  `RABBITMQ_PASSWORD_FILE` y falla con mensaje claro si no puede leerlos. Como el proceso ya no es
+  root, los archivos de `secrets/` deben ser legibles por el UID 10001: `scripts/setup-secrets.*`
+  los deja 0644 dentro de un directorio 0700 (ver `docs/proyecto-final/SEGURIDAD-SECRETOS.md`).
+- **Por qué multi-stage y JRE:** el JDK, Maven, `~/.m2` y el código fuente se quedan en `build`;
+  el JRE basta para ejecutar el fat jar y pesa bastante menos que el JDK.
+- **Por qué no root:** el proceso no puede reescribir su jar, el agente ni instalar paquetes.
+- **Base fijada:** versión exacta de Temurin (`21.0.9_10`) en ambas etapas y del agente
+  OpenTelemetry (`ARG OTEL_JAVA_AGENT_VERSION=2.33.1`).
+- `curl` se mantiene porque el healthcheck de Compose ejecuta `curl -f http://localhost:8080/health`.
+- `.dockerignore` deja fuera `target`, `src/test`, IDE, `.env` y `secrets`. Las pruebas corren en
+  Jenkins con `mvn verify`, no dentro del build de la imagen.
 
 ### Variables de entorno
 

@@ -1,7 +1,24 @@
+# Contexto mínimo: el build solo necesita mvnw, .mvn/, pom.xml, src/main y
+# docker-entrypoint.sh. Las pruebas no se compilan en la imagen (-DskipTests
+# compila src/test si existe; sin él, testCompile no tiene fuentes y no falla).
 target
+src/test
 .git
+.gitignore
+.gitattributes
+.dockerignore
+Dockerfile
+Jenkinsfile
+sonar-project.properties
+mvnw.cmd
 .idea
 .vscode
 *.iml
+*.md
 HELP.md
 data
+reports
+coverage
+.env
+.env.*
+secrets
