@@ -64,11 +64,41 @@ después de descartar un duplicado. Un fallo de base de datos no confirma: el br
 |---|---|---|
 | `GET` | `/notificaciones` | 200, arreglo (vacío si no hay) |
 | `GET` | `/notificaciones/{empleadoId}` | 200, arreglo de ese empleado. Vacío no es 404 |
-| `GET` | `/health` | 200 solo si PostgreSQL responde. Lo usa Docker, no el Gateway |
+| `GET` | `/health` | 200 si PostgreSQL responde y el consumidor está conectado; 503 si no, en menos de 3 s. Lo usa Docker, no el Gateway |
 | `GET` | `/docs` | Swagger UI de FastAPI. `/swagger` redirige aquí |
 | `GET` | `/openapi.json` | Especificación OpenAPI |
 
 El cuerpo de cada aviso es `id`, `tipo`, `destinatario`, `mensaje`, `fechaEnvio`, `empleadoId`.
+
+## Contrato HTTP (Fase 5 del proyecto final)
+
+**Health (C2).** `GET /health` responde
+`{"status","service","version","checks":{"database","messageBroker"}}` y exige PostgreSQL y el
+consumidor conectado. El `SELECT 1` corre en un hilo aparte con tiempo máximo
+`HEALTH_TIMEOUT_SECONDS` (2 s, `salud.py`): con la base colgada el endpoint contesta 503 en menos
+de 3 s en lugar de esperar a que el driver se rinda, que es lo que Docker y el balanceador
+necesitan para sacar la réplica.
+
+**Errores (C3).** `errores.py` traduce toda excepción a
+`{"timestamp","status","error","message","path","traceId"}`: ruta inexistente 404, método no
+permitido 405, validación 400 (no 422), PostgreSQL caído 503, cualquier otra cosa 500
+`Error interno del servidor`. Nunca viaja la traza de pila ni el mensaje del driver; el detalle
+queda en el log con el mismo `traceId` (span activo de OpenTelemetry o, si no hay, el header
+`traceparent`). El 401/403 de estas consultas lo responde el Gateway, que es quien valida el JWT;
+el contrato lo documenta para que Swagger muestre el caso.
+
+**OpenAPI (E08).** Modelos, ejemplos y códigos reales (200, 401, 500, 503; `/health` 200/503).
+`BearerAuth` en las dos consultas y no en `/health`. Se conserva el nombre `BearerAuth` porque es
+el de los otros seis contratos. La copia versionada es [`openapi.yaml`](openapi.yaml):
+`PYTHONPATH=src python -m notificaciones.contrato` la regenera (`--check` solo verifica) y
+`tests/test_contrato_http.py` falla si difiere de `GET /openapi.json`.
+
+**Migraciones (E05).** Las dos revisiones tienen `downgrade`. La unicidad que el servicio necesita
+está en las PK: un destinatario por `empleado_id`, una fila por `id` de notificación y por `id` de
+evento procesado (deduplicación). `ix_destinatarios_email` **no** es `UNIQUE` a propósito: la tabla
+es una réplica alimentada por eventos y un `UNIQUE` haría fallar el consumidor (y mandaría el
+evento a DLQ) si dos eventos llegan desordenados con un email reasignado. `tests/test_migraciones.py`
+genera el DDL de ida y vuelta con Alembic offline (`--sql`), sin PostgreSQL.
 
 ## Variables
 
@@ -83,6 +113,7 @@ El cuerpo de cada aviso es `id`, `tipo`, `destinatario`, `mensaje`, `fechaEnvio`
 | `SMTP_HOST` | `mailhog` | Servidor SMTP. Vacío: no se envía correo |
 | `SMTP_PORT` | `1025` | Puerto SMTP de Mailhog, dentro de la red |
 | `SMTP_FROM` | `onboarding@empresa.com` | Remitente |
+| `HEALTH_TIMEOUT_SECONDS` | `2.0` (default) | Tiempo máximo del check de base en `/health` |
 
 El esquema lo crea Alembic al arrancar (`alembic upgrade head`). `001_inicial` crea las tres tablas y `002_destinatario_email` el índice por email; los dos tienen downgrade.
 
@@ -100,9 +131,15 @@ Para verlo: abre la bandeja y haz un `POST /empleados` de un id que todavía no 
 ## Pruebas
 
 ```bash
-pip install -r requirements.txt pytest
+cd services/notificaciones-service
+python -m venv .venv
+.venv/Scripts/activate        # Windows (Git Bash); en Linux/macOS: source .venv/bin/activate
+pip install -r requirements-dev.txt
 pytest
 ```
+
+`requirements-dev.txt` agrega pytest, pytest-cov y PyYAML (exportar y comparar `openapi.yaml`);
+la imagen solo instala `requirements.txt`.
 
 Los tests de unidad cubren cada fila de la tabla, que `empleado.creado` y `empleado.retirado` no dejan fila, que el mismo `id` no deja dos y que una recuperación sin destinatario previo se confirma sin fila. La corrida contra el broker
 está en [`docs/reto4/EVIDENCIAS.md`](../../docs/reto4/EVIDENCIAS.md): el mismo envelope publicado
