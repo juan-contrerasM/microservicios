@@ -35,38 +35,44 @@ Estados: `ACTIVO`, `PENDIENTE_VALIDACION` (fallback del Circuit Breaker, Reto 3)
 
 | Método | Ruta | Descripción | Código |
 |--------|------|-------------|--------|
-| `POST` | `/empleados` | Registrar empleado y validar su departamento (vía Circuit Breaker). Después del commit publica `empleado.creado` | `201` / `400` |
-| `PUT` | `/empleados/{id}` | Actualización parcial. Si cambia `departamentoId`, lo vuelve a validar. Publica `empleado.actualizado` | `200` / `400` / `404` |
+| `POST` | `/empleados` | Registrar empleado y validar su departamento (vía Circuit Breaker). Después del commit publica `empleado.creado` | `201` / `400` / `409` |
+| `PUT` | `/empleados/{id}` | Actualización parcial. Si cambia `departamentoId`, lo vuelve a validar. Publica `empleado.actualizado` | `200` / `400` / `404` / `409` |
 | `DELETE` | `/empleados/{id}` | Baja lógica: `RETIRADO` + `fechaRetiro`. Publica `empleado.retirado`. Un segundo DELETE no publica | `200` / `400` / `404` |
 | `GET` | `/empleados/{id}` | Consultar por id, también si está retirado | `200` / `404` |
 | `GET` | `/empleados` | Listar todos. `?estado=RETIRADO` filtra bajas. `desde` y `hasta` acotan la fecha UTC de `fechaRetiro`, ambos inclusive | `200` / `400` |
 | `GET` | `/empleados/circuit-breaker` | Estado del Circuit Breaker (`CLOSED`/`OPEN`/`HALF_OPEN`) | `200` |
 | `POST` | `/empleados/reconciliar` | Revalida contra departamentos a los `PENDIENTE_VALIDACION` | `200` |
-| `GET` | `/health` | Verificar la conexión con PostgreSQL | `200` / `503` |
-| Otros | cualquier ruta o método no definido | Recurso no encontrado | `404` |
+| `GET` | `/health` | Contrato C2: PostgreSQL y RabbitMQ, responde en < 3 s | `200` / `503` |
+| Otros | ruta no definida / método no soportado | Recurso no encontrado / método no permitido | `404` / `405` |
+
+Todas las operaciones de `/empleados` exigen `bearerAuth` (lo valida el Gateway, que responde
+`401` sin token y `403` si un `USER` intenta escribir) y pueden responder `500` y `503` (PostgreSQL
+caído). Todas usan el error uniforme C3 descrito en [Códigos de respuesta](#códigos-de-respuesta).
 
 Nota: antes del Circuit Breaker, el registro respondía `503` si departamentos no estaba
 disponible tras agotar reintentos. Desde la Etapa 3, ese caso ya no rechaza el alta: persiste el
 empleado como `PENDIENTE_VALIDACION` y responde `201` (ver más abajo).
 
-Validaciones al registrar (`400 Bad Request`):
+Validaciones al registrar:
 
-- ID ya registrado
-- Email ya registrado
-- `numeroEmpleado` ya registrado
-- `departamentoId` inexistente en `departamentos-service`
+- `400 Bad Request`: campo obligatorio ausente o inválido, JSON mal formado, o `departamentoId`
+  inexistente en `departamentos-service` (el enunciado exige `400` en este caso).
+- `409 Conflict` (Fase 5, contrato C3): ID, email o `numeroEmpleado` ya registrados. Antes era
+  `400`; se separó para que el cliente distinga "datos mal enviados" de "choca con lo existente".
 
-Los errores se responden en JSON, por ejemplo:
+Los errores se responden con el formato uniforme C3, por ejemplo:
 
 ```json
-{ "mensaje": "Ya existe un empleado registrado con ese email" }
+{ "timestamp": "2026-11-09T12:00:00Z", "status": 409, "error": "Conflict",
+  "message": "Ya existe un empleado registrado con ese email", "path": "/empleados",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736" }
 ```
 
 Sin incluir el valor del email en el mensaje.
 
-El `PUT` repite esas unicidades y, si el `departamentoId` cambia, la misma validación contra
-departamentos. No sirve para pasar a `RETIRADO`. Un `DELETE` de alguien que ya está retirado
-responde `400` con `{"mensaje":"El empleado con id {id} ya está retirado"}`.
+El `PUT` repite esas unicidades (`409`) y, si el `departamentoId` cambia, la misma validación contra
+departamentos (`400`). No sirve para pasar a `RETIRADO`. Un `DELETE` de alguien que ya está retirado
+responde `400` con `message` = `El empleado con id {id} ya está retirado`.
 
 ## Eventos (Reto 4)
 
@@ -85,15 +91,37 @@ El envelope es `id` (UUID), `type`, `version` 1, `occurredAt` (UTC), `producer`
 `empleados-service` y `data`. Al arrancar declara el exchange, de forma idempotente. Las colas
 las crean los consumidores.
 
-## OpenAPI / Swagger (Etapa 4)
+## OpenAPI / Swagger (Etapa 4, completado en la Fase 5)
 
-Springdoc OpenAPI documenta los endpoints con el contrato vigente, incluidos `PUT` y `DELETE`
-de empleados, el filtro `estado`/`desde`/`hasta` y `GET /health` (`200` / `503`).
+Springdoc OpenAPI documenta las ocho operaciones con schemas de entrada y salida, ejemplos y todos
+los códigos que realmente pueden devolver: los propios del controlador (`400`, `404`, `409`) y los
+comunes que añade `OpenApiConfig.respuestasComunesDeError()` a cada operación de negocio: `401`
+(Gateway, sin token o token inválido), `403` (Gateway, solo en escrituras: un `USER` solo lee),
+`500` y `503` (PostgreSQL caído; no aplica a `GET /empleados/circuit-breaker`, que no toca la base).
+El esquema de seguridad es `bearerAuth` (HTTP bearer, JWT) y se aplica a todas las operaciones de
+`/empleados`; `GET /health` es público.
 
 | Recurso | URL (con Compose en la raíz) |
 |---|---|
 | Swagger UI | `/swagger-ui.html` dentro de `empleados-service:8080` |
 | Spec JSON | `/v3/api-docs` dentro de `empleados-service:8080` |
+| Spec YAML | `/v3/api-docs.yaml` dentro de `empleados-service:8080` |
+| Spec versionada | [`openapi.yaml`](openapi.yaml) en esta carpeta |
+
+`openapi.yaml` se genera desde Springdoc, no se edita a mano. `OpenApiContratoTest` (slice
+`@WebMvcTest`, sin base ni Docker) pide `/v3/api-docs.yaml`, falla si difiere del archivo
+versionado (drift), verifica que cada ruta registrada en Spring MVC esté documentada, que las
+operaciones de negocio exijan `bearerAuth` con `401`/`403`/`500` y que todos los errores apunten al
+esquema `ApiError`. Tras cambiar un endpoint:
+
+```bash
+./mvnw test -Dtest=OpenApiContratoTest -Dopenapi.actualizar=true   # regenera openapi.yaml
+```
+
+Por qué así: el YAML se deriva del código (una sola fuente de verdad) y la prueba convierte un
+olvido de regenerarlo en un build rojo, sin añadir un plugin que arranque la aplicación con base
+de datos. `springdoc.writer-with-order-by-keys=true` hace la salida determinista y el servidor es
+relativo (`/`), así el archivo no depende del host. `info.version` sale de la versión del pom.
 
 En el monorepo el arranque correcto es el `docker-compose.yml` de la **raíz**. Swagger queda
 interno porque el único puerto público es el Gateway; el contrato público se prueba con la
@@ -195,7 +223,9 @@ curl http://localhost:8080/empleados/E999
 Respuesta esperada: `404`
 
 ```json
-{ "mensaje": "El empleado con id E999 no existe" }
+{ "timestamp": "2026-11-09T12:00:00Z", "status": 404, "error": "Not Found",
+  "message": "El empleado con id E999 no existe", "path": "/empleados/E999",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736" }
 ```
 
 ## Estructura del proyecto
@@ -292,63 +322,62 @@ Al registrar un empleado se aplican las siguientes reglas:
 |--------|-----------|
 | `200 OK` | El empleado fue consultado correctamente, el health check está `UP`, o se consultó el circuito/reconciliación |
 | `201 Created` | El empleado fue registrado, en `ACTIVO` o en `PENDIENTE_VALIDACION` si departamentos no respondió |
-| `400 Bad Request` | Faltan datos, un campo es inválido, hay un duplicado o el departamento no existe |
-| `404 Not Found` | El empleado, la ruta o el método solicitado no existe |
+| `400 Bad Request` | Faltan datos, un campo es inválido, el JSON está mal formado o el departamento no existe |
+| `401 Unauthorized` | Sin token o token inválido (lo responde el API Gateway) |
+| `403 Forbidden` | Un `USER` intenta crear, modificar, retirar o reconciliar (lo responde el API Gateway) |
+| `404 Not Found` | El empleado o la ruta solicitada no existe |
+| `405 Method Not Allowed` | La ruta existe pero no admite ese método |
+| `409 Conflict` | ID, email o `numeroEmpleado` ya registrados (también si la restricción `UNIQUE` lo detecta en una carrera) |
+| `500 Internal Server Error` | Error inesperado; el detalle solo queda en el log, con stack trace |
 | `503 Service Unavailable` | PostgreSQL no está disponible (`departamentos-service` caído ya no produce `503`: ver Circuit Breaker) |
 
-Todas las respuestas de error utilizan el mismo formato:
+#### Formato de error uniforme (contrato C3, Fase 5)
+
+Todas las respuestas de error usan el mismo cuerpo que los otros seis servicios
+(`GlobalExceptionHandler` + `dto/ApiError`):
 
 ```json
 {
-  "mensaje": "Descripción del error"
+  "timestamp": "2026-11-09T12:00:00Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "La solicitud contiene campos inválidos: nombre: El nombre es obligatorio; email: El email no tiene un formato válido",
+  "path": "/empleados",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
 }
 ```
 
-Los errores generales mantienen el atributo `mensaje`. Cuando la validación corresponde a campos de la solicitud, la respuesta agrega el objeto `errores`, asociando cada campo con su mensaje:
+- `message` nunca lleva trazas de pila, SQL, nombres de restricciones ni hosts. Un error
+  inesperado responde `Error interno del servidor` y el detalle va al log.
+- Los errores de validación de campos van todos en `message`, separados por `;`, en lugar del
+  antiguo objeto `errores`: así el cuerpo no se sale de los seis campos del contrato.
+- `traceId` sale del MDC que llena el agente Java de OpenTelemetry (`trace_id`); sin agente se
+  toma del header `traceparent` que propaga el Gateway. Si no hay contexto de traza, se omite.
+- Una caída de PostgreSQL durante una operación (`CannotCreateTransactionException`,
+  `DataAccessResourceFailureException`) responde `503`, no `500`. Hikari espera como máximo
+  `DB_CONNECTION_TIMEOUT_MS` (5 s por defecto, antes 30 s) por una conexión del pool.
+
+Este formato reemplaza al anterior `{"mensaje": "..."}` (Retos 1 a 8).
+
+#### Health check (contrato C2, Fase 5)
 
 ```json
-{
-  "mensaje": "La solicitud contiene campos inválidos",
-  "errores": {
-    "nombre": "El nombre es obligatorio"
-  }
-}
+{ "status": "UP", "service": "empleados-service", "version": "0.0.1-SNAPSHOT",
+  "checks": { "database": "UP", "messageBroker": "UP" } }
 ```
 
-Cuando varios campos son inválidos o están ausentes, la respuesta los informa todos en una sola solicitud:
+`200` si PostgreSQL y RabbitMQ están `UP`; `503` si alguno está `DOWN`. Hallazgo de la Fase 1: con
+PostgreSQL detenido el endpoint no respondía en 15 s, porque `dataSource.getConnection()` esperaba
+a Hikari (hasta 30 s). Ahora cada check corre en un hilo de un pool acotado y el controlador espera
+como máximo `HEALTH_CHECK_TIMEOUT_MS` (2 s) en total; lo que no conteste a tiempo cuenta como `DOWN`.
+Así `/health` responde en menos de 3 s aunque la dependencia cuelgue, y el healthcheck de Compose
+no se queda esperando. `version` es la del pom (filtrada por Maven) y se puede sobrescribir con
+`SERVICE_VERSION` (por ejemplo, el tag de la imagen).
 
-```json
-{
-  "mensaje": "La solicitud contiene campos inválidos",
-  "errores": {
-    "id": "El id es obligatorio",
-    "nombre": "El nombre es obligatorio",
-    "apellido": "El apellido es obligatorio",
-    "email": "El email es obligatorio",
-    "numeroEmpleado": "El numeroEmpleado es obligatorio",
-    "cargo": "El cargo es obligatorio",
-    "area": "El area es obligatoria",
-    "departamentoId": "El departamentoId es obligatorio",
-    "fechaIngreso": "La fechaIngreso es obligatoria"
-  }
-}
-```
-
-Ejemplo de un cuerpo JSON inválido:
-
-```json
-{
-  "mensaje": "El cuerpo de la solicitud es inválido o está mal formado"
-}
-```
-
-Ejemplo de un identificador duplicado:
-
-```json
-{
-  "mensaje": "Ya existe un empleado con ese id"
-}
-```
+Pruebas sin Docker: `HealthControllerTest` (UP, rechazo, conexión inválida, PostgreSQL colgado,
+ambas dependencias colgadas, RabbitMQ caído; las colgadas verifican `503` en < 3 s) y
+`ContratoHttpTest` (slice `@WebMvcTest` que recorre el stack MVC: errores C3 en 400/404/405/409/
+500/503, `traceId` y health 200/503).
 
 ### Respuesta de registro exitoso
 
@@ -441,6 +470,9 @@ La caché no se reutiliza si se ejecuta la construcción con `--no-cache`, se li
 | `RABBITMQ_USER` | `onboarding` | `onboarding` | Usuario del broker |
 | `RABBITMQ_PASSWORD` | `onboarding` | `onboarding` | Contraseña del broker |
 | `BROKER_EXCHANGE` | `onboarding.eventos` | `onboarding.eventos` | Exchange topic. La routing key es el `type` del evento |
+| `DB_CONNECTION_TIMEOUT_MS` | `5000` | `5000` | Espera máxima por una conexión del pool de Hikari; después la petición responde `503` |
+| `HEALTH_CHECK_TIMEOUT_MS` | `2000` | `2000` | Plazo total de los checks de `/health` (contrato C2: respuesta en < 3 s) |
+| `SERVICE_VERSION` | versión del pom | tag de la imagen (opcional) | `version` que publica `/health`; por defecto la del pom |
 
 Las credenciales incluidas están pensadas exclusivamente para desarrollo local. En otros ambientes deben proporcionarse mediante variables protegidas o secretos.
 
@@ -449,6 +481,8 @@ Las credenciales incluidas están pensadas exclusivamente para desarrollo local.
 El esquema se versiona con Liquibase. El changelog maestro se encuentra en `src/main/resources/db/changelog/db.changelog-master.xml` y cada cambio tiene rollback. Hibernate usa `spring.jpa.hibernate.ddl-auto=validate`: verifica que el esquema coincida con la entidad, pero nunca lo crea ni lo modifica.
 
 La migración inicial crea `empleados`, su clave primaria y restricciones `UNIQUE` para `email` y `numero_empleado`. Se mantienen también las consultas previas del servicio para devolver mensajes descriptivos; las restricciones de PostgreSQL son la garantía definitiva frente a condiciones de carrera.
+
+Revisión de la Fase 5 (E05): los dos changesets (`001-create-empleados`, `002-add-fecha-retiro`) tienen `<rollback>` explícito y las restricciones `uk_empleados_email` y `uk_empleados_numero_empleado` ya existen, así que no hizo falta una migración nueva. `MigracionesTest` (sin base de datos) recorre los changelogs incluidos en el maestro y falla si un changeset nuevo no declara `<rollback>` o si desaparece alguna de las dos restricciones `UNIQUE`. Una violación de `UNIQUE` que llegue a la base (carrera entre dos altas) responde `409`.
 
 Al migrar desde una instalación anterior creada mediante `ddl-auto=update`, reinicia el volumen local para que Liquibase pueda establecer su historial desde cero:
 
