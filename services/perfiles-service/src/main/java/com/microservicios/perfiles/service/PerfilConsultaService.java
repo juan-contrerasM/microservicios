@@ -33,7 +33,7 @@ public class PerfilConsultaService {
 	@Transactional
 	public Perfil actualizar(String empleadoId, ActualizarPerfilRequest cambios) {
 		ActualizarPerfilRequest recibidos = cambios == null
-				? new ActualizarPerfilRequest(null, null, null, null)
+				? new ActualizarPerfilRequest(null, null, null, null, null, null, null)
 				: cambios;
 		Perfil perfil = obtener(empleadoId);
 		if (recibidos.telefono() != null) {
@@ -45,8 +45,17 @@ public class PerfilConsultaService {
 		if (recibidos.ciudad() != null) {
 			perfil.setCiudad(recibidos.ciudad());
 		}
+		if (recibidos.codigoPostal() != null) {
+			perfil.setCodigoPostal(recibidos.codigoPostal());
+		}
 		if (recibidos.biografia() != null) {
 			perfil.setBiografia(recibidos.biografia());
+		}
+		if (recibidos.fotoUrl() != null) {
+			perfil.setFotoUrl(recibidos.fotoUrl());
+		}
+		if (recibidos.redesSociales() != null) {
+			perfil.setRedesSociales(recibidos.redesSociales());
 		}
 		return perfil;
 	}

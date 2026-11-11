@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+  <changeSet id="002-completar-perfil" author="proyecto-final">
+    <addColumn tableName="perfiles">
+      <column name="apellido" type="VARCHAR(255)" defaultValue=""><constraints nullable="false"/></column>
+      <column name="codigo_postal" type="VARCHAR(32)" defaultValue=""><constraints nullable="false"/></column>
+      <column name="cargo" type="VARCHAR(255)" defaultValue=""><constraints nullable="false"/></column>
+      <column name="area" type="VARCHAR(255)" defaultValue=""><constraints nullable="false"/></column>
+      <column name="numero_empleado" type="VARCHAR(64)" defaultValue=""><constraints nullable="false"/></column>
+      <column name="foto_url" type="VARCHAR(1024)" defaultValue=""><constraints nullable="false"/></column>
+      <column name="redes_sociales" type="TEXT" defaultValue="{}"><constraints nullable="false"/></column>
+    </addColumn>
+    <rollback>
+      <dropColumn tableName="perfiles" columnName="redes_sociales"/>
+      <dropColumn tableName="perfiles" columnName="foto_url"/>
+      <dropColumn tableName="perfiles" columnName="numero_empleado"/>
+      <dropColumn tableName="perfiles" columnName="area"/>
+      <dropColumn tableName="perfiles" columnName="cargo"/>
+      <dropColumn tableName="perfiles" columnName="codigo_postal"/>
+      <dropColumn tableName="perfiles" columnName="apellido"/>
+    </rollback>
+  </changeSet>
+</databaseChangeLog>

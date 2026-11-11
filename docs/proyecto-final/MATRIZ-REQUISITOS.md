@@ -15,7 +15,7 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 | Retiro lógico con `fechaRetiro` | 🟡 | Implementado; falta prueba de auditoría final |
 | Auditoría de retirados por rango | 🟡 | Contrato existente; falta prueba integrada |
 | Unicidad email/número de empleado | 🟡 | Implementada; falta revalidación con base real |
-| CRUD de Departamentos | ❌ | Solo POST, GET lista y GET por ID; faltan PUT y DELETE |
+| CRUD de Departamentos | ✅ | POST, GET, PUT y DELETE verificados contra MySQL limpio; DELETE retorna 204 |
 | Validación Empleados → Departamentos | 🟡 | Cliente HTTP, timeout, retry y circuit breaker existentes |
 | Auth sin `/register` público | ✅ | No se encontró endpoint público de registro |
 | Cuenta inactiva y token de activación | 🟡 | Flujo existente; falta revalidación E2E desde correo |
@@ -24,7 +24,7 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 | BCrypt y ausencia de contraseña temporal | 🟡 | BCrypt implementado; falta auditoría de eventos/correos |
 | Suspensión temporal y baja permanente | 🟡 | Auth consume eventos de vacaciones/retiro; falta regresión integrada |
 | Perfil propio y 403 sobre perfil ajeno | 🟡 | Autorización existente; falta completar modelo y revalidar |
-| Perfil con todos los campos normativos | ❌ | Faltan apellido, código postal, cargo, área, número, foto y redes |
+| Perfil con todos los campos normativos | 🟡 | Campos y migración implementados; suite Maven pasa, pendiente regresión E2E del onboarding |
 | Archivado por retiro | 🟡 | Consumidor existente; falta prueba integrada |
 | CRUD de Vacaciones | 🟡 | Crear/listar/consultar/cancelar; falta actualización explícita |
 | Validaciones de vacaciones | 🟡 | Fechas, pasado y solapamiento implementados; falta baseline |

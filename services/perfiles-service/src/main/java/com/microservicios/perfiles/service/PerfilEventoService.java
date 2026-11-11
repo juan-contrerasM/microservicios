@@ -63,11 +63,18 @@ public class PerfilEventoService {
 		perfil.setId(UUID.randomUUID().toString());
 		perfil.setEmpleadoId(empleadoId);
 		perfil.setNombre(textoOVacio(data.get("nombre")));
+		perfil.setApellido(textoOVacio(data.get("apellido")));
 		perfil.setEmail(email);
+		perfil.setCargo(textoOVacio(data.get("cargo")));
+		perfil.setArea(textoOVacio(data.get("area")));
+		perfil.setNumeroEmpleado(textoOVacio(data.get("numeroEmpleado")));
 		perfil.setTelefono("");
 		perfil.setDireccion("");
 		perfil.setCiudad("");
+		perfil.setCodigoPostal("");
 		perfil.setBiografia("");
+		perfil.setFotoUrl("");
+		perfil.setRedesSociales("{}");
 		perfil.setFechaCreacion(Instant.now(clock));
 		perfil.setArchivado(false);
 		perfiles.save(perfil);
@@ -86,6 +93,10 @@ public class PerfilEventoService {
 			if (data.containsKey("email") && texto(data.get("email")) != null) {
 				perfil.setEmail(texto(data.get("email")));
 			}
+			if (data.containsKey("apellido") && texto(data.get("apellido")) != null) perfil.setApellido(texto(data.get("apellido")));
+			if (data.containsKey("cargo") && texto(data.get("cargo")) != null) perfil.setCargo(texto(data.get("cargo")));
+			if (data.containsKey("area") && texto(data.get("area")) != null) perfil.setArea(texto(data.get("area")));
+			if (data.containsKey("numeroEmpleado") && texto(data.get("numeroEmpleado")) != null) perfil.setNumeroEmpleado(texto(data.get("numeroEmpleado")));
 		}, () -> log.error("empleado.actualizado sin perfil para {}; se confirma sin fila", empleadoId));
 	}
 

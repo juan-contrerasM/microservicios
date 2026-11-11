@@ -4,5 +4,8 @@ public record ActualizarPerfilRequest(
 		String telefono,
 		String direccion,
 		String ciudad,
-		String biografia) {
+		String codigoPostal,
+		String biografia,
+		String fotoUrl,
+		String redesSociales) {
 }

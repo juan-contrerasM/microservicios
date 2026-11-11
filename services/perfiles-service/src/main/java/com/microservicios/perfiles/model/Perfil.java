@@ -21,6 +21,9 @@ public class Perfil {
 	private String nombre;
 
 	@Column(nullable = false)
+	private String apellido;
+
+	@Column(nullable = false)
 	private String email;
 
 	@Column(nullable = false)
@@ -31,6 +34,24 @@ public class Perfil {
 
 	@Column(nullable = false)
 	private String ciudad;
+
+	@Column(name = "codigo_postal", nullable = false)
+	private String codigoPostal;
+
+	@Column(nullable = false)
+	private String cargo;
+
+	@Column(nullable = false)
+	private String area;
+
+	@Column(name = "numero_empleado", nullable = false)
+	private String numeroEmpleado;
+
+	@Column(name = "foto_url", nullable = false)
+	private String fotoUrl;
+
+	@Column(name = "redes_sociales", columnDefinition = "TEXT", nullable = false)
+	private String redesSociales;
 
 	@Column(nullable = false)
 	private String biografia;
@@ -68,6 +89,21 @@ public class Perfil {
 	public String getEmail() {
 		return email;
 	}
+
+	public String getApellido() { return apellido; }
+	public void setApellido(String apellido) { this.apellido = apellido; }
+	public String getCodigoPostal() { return codigoPostal; }
+	public void setCodigoPostal(String codigoPostal) { this.codigoPostal = codigoPostal; }
+	public String getCargo() { return cargo; }
+	public void setCargo(String cargo) { this.cargo = cargo; }
+	public String getArea() { return area; }
+	public void setArea(String area) { this.area = area; }
+	public String getNumeroEmpleado() { return numeroEmpleado; }
+	public void setNumeroEmpleado(String numeroEmpleado) { this.numeroEmpleado = numeroEmpleado; }
+	public String getFotoUrl() { return fotoUrl; }
+	public void setFotoUrl(String fotoUrl) { this.fotoUrl = fotoUrl; }
+	public String getRedesSociales() { return redesSociales; }
+	public void setRedesSociales(String redesSociales) { this.redesSociales = redesSociales; }
 
 	public void setEmail(String email) {
 		this.email = email;

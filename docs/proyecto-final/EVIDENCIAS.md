@@ -89,3 +89,12 @@ Hallazgos adicionales:
   las políticas de Auth y SonarQube.
 - Regresión posterior: Gateway 21/21, Vacaciones 64/64, Auth 31/31, Notificaciones 12/12, Go y ambas
   suites Java correctas; BDD integrada 18 escenarios y 137 pasos correctos.
+
+## Fase 3A — Funcionalidad Java/Go
+
+- Departamentos incorpora actualización y eliminación en repositorio, dominio, HTTP y OpenAPI.
+- Prueba real contra MySQL: crear `PFCRUD`, actualizar conservando el id de la ruta y eliminar con
+  HTTP 204. La suite Go completa pasa.
+- Perfiles incorpora apellido, código postal, cargo, área, número de empleado, foto y redes sociales,
+  con migración Liquibase incremental y sincronización desde eventos de empleado.
+- La suite Maven de Perfiles finaliza correctamente después de ampliar el modelo.

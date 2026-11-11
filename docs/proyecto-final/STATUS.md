@@ -10,7 +10,7 @@ Leyenda: ✅ terminado · 🔄 en progreso · ⬜ pendiente · ⛔ bloqueado
 | 0 | Punto de restauración, rama y documentos normativos | Conjunta | ✅ | Etiqueta local `reto8-completo`, rama `proyecto-final`, PDF, plan y estado creados. Push pendiente por HTTP 403 de permisos. |
 | 1 | Matriz normativa y baseline ejecutable | Ambas | ✅ | Siete suites verificadas, stack construido, BDD 18/18 y brechas registradas en `EVIDENCIAS.md`. |
 | 2 | Cero secretos y configuración segura | Persona 2 | ✅ | Docker Secrets y `*_FILE` validados desde volúmenes limpios; Gitleaks sin hallazgos y BDD 18/18. |
-| 3A | Funcionalidad faltante Java/Go | Persona 1 | ⬜ | CRUD Departamentos y modelo completo de Perfiles. |
+| 3A | Funcionalidad faltante Java/Go | Persona 1 | 🔄 | CRUD Departamentos cerrado; modelo normativo de Perfiles implementado y con suite Maven correcta, falta regresión E2E del flujo. |
 | 3B | Funcionalidad faltante Node/Python | Persona 2 | ⬜ | CRUD Vacaciones, plantillas y ciclo de cuenta. |
 | 4 | Catálogo de eventos e idempotencia integral | Ambas | ⬜ | Contratos, DLQ, duplicados y headers W3C. |
 | 5 | APIs, health, Swagger y borde único | Ambas | ⬜ | Auditoría de siete contratos y Gateway. |
