@@ -1,6 +1,9 @@
 import amqp from 'amqplib';
 
 const CLAVES = ['empleado.creado', 'empleado.retirado'];
+const MAX_REINTENTOS = 3;
+const RETRY_EXCHANGE_PREFIX = 'onboarding.retry';
+const DLX_EXCHANGE = 'onboarding.dlx';
 
 export function crearConsumidor({ config, pool, alCambiar }) {
 	let conectado = false;
@@ -35,10 +38,27 @@ export function crearConsumidor({ config, pool, alCambiar }) {
 			try {
 				conexion = await amqp.connect(config.amqpUrl);
 				const canal = await conexion.createChannel();
+				const retryExchange = `${RETRY_EXCHANGE_PREFIX}.${config.queue}`;
 				await canal.assertExchange(config.exchange, 'topic', { durable: true });
-				await canal.assertQueue(config.queue, { durable: true });
+				await canal.assertExchange(retryExchange, 'topic', { durable: true });
+				await canal.assertExchange(DLX_EXCHANGE, 'direct', { durable: true });
+				await canal.assertQueue(config.queue, {
+					durable: true,
+					deadLetterExchange: DLX_EXCHANGE,
+					deadLetterRoutingKey: config.queue,
+				});
+				const retryQueue = `${config.queue}.retry`;
+				await canal.assertQueue(retryQueue, {
+					durable: true,
+					messageTtl: 5000,
+					deadLetterExchange: config.exchange,
+				});
+				const dlq = `${config.queue}.dlq`;
+				await canal.assertQueue(dlq, { durable: true });
+				await canal.bindQueue(dlq, DLX_EXCHANGE, config.queue);
 				for (const clave of CLAVES) {
 					await canal.bindQueue(config.queue, config.exchange, clave);
+					await canal.bindQueue(retryQueue, retryExchange, clave);
 				}
 				await canal.prefetch(1);
 				conectado = true;
@@ -77,8 +97,13 @@ export function crearConsumidor({ config, pool, alCambiar }) {
 		try {
 			envelope = JSON.parse(mensaje.content.toString('utf8'));
 		} catch {
-			console.error('Mensaje no es JSON; se confirma para no bloquear la cola');
-			canal.ack(mensaje);
+			console.error('Mensaje no es JSON; se envía a DLQ');
+			canal.reject(mensaje, false);
+			return;
+		}
+		if (!envelope?.id) {
+			console.error('Evento sin id; se envía a DLQ');
+			canal.reject(mensaje, false);
 			return;
 		}
 		const client = await pool.connect();
@@ -89,8 +114,19 @@ export function crearConsumidor({ config, pool, alCambiar }) {
 			canal.ack(mensaje);
 		} catch (error) {
 			await client.query('ROLLBACK');
-			console.error(`Fallo procesando ${envelope?.id}; se reencola: ${error.message}`);
-			canal.nack(mensaje, false, true);
+			const intento = Number(mensaje.properties.headers?.['x-retry-count'] || 0);
+			if (intento >= MAX_REINTENTOS) {
+				console.error(`Fallo definitivo procesando ${envelope?.id}; se envía a DLQ: ${error.message}`);
+				canal.reject(mensaje, false);
+			} else {
+				canal.publish(`${RETRY_EXCHANGE_PREFIX}.${config.queue}`, mensaje.fields.routingKey, mensaje.content, {
+					persistent: true,
+					contentType: mensaje.properties.contentType || 'application/json',
+					headers: { ...mensaje.properties.headers, 'x-retry-count': intento + 1 },
+				});
+				canal.ack(mensaje);
+				console.error(`Fallo procesando ${envelope?.id}; reintento ${intento + 1}/${MAX_REINTENTOS} programado`);
+			}
 		} finally {
 			client.release();
 		}

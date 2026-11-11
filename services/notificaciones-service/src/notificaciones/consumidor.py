@@ -23,6 +23,9 @@ CLAVES = (
     "cuenta.activada",
     "cuenta.desactivada",
 )
+MAX_REINTENTOS = 3
+RETRY_EXCHANGE_PREFIX = "onboarding.retry"
+DLX_EXCHANGE = "onboarding.dlx"
 
 
 class EstadoConsumidor:
@@ -44,16 +47,9 @@ def iniciar_consumidor(settings, sesiones, estado: EstadoConsumidor | None = Non
                 parametros.blocked_connection_timeout = 30
                 conexion = pika.BlockingConnection(parametros)
                 canal = conexion.channel()
-                canal.exchange_declare(exchange=settings.broker_exchange, exchange_type="topic", durable=True)
-                canal.queue_declare(queue=settings.broker_queue, durable=True)
-                for clave in CLAVES:
-                    canal.queue_bind(
-                        queue=settings.broker_queue,
-                        exchange=settings.broker_exchange,
-                        routing_key=clave,
-                    )
+                _declarar_topologia(canal, settings.broker_exchange, settings.broker_queue)
                 canal.basic_qos(prefetch_count=1)
-                canal.basic_consume(settings.broker_queue, _manejador(sesiones, enviar), auto_ack=False)
+                canal.basic_consume(settings.broker_queue, _manejador(sesiones, enviar, settings.broker_queue), auto_ack=False)
                 estado.conectado = True
                 logger.info("Consumidor escuchando %s", settings.broker_queue)
                 while not detener.is_set():
@@ -72,13 +68,17 @@ def iniciar_consumidor(settings, sesiones, estado: EstadoConsumidor | None = Non
     return detener
 
 
-def _manejador(sesiones, enviar):
-    def on_message(canal, method, _properties, body: bytes) -> None:
+def _manejador(sesiones, enviar, queue="q.notificaciones"):
+    def on_message(canal, method, properties, body: bytes) -> None:
         try:
             envelope = json.loads(body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            logger.exception("Mensaje no es JSON; se confirma para no bloquear la cola")
-            canal.basic_ack(method.delivery_tag)
+            logger.exception("Mensaje no es JSON; se envía a DLQ")
+            canal.basic_reject(method.delivery_tag, requeue=False)
+            return
+        if not envelope.get("id"):
+            logger.error("Evento sin id; se envía a DLQ")
+            canal.basic_reject(method.delivery_tag, requeue=False)
             return
         sesion = sesiones()
         try:
@@ -87,9 +87,47 @@ def _manejador(sesiones, enviar):
             canal.basic_ack(method.delivery_tag)
         except Exception:
             sesion.rollback()
-            logger.exception("Fallo procesando %s; se reencola", envelope.get("id"))
-            canal.basic_nack(method.delivery_tag, requeue=True)
+            _reintentar_o_dlq(canal, method, properties, body, envelope.get("id"), queue)
         finally:
             sesion.close()
 
     return on_message
+
+
+def _declarar_topologia(canal, exchange: str, queue: str) -> None:
+	retry_exchange = f"{RETRY_EXCHANGE_PREFIX}.{queue}"
+    canal.exchange_declare(exchange=exchange, exchange_type="topic", durable=True)
+    canal.exchange_declare(exchange=retry_exchange, exchange_type="topic", durable=True)
+    canal.exchange_declare(exchange=DLX_EXCHANGE, exchange_type="direct", durable=True)
+    canal.queue_declare(queue=queue, durable=True, arguments={
+        "x-dead-letter-exchange": DLX_EXCHANGE, "x-dead-letter-routing-key": queue,
+    })
+    retry_queue = f"{queue}.retry"
+    canal.queue_declare(queue=retry_queue, durable=True, arguments={
+        "x-message-ttl": 5000, "x-dead-letter-exchange": exchange,
+    })
+    dlq = f"{queue}.dlq"
+    canal.queue_declare(queue=dlq, durable=True)
+    canal.queue_bind(queue=dlq, exchange=DLX_EXCHANGE, routing_key=queue)
+    for clave in CLAVES:
+        canal.queue_bind(queue=queue, exchange=exchange, routing_key=clave)
+        canal.queue_bind(queue=retry_queue, exchange=retry_exchange, routing_key=clave)
+
+
+def _reintentar_o_dlq(canal, method, properties, body: bytes, event_id, queue: str) -> None:
+    headers = dict(getattr(properties, "headers", None) or {})
+    intento = int(headers.get("x-retry-count", 0))
+    if intento >= MAX_REINTENTOS:
+        logger.exception("Fallo definitivo procesando %s; se envía a DLQ", event_id)
+        canal.basic_reject(method.delivery_tag, requeue=False)
+        return
+    headers["x-retry-count"] = intento + 1
+    nuevas = pika.BasicProperties(
+        content_type=getattr(properties, "content_type", None) or "application/json",
+        delivery_mode=2,
+        headers=headers,
+    )
+    canal.basic_publish(exchange=f"{RETRY_EXCHANGE_PREFIX}.{queue}", routing_key=method.routing_key, body=body,
+                        properties=nuevas, mandatory=True)
+    canal.basic_ack(method.delivery_tag)
+    logger.exception("Fallo procesando %s; reintento %s/%s programado", event_id, intento + 1, MAX_REINTENTOS)

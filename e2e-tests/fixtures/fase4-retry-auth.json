@@ -1,0 +1,13 @@
+{
+  "id": "fase4-retry-auth-002",
+  "type": "empleado.creado",
+  "version": 1,
+  "occurredAt": "2026-11-10T22:08:00Z",
+  "producer": "empleados-service",
+  "data": {
+    "empleadoId": "ERETRY",
+    "email": "retry@empresa.com",
+    "nombre": "Retry",
+    "apellido": "Test"
+  }
+}

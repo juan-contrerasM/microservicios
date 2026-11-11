@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
@@ -25,6 +26,8 @@ public class BrokerConfig {
 	static final String CREADO = "empleado.creado";
 	static final String ACTUALIZADO = "empleado.actualizado";
 	static final String RETIRADO = "empleado.retirado";
+	static final String RETRY_EXCHANGE = "onboarding.retry.q.perfiles";
+	static final String DLX_EXCHANGE = "onboarding.dlx";
 
 	@Bean
 	public CachingConnectionFactory brokerConnectionFactory(BrokerProperties broker) {
@@ -47,7 +50,10 @@ public class BrokerConfig {
 
 	@Bean
 	public Queue perfilesQueue(BrokerProperties broker) {
-		return QueueBuilder.durable(broker.getQueue()).build();
+		return QueueBuilder.durable(broker.getQueue())
+				.deadLetterExchange(DLX_EXCHANGE)
+				.deadLetterRoutingKey(broker.getQueue())
+				.build();
 	}
 
 	@Bean
@@ -79,14 +85,30 @@ public class BrokerConfig {
 
 	@Bean
 	public ApplicationRunner declarePerfilesTopology(RabbitAdmin rabbitAdmin, TopicExchange onboardingExchange,
-			Queue perfilesQueue, Binding bindingCreado, Binding bindingActualizado, Binding bindingRetirado) {
+			Queue perfilesQueue, Binding bindingCreado, Binding bindingActualizado, Binding bindingRetirado,
+			BrokerProperties broker) {
 		return args -> {
 			try {
+				TopicExchange retryExchange = new TopicExchange(RETRY_EXCHANGE, true, false);
+				DirectExchange dlxExchange = new DirectExchange(DLX_EXCHANGE, true, false);
+				Queue retryQueue = QueueBuilder.durable(broker.getQueue() + ".retry")
+						.ttl(5000)
+						.deadLetterExchange(broker.getExchange())
+						.build();
+				Queue dlq = QueueBuilder.durable(broker.getQueue() + ".dlq").build();
 				rabbitAdmin.declareExchange(onboardingExchange);
+				rabbitAdmin.declareExchange(retryExchange);
+				rabbitAdmin.declareExchange(dlxExchange);
 				rabbitAdmin.declareQueue(perfilesQueue);
+				rabbitAdmin.declareQueue(retryQueue);
+				rabbitAdmin.declareQueue(dlq);
 				rabbitAdmin.declareBinding(bindingCreado);
 				rabbitAdmin.declareBinding(bindingActualizado);
 				rabbitAdmin.declareBinding(bindingRetirado);
+				rabbitAdmin.declareBinding(BindingBuilder.bind(retryQueue).to(retryExchange).with(CREADO));
+				rabbitAdmin.declareBinding(BindingBuilder.bind(retryQueue).to(retryExchange).with(ACTUALIZADO));
+				rabbitAdmin.declareBinding(BindingBuilder.bind(retryQueue).to(retryExchange).with(RETIRADO));
+				rabbitAdmin.declareBinding(BindingBuilder.bind(dlq).to(dlxExchange).with(broker.getQueue()));
 				log.info("Cola declarada: {} en {}", perfilesQueue.getName(), onboardingExchange.getName());
 			} catch (RuntimeException ex) {
 				log.warn("No se pudo declarar q.perfiles al arrancar: {}", ex.getMessage());
