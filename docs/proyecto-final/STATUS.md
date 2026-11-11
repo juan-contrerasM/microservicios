@@ -10,8 +10,8 @@ Leyenda: ✅ terminado · 🔄 en progreso · ⬜ pendiente · ⛔ bloqueado
 | 0 | Punto de restauración, rama y documentos normativos | Conjunta | ✅ | Etiqueta local `reto8-completo`, rama `proyecto-final`, PDF, plan y estado creados. Push pendiente por HTTP 403 de permisos. |
 | 1 | Matriz normativa y baseline ejecutable | Ambas | ✅ | Siete suites verificadas, stack construido, BDD 18/18 y brechas registradas en `EVIDENCIAS.md`. |
 | 2 | Cero secretos y configuración segura | Persona 2 | ✅ | Docker Secrets y `*_FILE` validados desde volúmenes limpios; Gitleaks sin hallazgos y BDD 18/18. |
-| 3A | Funcionalidad faltante Java/Go | Persona 1 | 🔄 | CRUD Departamentos cerrado; modelo normativo de Perfiles implementado y con suite Maven correcta, falta regresión E2E del flujo. |
-| 3B | Funcionalidad faltante Node/Python | Persona 2 | ⬜ | CRUD Vacaciones, plantillas y ciclo de cuenta. |
+| 3A | Funcionalidad faltante Java/Go | Persona 1 | ✅ | CRUD Departamentos y modelo normativo de Perfiles cerrados; regresión integrada 18/18. |
+| 3B | Funcionalidad faltante Node/Python | Persona 2 | ✅ | Vacaciones modificables, plantillas externas y ciclo de cuenta verificados; 66, 14 y 31 pruebas correctas. |
 | 4 | Catálogo de eventos e idempotencia integral | Ambas | ⬜ | Contratos, DLQ, duplicados y headers W3C. |
 | 5 | APIs, health, Swagger y borde único | Ambas | ⬜ | Auditoría de siete contratos y Gateway. |
 | 6 | Pruebas, cobertura y aceptación funcional | Ambas | ⬜ | Umbral ≥70 % por cada servicio. |
@@ -26,8 +26,8 @@ Leyenda: ✅ terminado · 🔄 en progreso · ⬜ pendiente · ⛔ bloqueado
 
 ## Punto actual
 
-Las fases 0, 1 y 2 están cerradas. El trabajo activo pasa a las fases 3A y 3B: completar las brechas
-funcionales detectadas en Departamentos, Perfiles, Vacaciones y Notificaciones.
+Las fases 0 a 3 están cerradas. El siguiente bloque es la fase 4: consolidar el catálogo de eventos,
+la idempotencia, los reintentos y las colas de mensajes fallidos.
 
 ## Decisiones que deben quedar registradas antes de Fase 2
 

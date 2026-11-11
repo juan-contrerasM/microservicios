@@ -18,19 +18,19 @@ Leyenda: ✅ reutilizable/verificado · 🟡 parcial o pendiente de revalidació
 | CRUD de Departamentos | ✅ | POST, GET, PUT y DELETE verificados contra MySQL limpio; DELETE retorna 204 |
 | Validación Empleados → Departamentos | 🟡 | Cliente HTTP, timeout, retry y circuit breaker existentes |
 | Auth sin `/register` público | ✅ | No se encontró endpoint público de registro |
-| Cuenta inactiva y token de activación | 🟡 | Flujo existente; falta revalidación E2E desde correo |
+| Cuenta inactiva y token de activación | ✅ | Flujo completo revalidado en la regresión BDD desde el correo |
 | Login y JWT | 🟡 | JWT HS256 implementado; falta hardening final |
-| Cambio y recuperación de contraseña | 🟡 | Endpoints y eventos existentes |
-| BCrypt y ausencia de contraseña temporal | 🟡 | BCrypt implementado; falta auditoría de eventos/correos |
-| Suspensión temporal y baja permanente | 🟡 | Auth consume eventos de vacaciones/retiro; falta regresión integrada |
-| Perfil propio y 403 sobre perfil ajeno | 🟡 | Autorización existente; falta completar modelo y revalidar |
-| Perfil con todos los campos normativos | 🟡 | Campos y migración implementados; suite Maven pasa, pendiente regresión E2E del onboarding |
-| Archivado por retiro | 🟡 | Consumidor existente; falta prueba integrada |
-| CRUD de Vacaciones | 🟡 | Crear/listar/consultar/cancelar; falta actualización explícita |
-| Validaciones de vacaciones | 🟡 | Fechas, pasado y solapamiento implementados; falta baseline |
+| Cambio y recuperación de contraseña | ✅ | Endpoints, eventos y regresión BDD verificados |
+| BCrypt y ausencia de contraseña temporal | ✅ | Hash BCrypt y activación por token cubiertos por 31 pruebas de Auth |
+| Suspensión temporal y baja permanente | ✅ | Inicio/fin de vacaciones y retiro irreversible verificados en Auth y BDD |
+| Perfil propio y 403 sobre perfil ajeno | ✅ | Propiedad y acceso ajeno revalidados por el flujo integrado |
+| Perfil con todos los campos normativos | ✅ | Modelo, migración Liquibase y onboarding sobre base limpia correctos |
+| Archivado por retiro | ✅ | Consumidor y flujo integrado de retiro revalidados |
+| CRUD de Vacaciones | ✅ | Incluye `PUT /vacaciones/{id}` para períodos PROGRAMADA futuros |
+| Validaciones de vacaciones | ✅ | Fechas, pasado, estado, solapamiento y recálculo cubiertos por 66 pruebas |
 | Scheduler inicio/fin | 🟡 | Implementado; falta validar escalado seguro |
-| Correos de eventos obligatorios | 🟡 | Mailhog y eventos implementados; falta revalidar catálogo completo |
-| Plantillas configurables | ❌ | Mensajes definidos como constantes en código |
+| Correos de eventos obligatorios | ✅ | Mailhog, eventos y persistencia revalidados en la regresión integrada |
+| Plantillas configurables | ✅ | Catálogo JSON externo montado en solo lectura y cubierto por pruebas |
 | Borde único y rutas del Gateway | 🟡 | Gateway funciona como proxy; el commit base publicó puertos de desarrollo que deben revisarse |
 | Composición empleado completo | ⭐ | No obligatoria; pendiente si se busca bonificación |
 

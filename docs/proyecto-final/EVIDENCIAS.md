@@ -98,3 +98,20 @@ Hallazgos adicionales:
 - Perfiles incorpora apellido, código postal, cargo, área, número de empleado, foto y redes sociales,
   con migración Liquibase incremental y sincronización desde eventos de empleado.
 - La suite Maven de Perfiles finaliza correctamente después de ampliar el modelo.
+
+## Fase 3B — Funcionalidad Node/Python y cierre de la Fase 3
+
+Fecha de cierre: 2026-11-10.
+
+- Vacaciones incorpora `PUT /vacaciones/{id}` para modificar únicamente períodos futuros en estado
+  `PROGRAMADA`, evita solapamientos y recalcula los días hábiles. OpenAPI actualizado.
+- Suite completa de Vacaciones: 66/66 pruebas correctas y 98,83 % de líneas en los módulos medidos.
+- Notificaciones carga asuntos y cuerpos desde `config/templates.json`; Compose permite reemplazar el
+  catálogo mediante un montaje de solo lectura. Suite: 14/14 pruebas correctas.
+- Auth no expone `/register`; conserva alta por eventos, BCrypt, tokens expirantes, recuperación,
+  suspensión temporal, reactivación y retiro permanente. Suite: 31/31 pruebas correctas.
+- Se levantó el proyecto aislado `pfphase3` con volúmenes nuevos para evitar modificar los datos del
+  entorno habitual. Bases, broker, siete servicios y Gateway iniciaron correctamente.
+- Regresión BDD contra `http://localhost:8080`: 18/18 escenarios y 137/137 pasos correctos.
+- Los volúmenes previos del proyecto principal conservan credenciales anteriores; no se eliminaron.
+  Para reutilizarlos se deben rotar sus usuarios o recrearlos conscientemente con los secretos actuales.
