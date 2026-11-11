@@ -16,18 +16,18 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 
 | ID | Requisito | Empleados | Departamentos | Auth | Perfiles | Vacaciones | Notificaciones | Gateway | Fase |
 |---|---|---|---|---|---|---|---|---|---|
-| E01 | Dockerfile multi-stage, base fijada, `.dockerignore` | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 7 |
-| E02 | Usuario no root, `curl`/`wget` | 🧪 UID 10001 | 🧪 UID 10001 | 🧪 UID 10001 | 🧪 UID 10001 | 🧪 UID 10001 | 🧪 UID 10001 | 🧪 UID 10001 | 7 |
+| E01 | Dockerfile multi-stage, base fijada, `.dockerignore` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 7 |
+| E02 | Usuario no root, `curl`/`wget` | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | 7 |
 | E03 | Configuración y secretos por env/`*_FILE` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 2 |
 | E04 | Sin `ports:` (solo `expose:`) | ✅ | ❌ 8081 | ✅ | ❌ 8083 | ❌ 8085 | ❌ 8084 | N/A borde | 14 |
 | E05 | BD propia, migraciones con rollback, `UNIQUE` | ✅ rollback y UNIQUE probados offline | ✅ `.down.sql` probado offline | ✅ downgrade `--sql` | ✅ | ✅ `pgm` simulado | ✅ downgrade `--sql` | N/A sin BD | 5 |
 | E06 | Healthcheck Compose → `/health` + `service_healthy` | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 14 |
-| E07 | `/health` C2 con 200/503 real | 🧪 timeout 2 s por check | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 propio | 5 |
-| E08 | OpenAPI completo + Swagger UI + `openapi.yaml` + `bearerAuth` | 🧪 drift test | 🧪 drift test | 🧪 drift test | 🧪 drift test | 🧪 drift test | 🧪 drift test | 🧪 `/swagger` con 7 contratos | 5 |
-| E09 | Error HTTP C3 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 🧪 | 5 |
+| E07 | `/health` C2 con 200/503 real | ✅ timeout 2 s por check | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ propio | 5 |
+| E08 | OpenAPI completo + Swagger UI + `openapi.yaml` + `bearerAuth` | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ `/swagger` con 7 contratos | 5 |
+| E09 | Error HTTP C3 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 5 |
 | E10 | Timeout + retry backoff + circuit breaker en clientes HTTP | ✅ Resilience4j → Departamentos | N/A | N/A | N/A | N/A | N/A | ❌ solo timeout de 35 s | 6 |
-| E11 | Productor: envelope, post-commit, traceparent | 🧪 `afterCommit` | N/A | 🧪 | N/A | 🧪 incluido scheduler | N/A | N/A | 4 |
-| E12 | Consumidor: dedup atómica, retry, DLQ, poison | N/A | N/A | 🧪 | 🧪 | 🧪 | 🧪 correo tras commit | N/A | 4 |
+| E11 | Productor: envelope, post-commit, traceparent | ✅ `afterCommit` | N/A | ✅ | N/A | ✅ incluido scheduler | N/A | N/A | 4 |
+| E12 | Consumidor: dedup atómica, retry, DLQ, poison | N/A | N/A | ✅ | ✅ | ✅ | ✅ correo tras commit | N/A | 4 |
 | E13 | Unitarias con dobles | 🟡 | 🟡 | ✅ | ❌ 1 archivo | ✅ | ✅ | ❌ 1 archivo | 8 |
 | E14 | Integración con BD/broker reales | 🟡 | ❌ | 🟡 | ❌ | 🟡 | 🟡 | ❌ | 8 |
 | E15 | Cobertura ≥70 % de la lógica de negocio | 🟡 sin medir | 🟡 sin medir | ✅ 72 % | 🟡 sin medir | 🟡 100 % solo módulos seleccionados | ✅ 73 % | 🟡 sin medir | 8 |
