@@ -78,9 +78,9 @@ leerlos y los servicios no arrancaban.
 - `chown 10001` de los archivos: exige `sudo` en el host y deja archivos que el propio usuario no
   puede leer ni rotar sin privilegios.
 - Un entrypoint que arranque como root, copie los secretos y baje a 10001 (`su-exec`/`gosu`):
-  añade un binario con setuid lógico y una fase root a cada imagen; contradice E02.
-- `uid`/`gid`/`mode` en la sintaxis larga de `secrets:` de Compose: solo se aplica con Swarm; con
-  `docker compose` y `file:` se ignora.
+  mantiene una fase root y un binario extra para cambiar de usuario en cada imagen; contradice E02.
+- `uid`/`gid`/`mode` en la sintaxis larga de `secrets:` de Compose: según la versión de Compose,
+  con `file:` y sin Swarm se ignora o no es portable entre las versiones que usa el equipo.
 
 **Migración:** quien ya tenga `secrets/` de una versión anterior ejecuta
 `./scripts/setup-secrets.sh --permisos` (no rota valores). En Windows con Docker Desktop los
