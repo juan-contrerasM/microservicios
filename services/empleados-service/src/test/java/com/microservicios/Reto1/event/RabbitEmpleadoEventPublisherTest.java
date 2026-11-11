@@ -62,6 +62,20 @@ class RabbitEmpleadoEventPublisherTest {
 	}
 
 	@Test
+	void elEnvelopeLlevaLosSeisCamposDeC1YElMessageIdEsSuId() throws Exception {
+		publisher.publicarCreado(empleado());
+
+		ArgumentCaptor<Message> mensaje = ArgumentCaptor.forClass(Message.class);
+		verify(rabbitTemplate).send(eq("onboarding.eventos"), eq("empleado.creado"), mensaje.capture());
+		tools.jackson.databind.JsonNode envelope = JsonMapper.builder().build().readTree(mensaje.getValue().getBody());
+		assertThat(envelope.propertyNames()).containsExactly("id", "type", "version", "occurredAt", "producer", "data");
+		assertThat(envelope.get("id").asString()).matches("[0-9a-f-]{36}");
+		assertThat(mensaje.getValue().getMessageProperties().getMessageId()).isEqualTo(envelope.get("id").asString());
+		assertThat(mensaje.getValue().getMessageProperties().getDeliveryMode())
+				.isEqualTo(org.springframework.amqp.core.MessageDeliveryMode.PERSISTENT);
+	}
+
+	@Test
 	void publicaRetiradoConFechaRetiro() {
 		Empleado empleado = empleado();
 		empleado.setEstado(EstadoEmpleado.RETIRADO);
