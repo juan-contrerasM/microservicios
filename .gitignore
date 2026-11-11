@@ -52,3 +52,6 @@ reports/
 
 # --- Docker / infra ---
 *.pid
+
+# --- Claude Code (worktrees locales de agentes) ---
+.claude/worktrees/

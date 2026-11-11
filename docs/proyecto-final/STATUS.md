@@ -4,7 +4,8 @@ Fuente de verdad del avance del proyecto final. El detalle técnico, paquetes de
 cierre están en [`PLAN-PROYECTO-FINAL.md`](PLAN-PROYECTO-FINAL.md); el cumplimiento por servicio, en
 [`MATRIZ-REQUISITOS.md`](MATRIZ-REQUISITOS.md).
 
-Leyenda: ✅ terminado · 🔄 en progreso · ⬜ pendiente · ⛔ bloqueado
+Leyenda: ✅ terminado · 🧪 implementado y probado sin Docker, falta validación integrada · 🔄 en progreso ·
+⬜ pendiente · ⛔ bloqueado
 
 ## Asignación de frentes
 
@@ -26,10 +27,10 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 | 2 | — | Cero secretos y configuración segura | D | ✅ | Docker Secrets y `*_FILE`; Gitleaks sin hallazgos; BDD 18/18 |
 | 3A | — | Funcionalidad faltante Java/Go | A | ✅ | CRUD Departamentos y modelo normativo de Perfiles |
 | 3B | — | Funcionalidad faltante Node/Python | B | ✅ | Vacaciones modificables, plantillas externas, ciclo de cuenta |
-| 4 | 1 | Eventos, idempotencia, retry y DLQ (E11, E12) | A + B | 🔄 | Commit `ad01d03`: retry/DLQ en consumidores de Auth, Notificaciones, Perfiles y Vacaciones. Falta `docs/eventos.md`, publicación post-commit y pruebas de duplicado/poison |
-| 5 | 1 | Contrato HTTP: OpenAPI, errores, health, migraciones (E05, E07–E09) | A + B | ⬜ | Incluye health 503 de Empleados y Swagger agregado en el Gateway |
+| 4 | 1 | Eventos, idempotencia, retry y DLQ (E11, E12) | A + B | 🧪 | Código y pruebas listos: reintento solo a la cola de origen (corrige el re-fan-out de `ad01d03`), validación de envelope, dedup atómica, correo tras commit, publicación post-commit, `docs/eventos.md`, fixtures `fase4-*`. Falta validar con RabbitMQ real |
+| 5 | 1 | Contrato HTTP: OpenAPI, errores, health, migraciones (E05, E07–E09) | A + B | 🧪 | Health C2 con timeout (corrige el hallazgo de Empleados), errores C3, siete `openapi.yaml` con prueba de drift, `/swagger` agregado en el Gateway, duplicados → 409. Falta validar con dependencias reales caídas y BDD |
 | 6 | 2 | Resiliencia síncrona: CB, timeout y retry (E10) | A + B | ⬜ | Gateway sin circuit breaker ni reintentos |
-| 7 | 1 | Contenerización multi-stage y no root (E01, E02) | C + A + B | ⬜ | 4 Dockerfiles de una etapa, 5 corren como root |
+| 7 | 1 | Contenerización multi-stage y no root (E01, E02) | C + A + B | 🧪 | Siete Dockerfiles multi-stage, UID 10001, bases fijadas, `.dockerignore`; `setup-secrets` deja `secrets/*.txt` en 0644 dentro de `secrets/` 0700 (`--permisos`). Falta `docker compose build` |
 | 8 | 2 | Pruebas, cobertura ≥70 % por servicio y BDD (E13–E17) | A + B + D | ⬜ | Gateway, Perfiles y Departamentos con pocas pruebas |
 | 9 | 2–3 | Jenkinsfile y SonarQube en los siete servicios (E18, E19) | C | ⬜ | Hoy solo Empleados y Vacaciones |
 | 10 | 3 | Registry, artefactos, despliegue y rollback | C | ⬜ | Registry en `:5001` |
@@ -42,8 +43,13 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 
 ## Punto actual
 
-Las fases 0 a 3 están cerradas y la Fase 4 está en curso. **Ola 1** (se pueden ejecutar en paralelo
-ya): cerrar la Fase 4, Fase 5 (contrato HTTP por servicio) y Fase 7 (Dockerfiles).
+Ola 1 implementada e integrada en `proyecto-final` (Fases 4, 5 y 7 en 🧪). Todas las suites pasan sin
+Docker: Empleados y Perfiles (Maven), Departamentos (Go), Gateway 70/70, Vacaciones 109/109 (88 %),
+Auth 76 (82 %), Notificaciones 42 (81 %), arnés E2E 16/16.
+
+**Bloqueante para pasar a ✅:** alguien con Docker debe ejecutar la validación integrada descrita en
+`EVIDENCIAS.md` (sección «Ola 1 — validación pendiente con Docker»). Mientras tanto puede empezar la
+**Ola 2** (Fases 6, 8, 11, 14 y plantilla de la 9).
 
 ## Decisiones
 

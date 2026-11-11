@@ -115,3 +115,76 @@ Fecha de cierre: 2026-11-10.
 - Regresión BDD contra `http://localhost:8080`: 18/18 escenarios y 137/137 pasos correctos.
 - Los volúmenes previos del proyecto principal conservan credenciales anteriores; no se eliminaron.
   Para reutilizarlos se deben rotar sus usuarios o recrearlos conscientemente con los secretos actuales.
+
+## Ola 1 — Fases 4, 5 y 7 (implementación)
+
+Fecha: 2026-11-11. Rama: `proyecto-final`. Merges: fase 7 (`4514472`), fase 4, fase 5 Java/Go
+(`c3cf293`) y fase 5 Node/Python (`a82e0fd`).
+
+### Pruebas sin Docker (todas en verde sobre el árbol integrado)
+
+| Suite | Comando | Resultado |
+|---|---|---|
+| Empleados | `JAVA_HOME=<jdk-21> mvn -q -B test` | Correcto (5 pruebas Testcontainers omitidas sin Docker) |
+| Perfiles | `JAVA_HOME=<jdk-21> mvn -q -B test` | Correcto |
+| Departamentos | `go test ./...` | Correcto (db, department, httpapi, observability) |
+| Gateway | `npm test` | 70/70 |
+| Vacaciones | `npm test` | 109/109; 88 % de líneas |
+| Auth | `pytest --cov=src` | 76 correctas; 82 % |
+| Notificaciones | `pytest --cov=src` | 42 correctas; 81 % |
+| Arnés E2E | `npm run test:unit` | 16/16 |
+
+### Hallazgos corregidos durante la Ola 1
+
+- `ad01d03` dejó `consumidor.py` de Auth y Notificaciones con mezcla de tabuladores y espacios
+  (`TabError`): los módulos no se podían importar y los contenedores no habrían arrancado.
+- El reintento de `ad01d03` volvía al exchange topic con la routing key original y se re-difundía a
+  todos los consumidores del evento. Ahora `<q>.retry` hace dead-letter al exchange por defecto con
+  routing key `<q>` (ver `docs/eventos.md`).
+- Vacaciones dejaba un mensaje sin ack ni reject si fallaba `pool.connect()`, bloqueando la cola.
+- Notificaciones enviaba el correo antes del commit: un fallo posterior podía duplicar el correo.
+- Empleados no respondía `/health` al caer PostgreSQL: ahora cada check tiene timeout de 2 s y el pool
+  espera como máximo 5 s (`DB_CONNECTION_TIMEOUT_MS`).
+
+### Cambios de contrato que afectan a clientes
+
+- Cuerpo de error C3 (`message` en lugar de `mensaje`); los pasos BDD leen `message ?? mensaje`.
+- Duplicados (email, número de empleado) responden 409 en lugar de 400.
+- Método no soportado responde 405 en lugar de 404.
+- Las colecciones Postman de `docs/reto2`–`docs/reto5` no se actualizaron (históricas).
+
+### Ola 1 — validación pendiente con Docker
+
+Ejecutar en una máquina con Docker y registrar el resultado aquí antes de marcar las fases 4, 5 y 7
+como ✅:
+
+```bash
+# 0. Imágenes base (los tags se fijaron sin poder descargarlos)
+for i in node:22.21.1-alpine3.22 python:3.12.12-slim-bookworm eclipse-temurin:21.0.9_10-jdk-alpine \
+         eclipse-temurin:21.0.9_10-jre-alpine golang:1.25.11-alpine alpine:3.22.2; do docker pull $i; done
+
+# 1. Secretos legibles por UID 10001 (si secrets/ ya existía)
+./scripts/setup-secrets.sh --permisos      # o sin argumentos en un clon limpio
+
+# 2. Colas con argumentos nuevos: si RabbitMQ conserva colas viejas con mensajes, ver docs/eventos.md
+docker compose build --no-cache
+docker compose up -d && docker compose ps  # siete servicios healthy
+
+# 3. Usuario no root y secretos
+for s in api-gateway vacaciones-service auth-service notificaciones-service empleados-service \
+         perfiles-service departamentos-service; do docker compose exec $s sh -c 'id -u'; done  # 10001
+
+# 4. Health DOWN acotado (repetir con database-perfiles, database-auth, message-broker...)
+docker compose stop database-empleados
+time docker compose exec empleados-service curl -s -o /dev/null -w '%{http_code}' localhost:8080/health  # 503 en < 3 s
+docker compose start database-empleados
+
+# 5. Swagger agregado
+curl -s localhost:8080/swagger/specs/empleados | head -c 200   # y el resto de servicios
+
+# 6. Eventos: duplicado sin efecto y poison a DLQ
+cd e2e-tests && npm run republicar   # fixtures fase4-*; revisar colas *.dlq en la UI de RabbitMQ
+
+# 7. Regresión completa
+npm test                              # BDD contra el Gateway
+```
