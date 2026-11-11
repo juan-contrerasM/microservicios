@@ -3,6 +3,7 @@
 import time
 
 import yaml
+from openapi_spec_validator import validate
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
@@ -220,6 +221,10 @@ def test_openapi_documenta_bearer_codigos_y_ejemplos():
     assert set(esquemas["ErrorRespuesta"]["properties"]) == CAMPOS_C3
     for cuerpo in ("LoginCuerpo", "RecuperarCuerpo", "ResetCuerpo", "CambioCuerpo"):
         assert esquemas[cuerpo]["examples"], cuerpo
+
+
+def test_openapi_publicado_es_valido():
+    validate(contrato.generar_contrato())
 
 
 def test_swagger_ui_interactiva_disponible():

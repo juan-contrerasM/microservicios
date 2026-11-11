@@ -4,6 +4,7 @@ import time
 
 import pytest
 import yaml
+from openapi_spec_validator import validate
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
@@ -151,6 +152,10 @@ def test_openapi_documenta_codigos_ejemplos_y_bearer():
     assert set(esquemas["ErrorRespuesta"]["properties"]) == CAMPOS_C3
     assert esquemas["NotificacionRespuesta"]["examples"]
     assert "HTTPValidationError" not in esquemas
+
+
+def test_openapi_publicado_es_valido():
+    validate(contrato.generar_contrato())
 
 
 def test_swagger_ui_interactiva_disponible(cliente):
