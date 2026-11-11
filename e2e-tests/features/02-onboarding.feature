@@ -29,4 +29,4 @@ Característica: Onboarding asíncrono
       | departamento inexistente   | 400    | no existe      |
       | campo obligatorio faltante | 400    | obligatorio    |
       | email mal formado          | 400    | formato válido |
-      | email duplicado            | 400    | ese email      |
+      | email duplicado            | 409    | ese email      |
