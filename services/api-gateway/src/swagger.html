@@ -2,8 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>api-gateway — OpenAPI</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swagger UI — API Gateway y servicios</title>
+  <!-- swagger-ui-dist servido por el propio Gateway (versión fijada en package.json): sin CDN. -->
+  <link rel="stylesheet" href="/swagger/ui/swagger-ui.css">
   <style>
     html { box-sizing: border-box; overflow-y: scroll; }
     *, *:before, *:after { box-sizing: inherit; }
@@ -12,14 +14,21 @@
 </head>
 <body>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5.17.14/swagger-ui-bundle.js"></script>
+  <script src="/swagger/ui/swagger-ui-bundle.js"></script>
+  <script src="/swagger/ui/swagger-ui-standalone-preset.js"></script>
   <script>
     window.onload = () => {
+      // Cada entrada es /swagger/specs/<servicio>: el Gateway la pide al backend por HTTP.
+      // Si un backend está caído solo esa entrada falla (503); el selector cambia de contrato.
       window.ui = SwaggerUIBundle({
-        url: "/openapi.json",
+        urls: __SPECS__,
+        "urls.primaryName": "api-gateway",
         dom_id: "#swagger-ui",
-        presets: [SwaggerUIBundle.presets.apis],
-        layout: "BaseLayout"
+        deepLinking: true,
+        persistAuthorization: true,
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+        layout: "StandaloneLayout"
       });
     };
   </script>

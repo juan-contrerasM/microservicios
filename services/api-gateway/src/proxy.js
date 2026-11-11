@@ -20,7 +20,7 @@ export function backendProxy({ target, servicio, pathPrefix, timeoutMs }) {
 		on: {
 			error(err, req, res) {
 				console.error(`proxy error [${servicio}] ${req.method} ${req.originalUrl}: ${err.message}`);
-				sendJson(res, 503, unavailablePayload(servicio));
+				sendJson(res, 503, unavailablePayload(req, servicio));
 			},
 		},
 	});

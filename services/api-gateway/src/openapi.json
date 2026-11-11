@@ -3,263 +3,1840 @@
   "info": {
     "title": "api-gateway",
     "version": "1.0.0",
-    "description": "Puerta pública del sistema. Reenvía el path, el query, el cuerpo y el código de estado. GET /health no consulta backends. Si un destino no responde, el borde responde 503 JSON. El Swagger de cada servicio vive en su red interna; este documento es el contrato que se llama desde el host."
+    "description": "Puerta pública del sistema (único puerto de negocio, :8080). Valida el JWT (HS256) y el rol, y reenvía path, query, cuerpo, cabeceras y código de estado al servicio dueño de la ruta. Públicas sin JWT: /health, /metrics, /openapi.json, /swagger*, POST /auth/login, /auth/recover-password y /auth/reset-password. RBAC: ADMIN todo; USER solo GET, POST /auth/change-password y PUT de su propio perfil. Los errores del Gateway siguen el contrato C3; si un destino no responde, 503 C3. No existe /auth/register: las cuentas nacen del evento empleado.creado. La Swagger UI agregada de los siete contratos está en /swagger."
   },
-  "security": [{ "BearerAuth": [] }],
+  "servers": [
+    {
+      "url": "/",
+      "description": "API Gateway"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Auth"
+    },
+    {
+      "name": "Empleados"
+    },
+    {
+      "name": "Departamentos"
+    },
+    {
+      "name": "Perfiles"
+    },
+    {
+      "name": "Vacaciones"
+    },
+    {
+      "name": "Notificaciones"
+    },
+    {
+      "name": "Salud"
+    },
+    {
+      "name": "Documentación"
+    }
+  ],
   "paths": {
     "/health": {
       "get": {
+        "tags": [
+          "Salud"
+        ],
+        "summary": "Salud del proceso del Gateway",
+        "operationId": "healthGateway",
+        "description": "No consulta a los backends: si un destino cae, el borde sigue UP y responde 503 solo en sus rutas.",
         "security": [],
-        "summary": "Salud del Gateway",
         "responses": {
           "200": {
-            "description": "UP aunque un backend esté caído",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthGateway" } } }
+            "description": "UP",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthGateway"
+                },
+                "example": {
+                  "status": "UP",
+                  "service": "api-gateway",
+                  "version": "1.0.0",
+                  "checks": {
+                    "process": "UP"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/swagger": {
+      "get": {
+        "tags": [
+          "Documentación"
+        ],
+        "summary": "Swagger UI agregada con los siete contratos",
+        "operationId": "swaggerUi",
+        "description": "Selector con el contrato del Gateway y el de los seis servicios. Pública, sin JWT.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Página HTML de Swagger UI",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/swagger/specs/{servicio}": {
+      "get": {
+        "tags": [
+          "Documentación"
+        ],
+        "summary": "Contrato OpenAPI de un servicio, leído por HTTP de su backend",
+        "operationId": "contratoServicio",
+        "description": "El Gateway pide el contrato al backend (ruta configurable con <SERVICIO>_OPENAPI_PATH, timeout SWAGGER_SPEC_TIMEOUT_MS) y reemplaza `servers` por su propio origen para que \"Try it out\" pase por el Gateway. Si el backend no responde, solo esta entrada devuelve 503.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "servicio",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "api-gateway",
+                "auth-service",
+                "empleados-service",
+                "departamentos-service",
+                "perfiles-service",
+                "vacaciones-service",
+                "notificaciones-service"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Documento OpenAPI en JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {
+                  "openapi": "3.0.3",
+                  "info": {
+                    "title": "vacaciones-service",
+                    "version": "1.0.0"
+                  },
+                  "servers": [
+                    {
+                      "url": "/"
+                    }
+                  ],
+                  "paths": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Servicio desconocido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "timestamp": "2026-11-09T12:00:00.000Z",
+                  "status": 404,
+                  "error": "Not Found",
+                  "message": "No hay un contrato registrado para pagos-service",
+                  "path": "/swagger/specs/pagos-service",
+                  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "El backend no respondió o su respuesta no es un OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "timestamp": "2026-11-09T12:00:00.000Z",
+                  "status": 503,
+                  "error": "Service Unavailable",
+                  "message": "El contrato de perfiles-service no está disponible",
+                  "path": "/swagger/specs/perfiles-service",
+                  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": [
+          "Documentación"
+        ],
+        "summary": "Este contrato en JSON",
+        "operationId": "contratoGateway",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Documento OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         }
       }
     },
     "/auth/login": {
       "post": {
-        "security": [],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Autenticar y obtener un access JWT",
+        "operationId": "login",
+        "security": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": ["usuario", "contrasena"],
-                "properties": {
-                  "usuario": { "type": "string", "example": "admin" },
-                  "contrasena": { "type": "string", "format": "password", "example": "Admin1234!" }
-                }
+                "$ref": "#/components/schemas/Login"
+              },
+              "example": {
+                "usuario": "admin",
+                "contrasena": "Admin1234!"
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "JWT de acceso" },
-          "401": { "description": "Credenciales inválidas o cuenta inactiva" },
-          "503": { "$ref": "#/components/responses/NoDisponible" }
+          "200": {
+            "description": "Access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                },
+                "example": {
+                  "token": "eyJhbGciOiJIUzI1NiJ9.acceso.firma",
+                  "tokenType": "Bearer",
+                  "expiresIn": 3600,
+                  "role": "ADMIN"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          },
+          "401": {
+            "description": "Credenciales inválidas o cuenta no activa",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "timestamp": "2026-11-09T12:00:00.000Z",
+                  "status": 401,
+                  "error": "Unauthorized",
+                  "message": "Credenciales inválidas",
+                  "path": "/auth/login",
+                  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/auth/recover-password": {
       "post": {
-        "security": [],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Solicitar recuperación de contraseña",
+        "operationId": "recuperarClave",
+        "security": [],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": ["email"],
-                "properties": { "email": { "type": "string", "format": "email" } }
+                "$ref": "#/components/schemas/Recuperar"
+              },
+              "example": {
+                "email": "ana.perez@empresa.com"
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Respuesta neutra exista o no el correo" },
-          "503": { "$ref": "#/components/responses/NoDisponible" }
+          "200": {
+            "description": "Mismo mensaje exista o no el correo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensaje"
+                },
+                "example": {
+                  "mensaje": "Si el correo existe, se envió un enlace de recuperación"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
         }
       }
     },
     "/auth/reset-password": {
       "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Establecer contraseña con el token de activación o recuperación",
+        "operationId": "restablecerClave",
         "security": [],
-        "summary": "Establecer contraseña con un reset token",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": ["token", "contrasena"],
-                "properties": {
-                  "token": { "type": "string" },
-                  "contrasena": { "type": "string", "format": "password" }
-                }
+                "$ref": "#/components/schemas/Reset"
+              },
+              "example": {
+                "token": "eyJhbGciOiJIUzI1NiJ9.reset.firma",
+                "contrasena": "Nueva1234!"
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Contraseña actualizada" },
-          "400": { "description": "Token, política o estado inválido" },
-          "503": { "$ref": "#/components/responses/NoDisponible" }
+          "200": {
+            "description": "Contraseña establecida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensaje"
+                },
+                "example": {
+                  "mensaje": "Contraseña actualizada"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
         }
       }
     },
     "/auth/change-password": {
       "post": {
-        "summary": "Cambiar la contraseña del usuario autenticado",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Cambio de contraseña del usuario autenticado (ADMIN o USER)",
+        "operationId": "cambiarClave",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": ["contrasenaActual", "contrasenaNueva"],
-                "properties": {
-                  "contrasenaActual": { "type": "string", "format": "password" },
-                  "contrasenaNueva": { "type": "string", "format": "password" }
-                }
+                "$ref": "#/components/schemas/CambioClave"
+              },
+              "example": {
+                "contrasenaActual": "Actual1234!",
+                "contrasenaNueva": "Nueva1234!"
               }
             }
           }
         },
         "responses": {
-          "200": { "description": "Contraseña actualizada" },
-          "400": { "description": "Contraseña actual o política inválida" },
-          "401": { "description": "JWT ausente o inválido" },
-          "503": { "$ref": "#/components/responses/NoDisponible" }
+          "200": {
+            "description": "Contraseña cambiada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mensaje"
+                },
+                "example": {
+                  "mensaje": "Contraseña actualizada"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
         }
       }
     },
     "/empleados": {
       "get": {
-        "summary": "Listar empleados",
-        "parameters": [
-          { "name": "estado", "in": "query", "schema": { "type": "string", "example": "RETIRADO" } },
-          { "name": "desde", "in": "query", "schema": { "type": "string", "format": "date" } },
-          { "name": "hasta", "in": "query", "schema": { "type": "string", "format": "date" } }
+        "tags": [
+          "Empleados"
         ],
-        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "summary": "Listar empleados",
+        "operationId": "listarEmpleados",
+        "description": "Admite ?estado=RETIRADO&desde=&hasta= para auditoría de retiros.",
+        "parameters": [
+          {
+            "name": "estado",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "RETIRADO"
+            }
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "hasta",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Empleados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Empleado"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "E001",
+                    "nombre": "Ana",
+                    "apellido": "Pérez",
+                    "email": "ana.perez@empresa.com",
+                    "numeroEmpleado": "N-0001",
+                    "cargo": "Desarrolladora",
+                    "area": "Ingeniería",
+                    "departamentoId": "IT",
+                    "fechaIngreso": "2026-11-09",
+                    "estado": "ACTIVO"
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       },
       "post": {
-        "summary": "Registrar empleado. Publica empleado.creado después del commit.",
+        "tags": [
+          "Empleados"
+        ],
+        "summary": "Crear empleado (solo ADMIN). Publica empleado.creado después del commit",
+        "operationId": "crearEmpleado",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmpleadoAlta" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmpleadoAlta"
+              },
+              "example": {
+                "id": "E001",
+                "nombre": "Ana",
+                "apellido": "Pérez",
+                "email": "ana.perez@empresa.com",
+                "numeroEmpleado": "N-0001",
+                "cargo": "Desarrolladora",
+                "area": "Ingeniería",
+                "departamentoId": "IT",
+                "fechaIngreso": "2026-11-09"
+              }
+            }
+          }
         },
         "responses": {
-          "201": { "description": "ACTIVO o PENDIENTE_VALIDACION" },
-          "400": { "description": "Duplicado o departamento inexistente" },
-          "503": { "$ref": "#/components/responses/NoDisponible" }
+          "201": {
+            "description": "Empleado creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Empleado"
+                },
+                "example": {
+                  "id": "E001",
+                  "nombre": "Ana",
+                  "apellido": "Pérez",
+                  "email": "ana.perez@empresa.com",
+                  "numeroEmpleado": "N-0001",
+                  "cargo": "Desarrolladora",
+                  "area": "Ingeniería",
+                  "departamentoId": "IT",
+                  "fechaIngreso": "2026-11-09",
+                  "estado": "ACTIVO"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflicto"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
         }
       }
     },
     "/empleados/{id}": {
       "get": {
-        "summary": "Consultar empleado",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "El empleado" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Empleados"
+        ],
+        "summary": "Obtener un empleado",
+        "operationId": "obtenerEmpleado",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "E001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Empleado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Empleado"
+                },
+                "example": {
+                  "id": "E001",
+                  "nombre": "Ana",
+                  "apellido": "Pérez",
+                  "email": "ana.perez@empresa.com",
+                  "numeroEmpleado": "N-0001",
+                  "cargo": "Desarrolladora",
+                  "area": "Ingeniería",
+                  "departamentoId": "IT",
+                  "fechaIngreso": "2026-11-09",
+                  "estado": "ACTIVO"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       },
       "put": {
-        "summary": "Actualizar campos enviados. Publica empleado.actualizado.",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmpleadoCambio" } } } },
-        "responses": { "200": { "description": "Actualizado" }, "400": { "description": "Dato inválido" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Empleados"
+        ],
+        "summary": "Actualizar empleado (solo ADMIN). Publica empleado.actualizado",
+        "operationId": "actualizarEmpleado",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "E001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmpleadoCambio"
+              },
+              "example": {
+                "cargo": "Líder técnica"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Empleado actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Empleado"
+                },
+                "example": {
+                  "id": "E001",
+                  "nombre": "Ana",
+                  "apellido": "Pérez",
+                  "email": "ana.perez@empresa.com",
+                  "numeroEmpleado": "N-0001",
+                  "cargo": "Desarrolladora",
+                  "area": "Ingeniería",
+                  "departamentoId": "IT",
+                  "fechaIngreso": "2026-11-09",
+                  "estado": "ACTIVO"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflicto"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       },
       "delete": {
-        "summary": "Baja lógica. Publica empleado.retirado.",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Retiro" } } } },
-        "responses": { "200": { "description": "RETIRADO" }, "400": { "description": "Ya estaba retirado" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Empleados"
+        ],
+        "summary": "Retirar empleado (solo ADMIN): transición a RETIRADO, no borrado. Publica empleado.retirado",
+        "operationId": "retirarEmpleado",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "E001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Retiro"
+              },
+              "example": {
+                "motivo": "RENUNCIA"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Empleado retirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Empleado"
+                },
+                "example": {
+                  "id": "E001",
+                  "nombre": "Ana",
+                  "apellido": "Pérez",
+                  "email": "ana.perez@empresa.com",
+                  "numeroEmpleado": "N-0001",
+                  "cargo": "Desarrolladora",
+                  "area": "Ingeniería",
+                  "departamentoId": "IT",
+                  "fechaIngreso": "2026-11-09",
+                  "estado": "RETIRADO"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
+      }
+    },
+    "/empleados/circuit-breaker": {
+      "get": {
+        "tags": [
+          "Empleados"
+        ],
+        "summary": "Estado del circuit breaker Empleados → Departamentos",
+        "operationId": "estadoCircuitBreaker",
+        "responses": {
+          "200": {
+            "description": "Estado del circuito",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "name": "departamentos",
+                  "state": "CLOSED"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
+      }
+    },
+    "/empleados/reconciliar": {
+      "post": {
+        "tags": [
+          "Empleados"
+        ],
+        "summary": "Revalidar empleados PENDIENTE_VALIDACION contra Departamentos (solo ADMIN)",
+        "operationId": "reconciliarEmpleados",
+        "responses": {
+          "200": {
+            "description": "Resultado del barrido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pendientesEvaluados": {
+                      "type": "integer"
+                    },
+                    "reconciliados": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "example": {
+                  "pendientesEvaluados": 2,
+                  "reconciliados": 1
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       }
     },
     "/departamentos": {
       "get": {
+        "tags": [
+          "Departamentos"
+        ],
         "summary": "Listar departamentos",
-        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "operationId": "listarDepartamentos",
+        "responses": {
+          "200": {
+            "description": "Departamentos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Departamento"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "IT",
+                    "nombre": "Tecnología",
+                    "descripcion": "Departamento de TI"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       },
       "post": {
-        "summary": "Registrar departamento",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Departamento" } } } },
-        "responses": { "201": { "description": "Creado" }, "400": { "description": "Id duplicado o cuerpo inválido" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Departamentos"
+        ],
+        "summary": "Crear departamento (solo ADMIN)",
+        "operationId": "crearDepartamento",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Departamento"
+              },
+              "example": {
+                "id": "IT",
+                "nombre": "Tecnología",
+                "descripcion": "Departamento de TI"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Departamento creado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Departamento"
+                },
+                "example": {
+                  "id": "IT",
+                  "nombre": "Tecnología",
+                  "descripcion": "Departamento de TI"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflicto"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       }
     },
     "/departamentos/{id}": {
       "get": {
-        "summary": "Consultar departamento",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "El departamento" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Departamentos"
+        ],
+        "summary": "Obtener un departamento",
+        "operationId": "obtenerDepartamento",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "IT"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Departamento",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Departamento"
+                },
+                "example": {
+                  "id": "IT",
+                  "nombre": "Tecnología",
+                  "descripcion": "Departamento de TI"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Departamentos"
+        ],
+        "summary": "Actualizar departamento (solo ADMIN)",
+        "operationId": "actualizarDepartamento",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "IT"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepartamentoCambio"
+              },
+              "example": {
+                "nombre": "Tecnología",
+                "descripcion": "TI y datos"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Departamento actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Departamento"
+                },
+                "example": {
+                  "id": "IT",
+                  "nombre": "Tecnología",
+                  "descripcion": "Departamento de TI"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Departamentos"
+        ],
+        "summary": "Eliminar departamento (solo ADMIN)",
+        "operationId": "eliminarDepartamento",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "IT"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Eliminado, sin cuerpo"
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       }
     },
     "/perfiles": {
       "get": {
+        "tags": [
+          "Perfiles"
+        ],
         "summary": "Listar perfiles",
-        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "operationId": "listarPerfiles",
+        "responses": {
+          "200": {
+            "description": "Perfiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Perfil"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "6f1c2a7e-0d5b-4c1e-9a33-2b7f0c9d4e11",
+                    "empleadoId": "E001",
+                    "numeroEmpleado": "N-0001",
+                    "cargo": "Desarrolladora",
+                    "area": "Ingeniería",
+                    "nombre": "Ana",
+                    "apellido": "Pérez",
+                    "email": "ana.perez@empresa.com",
+                    "telefono": "3001234567",
+                    "direccion": "Calle 1 # 2-3",
+                    "ciudad": "Bogotá",
+                    "codigoPostal": "110111",
+                    "biografia": "Backend",
+                    "fotoUrl": "https://example.com/ana.png",
+                    "redesSociales": "https://linkedin.com/in/ana",
+                    "fechaCreacion": "2026-11-09T12:00:01Z",
+                    "archivado": false
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       }
     },
     "/perfiles/{empleadoId}": {
       "get": {
-        "summary": "Perfil creado por empleado.creado",
-        "parameters": [{ "name": "empleadoId", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "El perfil" }, "404": { "description": "Todavía no existe o nunca se creó" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Perfiles"
+        ],
+        "summary": "Obtener perfil (creado por empleado.creado)",
+        "operationId": "obtenerPerfil",
+        "parameters": [
+          {
+            "name": "empleadoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "E001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Perfil",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Perfil"
+                },
+                "example": {
+                  "id": "6f1c2a7e-0d5b-4c1e-9a33-2b7f0c9d4e11",
+                  "empleadoId": "E001",
+                  "numeroEmpleado": "N-0001",
+                  "cargo": "Desarrolladora",
+                  "area": "Ingeniería",
+                  "nombre": "Ana",
+                  "apellido": "Pérez",
+                  "email": "ana.perez@empresa.com",
+                  "telefono": "3001234567",
+                  "direccion": "Calle 1 # 2-3",
+                  "ciudad": "Bogotá",
+                  "codigoPostal": "110111",
+                  "biografia": "Backend",
+                  "fotoUrl": "https://example.com/ana.png",
+                  "redesSociales": "https://linkedin.com/in/ana",
+                  "fechaCreacion": "2026-11-09T12:00:01Z",
+                  "archivado": false
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       },
       "put": {
-        "summary": "Editar teléfono, dirección, ciudad y biografía. No publica eventos.",
-        "parameters": [{ "name": "empleadoId", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PerfilCambio" } } } },
-        "responses": { "200": { "description": "Actualizado" }, "404": { "description": "No hay perfil" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
-      }
-    },
-    "/notificaciones": {
-      "get": {
-        "summary": "Historial de notificaciones",
-        "responses": { "200": { "description": "Arreglo, vacío si no hay" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
-      }
-    },
-    "/notificaciones/{empleadoId}": {
-      "get": {
-        "summary": "Notificaciones de un empleado. Vacío no es 404.",
-        "parameters": [{ "name": "empleadoId", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Perfiles"
+        ],
+        "summary": "Actualizar perfil: ADMIN cualquiera, USER solo el propio (sub del JWT = empleadoId)",
+        "operationId": "actualizarPerfil",
+        "parameters": [
+          {
+            "name": "empleadoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "E001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PerfilCambio"
+              },
+              "example": {
+                "telefono": "3001234567",
+                "ciudad": "Bogotá"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Perfil actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Perfil"
+                },
+                "example": {
+                  "id": "6f1c2a7e-0d5b-4c1e-9a33-2b7f0c9d4e11",
+                  "empleadoId": "E001",
+                  "numeroEmpleado": "N-0001",
+                  "cargo": "Desarrolladora",
+                  "area": "Ingeniería",
+                  "nombre": "Ana",
+                  "apellido": "Pérez",
+                  "email": "ana.perez@empresa.com",
+                  "telefono": "3001234567",
+                  "direccion": "Calle 1 # 2-3",
+                  "ciudad": "Bogotá",
+                  "codigoPostal": "110111",
+                  "biografia": "Backend",
+                  "fotoUrl": "https://example.com/ana.png",
+                  "redesSociales": "https://linkedin.com/in/ana",
+                  "fechaCreacion": "2026-11-09T12:00:01Z",
+                  "archivado": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "description": "USER intentando editar un perfil ajeno",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "timestamp": "2026-11-09T12:00:00.000Z",
+                  "status": 403,
+                  "error": "Forbidden",
+                  "message": "No tiene permisos para realizar esta operación",
+                  "path": "/perfiles/E002",
+                  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       }
     },
     "/vacaciones": {
       "get": {
-        "summary": "Listar períodos",
-        "parameters": [{ "name": "empleadoId", "in": "query", "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Arreglo" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Vacaciones"
+        ],
+        "summary": "Consultar vacaciones",
+        "operationId": "listarVacaciones",
+        "parameters": [
+          {
+            "name": "empleadoId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "E001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Períodos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Periodo"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "V-2027-0001",
+                    "empleadoId": "E001",
+                    "fechaInicio": "2027-03-15",
+                    "fechaFin": "2027-03-30",
+                    "estado": "PROGRAMADA",
+                    "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                    "diasHabiles": 12
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       },
       "post": {
-        "summary": "Programar vacaciones. Publica vacaciones.programadas.",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProgramarVacaciones" } } } },
-        "responses": { "201": { "description": "PROGRAMADA" }, "400": { "description": "Fecha, solapamiento, empleado inexistente o retirado" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Vacaciones"
+        ],
+        "summary": "Programar vacaciones (solo ADMIN). Publica vacaciones.programadas",
+        "operationId": "programarVacaciones",
+        "description": "400 si fechaFin < fechaInicio, fechaInicio en el pasado, empleado inexistente o retirado, o solapamiento (con periodoEnConflicto).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramarVacaciones"
+              },
+              "example": {
+                "empleadoId": "E001",
+                "fechaInicio": "2027-03-15",
+                "fechaFin": "2027-03-30"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Período PROGRAMADA",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "PROGRAMADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       }
     },
     "/vacaciones/{id}": {
       "get": {
+        "tags": [
+          "Vacaciones"
+        ],
         "summary": "Consultar un período",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "El período" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "operationId": "obtenerVacaciones",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Período",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "PROGRAMADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Vacaciones"
+        ],
+        "summary": "Modificar fechas de un PROGRAMADA que no ha iniciado (solo ADMIN)",
+        "operationId": "actualizarVacaciones",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActualizarVacaciones"
+              },
+              "example": {
+                "fechaInicio": "2027-04-05",
+                "fechaFin": "2027-04-16"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Período actualizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "PROGRAMADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       },
       "delete": {
-        "summary": "Cancelar un PROGRAMADA futuro. No publica evento.",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "CANCELADA" }, "400": { "description": "No se puede cancelar" }, "404": { "description": "No existe" }, "503": { "$ref": "#/components/responses/NoDisponible" } }
+        "tags": [
+          "Vacaciones"
+        ],
+        "summary": "Cancelar un PROGRAMADA futuro (solo ADMIN). No publica evento",
+        "operationId": "cancelarVacaciones",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Período CANCELADA",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "CANCELADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
       }
     },
     "/vacaciones/{id}/forzar-inicio": {
       "post": {
-        "summary": "Forzar PROGRAMADA → EN_CURSO (desarrollo, ADMIN)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "tags": [
+          "Vacaciones"
+        ],
+        "summary": "Forzar PROGRAMADA → EN_CURSO (desarrollo, solo ADMIN)",
+        "operationId": "forzarInicioVacaciones",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "EN_CURSO; publica vacaciones.iniciadas" },
-          "400": { "description": "El período no está PROGRAMADA" },
-          "401": { "description": "JWT ausente o inválido" },
-          "403": { "description": "Solo ADMIN" },
-          "404": { "description": "No existe" },
-          "503": { "$ref": "#/components/responses/NoDisponible" }
+          "200": {
+            "description": "Período con el estado nuevo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "EN_CURSO",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
         }
       }
     },
     "/vacaciones/{id}/forzar-fin": {
       "post": {
-        "summary": "Forzar EN_CURSO → FINALIZADA (desarrollo, ADMIN)",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "tags": [
+          "Vacaciones"
+        ],
+        "summary": "Forzar EN_CURSO → FINALIZADA (desarrollo, solo ADMIN)",
+        "operationId": "forzarFinVacaciones",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "V-2027-0001"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "FINALIZADA; publica vacaciones.finalizadas" },
-          "400": { "description": "El período no está EN_CURSO" },
-          "401": { "description": "JWT ausente o inválido" },
-          "403": { "description": "Solo ADMIN" },
-          "404": { "description": "No existe" },
-          "503": { "$ref": "#/components/responses/NoDisponible" }
+          "200": {
+            "description": "Período con el estado nuevo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Periodo"
+                },
+                "example": {
+                  "id": "V-2027-0001",
+                  "empleadoId": "E001",
+                  "fechaInicio": "2027-03-15",
+                  "fechaFin": "2027-03-30",
+                  "estado": "FINALIZADA",
+                  "fechaCreacion": "2026-11-09T12:00:00.000Z",
+                  "diasHabiles": 12
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Validacion"
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "403": {
+            "$ref": "#/components/responses/SinPermiso"
+          },
+          "404": {
+            "$ref": "#/components/responses/NoEncontrado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
+      }
+    },
+    "/notificaciones": {
+      "get": {
+        "tags": [
+          "Notificaciones"
+        ],
+        "summary": "Historial de notificaciones",
+        "operationId": "listarNotificaciones",
+        "responses": {
+          "200": {
+            "description": "Notificaciones",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Notificacion"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "0b8f6c1e-3c1a-4f7e-9d2a-2f0c5d1e7a10",
+                    "tipo": "VACACIONES",
+                    "destinatario": "ana.perez@empresa.com",
+                    "mensaje": "Sus vacaciones del 2027-03-15 al 2027-03-30 han sido programadas",
+                    "fechaEnvio": "2026-11-09T12:00:01Z",
+                    "empleadoId": "E001"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
+        }
+      }
+    },
+    "/notificaciones/{empleadoId}": {
+      "get": {
+        "tags": [
+          "Notificaciones"
+        ],
+        "summary": "Notificaciones de un empleado. Vacío no es 404",
+        "operationId": "notificacionesDeEmpleado",
+        "parameters": [
+          {
+            "name": "empleadoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "E001"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notificaciones",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Notificacion"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "0b8f6c1e-3c1a-4f7e-9d2a-2f0c5d1e7a10",
+                    "tipo": "VACACIONES",
+                    "destinatario": "ana.perez@empresa.com",
+                    "mensaje": "Sus vacaciones del 2027-03-15 al 2027-03-30 han sido programadas",
+                    "fechaEnvio": "2026-11-09T12:00:01Z",
+                    "empleadoId": "E001"
+                  }
+                ]
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/NoAutenticado"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorInterno"
+          },
+          "503": {
+            "$ref": "#/components/responses/NoDisponible"
+          }
         }
       }
     }
@@ -273,85 +1850,720 @@
         "description": "Access JWT retornado por POST /auth/login"
       }
     },
-    "responses": {
-      "NoDisponible": {
-        "description": "El backend no respondió",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NoDisponible" } } }
-      }
-    },
     "schemas": {
-      "HealthGateway": {
+      "Error": {
         "type": "object",
+        "description": "Error uniforme del sistema (contrato C3). Sin trazas de pila ni detalles internos. Los errores del propio Gateway (401, 403, 404, 503) siempre tienen esta forma; los de negocio los genera cada servicio.",
+        "required": [
+          "timestamp",
+          "status",
+          "error",
+          "message",
+          "path",
+          "traceId"
+        ],
         "properties": {
-          "status": { "type": "string", "example": "UP" },
-          "service": { "type": "string", "example": "api-gateway" }
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-09T12:00:00.000Z"
+          },
+          "status": {
+            "type": "integer",
+            "example": 503
+          },
+          "error": {
+            "type": "string",
+            "example": "Service Unavailable"
+          },
+          "message": {
+            "type": "string",
+            "example": "El servicio de empleados no está disponible"
+          },
+          "path": {
+            "type": "string",
+            "example": "/empleados"
+          },
+          "traceId": {
+            "type": "string",
+            "nullable": true,
+            "example": "4bf92f3577b34da6a3ce929d0e0e4736"
+          }
         }
       },
-      "NoDisponible": {
+      "HealthGateway": {
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version",
+          "checks"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UP"
+            ],
+            "example": "UP"
+          },
+          "service": {
+            "type": "string",
+            "example": "api-gateway"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "process": {
+                "type": "string",
+                "example": "UP"
+              }
+            }
+          }
+        }
+      },
+      "Login": {
+        "type": "object",
+        "required": [
+          "usuario",
+          "contrasena"
+        ],
+        "properties": {
+          "usuario": {
+            "type": "string",
+            "description": "Email o id de empleado",
+            "example": "admin"
+          },
+          "contrasena": {
+            "type": "string",
+            "format": "password",
+            "example": "Admin1234!"
+          }
+        }
+      },
+      "Token": {
         "type": "object",
         "properties": {
-          "status": { "type": "integer", "example": 503 },
-          "mensaje": { "type": "string" },
-          "servicio": { "type": "string" }
+          "token": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1NiJ9.acceso.firma"
+          },
+          "tokenType": {
+            "type": "string",
+            "example": "Bearer"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "example": 3600
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "USER"
+            ],
+            "example": "ADMIN"
+          }
+        }
+      },
+      "Recuperar": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "ana.perez@empresa.com"
+          }
+        }
+      },
+      "Reset": {
+        "type": "object",
+        "required": [
+          "token",
+          "contrasena"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Token de activación o de recuperación"
+          },
+          "contrasena": {
+            "type": "string",
+            "format": "password",
+            "example": "Nueva1234!"
+          }
+        }
+      },
+      "CambioClave": {
+        "type": "object",
+        "required": [
+          "contrasenaActual",
+          "contrasenaNueva"
+        ],
+        "properties": {
+          "contrasenaActual": {
+            "type": "string",
+            "format": "password",
+            "example": "Actual1234!"
+          },
+          "contrasenaNueva": {
+            "type": "string",
+            "format": "password",
+            "example": "Nueva1234!"
+          }
+        }
+      },
+      "Mensaje": {
+        "type": "object",
+        "properties": {
+          "mensaje": {
+            "type": "string",
+            "example": "Contraseña actualizada"
+          }
         }
       },
       "EmpleadoAlta": {
         "type": "object",
-        "required": ["id", "nombre", "apellido", "email", "numeroEmpleado", "cargo", "area", "departamentoId", "fechaIngreso"],
+        "required": [
+          "id",
+          "nombre",
+          "apellido",
+          "email",
+          "numeroEmpleado",
+          "cargo",
+          "area",
+          "departamentoId",
+          "fechaIngreso"
+        ],
         "properties": {
-          "id": { "type": "string", "example": "E001" },
-          "nombre": { "type": "string" },
-          "apellido": { "type": "string" },
-          "email": { "type": "string" },
-          "numeroEmpleado": { "type": "string" },
-          "cargo": { "type": "string" },
-          "area": { "type": "string" },
-          "departamentoId": { "type": "string", "example": "IT" },
-          "fechaIngreso": { "type": "string", "format": "date" }
+          "id": {
+            "type": "string",
+            "example": "E001"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "apellido": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "numeroEmpleado": {
+            "type": "string"
+          },
+          "cargo": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "departamentoId": {
+            "type": "string",
+            "example": "IT"
+          },
+          "fechaIngreso": {
+            "type": "string",
+            "format": "date"
+          }
         }
       },
       "EmpleadoCambio": {
         "type": "object",
         "properties": {
-          "nombre": { "type": "string" },
-          "apellido": { "type": "string" },
-          "email": { "type": "string" },
-          "numeroEmpleado": { "type": "string" },
-          "cargo": { "type": "string" },
-          "area": { "type": "string" },
-          "departamentoId": { "type": "string" },
-          "fechaIngreso": { "type": "string", "format": "date" }
+          "nombre": {
+            "type": "string"
+          },
+          "apellido": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "numeroEmpleado": {
+            "type": "string"
+          },
+          "cargo": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "departamentoId": {
+            "type": "string"
+          },
+          "fechaIngreso": {
+            "type": "string",
+            "format": "date"
+          }
         }
       },
       "Retiro": {
         "type": "object",
-        "properties": { "motivo": { "type": "string", "example": "RENUNCIA" } }
+        "properties": {
+          "motivo": {
+            "type": "string",
+            "example": "RENUNCIA"
+          }
+        }
+      },
+      "Empleado": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "E001"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "apellido": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "numeroEmpleado": {
+            "type": "string"
+          },
+          "cargo": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "departamentoId": {
+            "type": "string",
+            "example": "IT"
+          },
+          "fechaIngreso": {
+            "type": "string",
+            "format": "date"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "ACTIVO",
+              "PENDIENTE_VALIDACION",
+              "RETIRADO"
+            ],
+            "example": "ACTIVO"
+          }
+        },
+        "example": {
+          "id": "E001",
+          "nombre": "Ana",
+          "apellido": "Pérez",
+          "email": "ana.perez@empresa.com",
+          "numeroEmpleado": "N-0001",
+          "cargo": "Desarrolladora",
+          "area": "Ingeniería",
+          "departamentoId": "IT",
+          "fechaIngreso": "2026-11-09",
+          "estado": "ACTIVO"
+        }
       },
       "Departamento": {
         "type": "object",
-        "required": ["id", "nombre"],
+        "required": [
+          "id",
+          "nombre"
+        ],
         "properties": {
-          "id": { "type": "string", "example": "IT" },
-          "nombre": { "type": "string" },
-          "descripcion": { "type": "string" }
+          "id": {
+            "type": "string",
+            "example": "IT"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "descripcion": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "id": "IT",
+          "nombre": "Tecnología",
+          "descripcion": "Departamento de TI"
+        }
+      },
+      "DepartamentoCambio": {
+        "type": "object",
+        "required": [
+          "nombre"
+        ],
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "example": "Tecnología"
+          },
+          "descripcion": {
+            "type": "string"
+          }
         }
       },
       "PerfilCambio": {
         "type": "object",
         "properties": {
-          "telefono": { "type": "string" },
-          "direccion": { "type": "string" },
-          "ciudad": { "type": "string" },
-          "biografia": { "type": "string" }
+          "telefono": {
+            "type": "string"
+          },
+          "direccion": {
+            "type": "string"
+          },
+          "ciudad": {
+            "type": "string"
+          },
+          "codigoPostal": {
+            "type": "string"
+          },
+          "biografia": {
+            "type": "string"
+          },
+          "fotoUrl": {
+            "type": "string"
+          },
+          "redesSociales": {
+            "type": "string"
+          }
+        }
+      },
+      "Perfil": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "empleadoId": {
+            "type": "string"
+          },
+          "numeroEmpleado": {
+            "type": "string"
+          },
+          "cargo": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "apellido": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "telefono": {
+            "type": "string"
+          },
+          "direccion": {
+            "type": "string"
+          },
+          "ciudad": {
+            "type": "string"
+          },
+          "codigoPostal": {
+            "type": "string"
+          },
+          "biografia": {
+            "type": "string"
+          },
+          "fotoUrl": {
+            "type": "string"
+          },
+          "redesSociales": {
+            "type": "string"
+          },
+          "fechaCreacion": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "archivado": {
+            "type": "boolean",
+            "description": "true tras empleado.retirado"
+          }
+        },
+        "example": {
+          "id": "6f1c2a7e-0d5b-4c1e-9a33-2b7f0c9d4e11",
+          "empleadoId": "E001",
+          "numeroEmpleado": "N-0001",
+          "cargo": "Desarrolladora",
+          "area": "Ingeniería",
+          "nombre": "Ana",
+          "apellido": "Pérez",
+          "email": "ana.perez@empresa.com",
+          "telefono": "3001234567",
+          "direccion": "Calle 1 # 2-3",
+          "ciudad": "Bogotá",
+          "codigoPostal": "110111",
+          "biografia": "Backend",
+          "fotoUrl": "https://example.com/ana.png",
+          "redesSociales": "https://linkedin.com/in/ana",
+          "fechaCreacion": "2026-11-09T12:00:01Z",
+          "archivado": false
         }
       },
       "ProgramarVacaciones": {
         "type": "object",
-        "required": ["empleadoId", "fechaInicio", "fechaFin"],
+        "required": [
+          "empleadoId",
+          "fechaInicio",
+          "fechaFin"
+        ],
         "properties": {
-          "empleadoId": { "type": "string", "example": "E001" },
-          "fechaInicio": { "type": "string", "format": "date", "example": "2027-03-15" },
-          "fechaFin": { "type": "string", "format": "date", "example": "2027-03-30" }
+          "empleadoId": {
+            "type": "string",
+            "example": "E001"
+          },
+          "fechaInicio": {
+            "type": "string",
+            "format": "date",
+            "example": "2027-03-15"
+          },
+          "fechaFin": {
+            "type": "string",
+            "format": "date",
+            "example": "2027-03-30"
+          }
+        }
+      },
+      "ActualizarVacaciones": {
+        "type": "object",
+        "required": [
+          "fechaInicio",
+          "fechaFin"
+        ],
+        "properties": {
+          "fechaInicio": {
+            "type": "string",
+            "format": "date",
+            "example": "2027-04-05"
+          },
+          "fechaFin": {
+            "type": "string",
+            "format": "date",
+            "example": "2027-04-16"
+          }
+        }
+      },
+      "Periodo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "empleadoId": {
+            "type": "string"
+          },
+          "fechaInicio": {
+            "type": "string",
+            "format": "date"
+          },
+          "fechaFin": {
+            "type": "string",
+            "format": "date"
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "PROGRAMADA",
+              "EN_CURSO",
+              "FINALIZADA",
+              "CANCELADA"
+            ]
+          },
+          "fechaCreacion": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "diasHabiles": {
+            "type": "integer"
+          }
+        },
+        "example": {
+          "id": "V-2027-0001",
+          "empleadoId": "E001",
+          "fechaInicio": "2027-03-15",
+          "fechaFin": "2027-03-30",
+          "estado": "PROGRAMADA",
+          "fechaCreacion": "2026-11-09T12:00:00.000Z",
+          "diasHabiles": 12
+        }
+      },
+      "Notificacion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string"
+          },
+          "destinatario": {
+            "type": "string"
+          },
+          "mensaje": {
+            "type": "string"
+          },
+          "fechaEnvio": {
+            "type": "string"
+          },
+          "empleadoId": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "id": "0b8f6c1e-3c1a-4f7e-9d2a-2f0c5d1e7a10",
+          "tipo": "VACACIONES",
+          "destinatario": "ana.perez@empresa.com",
+          "mensaje": "Sus vacaciones del 2027-03-15 al 2027-03-30 han sido programadas",
+          "fechaEnvio": "2026-11-09T12:00:01Z",
+          "empleadoId": "E001"
+        }
+      }
+    },
+    "responses": {
+      "Validacion": {
+        "description": "Validación de entrada o regla de negocio (la responde el servicio)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 400,
+              "error": "Bad Request",
+              "message": "La fechaFin no puede ser anterior a la fechaInicio",
+              "path": "/vacaciones",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        }
+      },
+      "NoAutenticado": {
+        "description": "Sin header Authorization, token mal firmado, expirado o token de reset usado como acceso",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 401,
+              "error": "Unauthorized",
+              "message": "No autenticado",
+              "path": "/empleados",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        },
+        "headers": {
+          "WWW-Authenticate": {
+            "schema": {
+              "type": "string",
+              "example": "Bearer"
+            }
+          }
+        }
+      },
+      "SinPermiso": {
+        "description": "El rol USER solo lee; además puede cambiar su contraseña y editar su propio perfil",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 403,
+              "error": "Forbidden",
+              "message": "No tiene permisos para realizar esta operación",
+              "path": "/empleados/E001",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        }
+      },
+      "NoEncontrado": {
+        "description": "El recurso no existe",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 404,
+              "error": "Not Found",
+              "message": "Recurso no encontrado",
+              "path": "/empleados/E999",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        }
+      },
+      "Conflicto": {
+        "description": "Ya existe un recurso con ese identificador (unicidad, C3)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 409,
+              "error": "Conflict",
+              "message": "Ya existe un registro con ese id",
+              "path": "/empleados",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        }
+      },
+      "ErrorInterno": {
+        "description": "Error inesperado",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 500,
+              "error": "Internal Server Error",
+              "message": "Error interno del servidor",
+              "path": "/empleados",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
+        }
+      },
+      "NoDisponible": {
+        "description": "El backend no respondió (caído o sin respuesta en PROXY_TIMEOUT_MS). Lo genera el Gateway",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "timestamp": "2026-11-09T12:00:00.000Z",
+              "status": 503,
+              "error": "Service Unavailable",
+              "message": "El servicio de empleados no está disponible",
+              "path": "/empleados",
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736"
+            }
+          }
         }
       }
     }
