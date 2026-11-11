@@ -56,7 +56,33 @@ El `id` queda en `eventos_procesados` para no reencolarlo y bloquear la cola. No
 Antes de cualquier efecto se busca el `id` del envelope en `eventos_procesados`. Si ya está,
 se confirma y no se repite la fila ni el log. La columna `procesado_en` es el `procesadoEn`
 del catálogo. El ack es manual y el prefetch es 1: solo se confirma después de persistir, o
-después de descartar un duplicado. Un fallo de base de datos no confirma: el broker reentrega.
+después de descartar un duplicado.
+
+### Eventos y resiliencia (Proyecto final, Fase 4)
+
+La política común de los cuatro consumidores está en [`docs/eventos.md`](../../docs/eventos.md).
+En este servicio:
+
+- **El correo sale después del commit.** `procesar()` deja la fila en `notificaciones` y la marca
+  en `eventos_procesados` en la misma transacción, y los correos se acumulan en memoria. Solo
+  cuando el commit confirma se envían. Por qué: si el correo saliera antes y el commit fallara,
+  el reintento lo enviaría otra vez. Así un `id` repetido nunca genera un segundo correo, aunque
+  lo reciban dos réplicas a la vez (la PK de `eventos_procesados` hace fallar a la segunda). El
+  costo aceptado: si el proceso muere entre el commit y el SMTP, ese correo se pierde
+  (al-menos-una-vez para la fila, a-lo-sumo-una-vez para el correo).
+- **Un fallo SMTP no reintenta el evento.** La notificación ya quedó guardada; el error queda en
+  el log.
+- **Envelope inválido o no JSON → DLQ.** Se exigen `id`, `type`, `version`, `occurredAt`,
+  `producer` y `data`, y un `type` de los nueve que consume `q.notificaciones`. Si no, `reject`
+  sin requeue y el mensaje queda en `q.notificaciones.dlq`.
+- **Reintento solo a esta cola.** Un fallo de base hace rollback, republica en
+  `q.notificaciones.retry` (exchange por defecto) con `x-retry-count + 1` y los headers
+  originales (`traceparent` incluido), y confirma el original. A los 5 s vuelve a
+  `q.notificaciones`. Antes volvía al topic con la routing key del evento y se re-difundía a
+  Auth, Perfiles y Vacaciones. Con `x-retry-count` = 3 el siguiente fallo va a la DLQ.
+- **Arranque con colas antiguas.** Si una cola existe con argumentos distintos
+  (`PRECONDITION_FAILED`) se recrea solo si está vacía; si no, ver la sección Migración de
+  `docs/eventos.md`.
 
 ## Endpoints
 
