@@ -104,6 +104,8 @@ pipeline {
   environment {
     NOMBRE_IMAGEN = "${SERVICIO}"
     REGISTRY = 'localhost:5001'
+    // Global de JCasC; se declara aquí para que llegue a los contenedores de docker.inside().
+    SONAR_HOST_URL = "${env.SONAR_HOST_URL}"
     COBERTURA_MINIMA = "${params.SIMULAR_FALLO == 'cobertura' ? '99' : '70'}"
     TESTCONTAINERS_RYUK_DISABLED = 'true'
     TESTCONTAINERS_HOST_OVERRIDE = 'host.docker.internal'
