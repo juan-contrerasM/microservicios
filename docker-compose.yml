@@ -1,20 +1,20 @@
-# docker-compose.yml — orquestación (Reto 4, Etapa 1: broker)
-# Levantar: cp .env.example .env && docker compose up --build
+# docker-compose.yml — orquestación del proyecto final
+# Levantar: cp .env.example .env && bash scripts/setup-secrets.sh && docker compose up --build
 # Apagar: docker compose down   |   borrar datos: docker compose down -v
 #
-# Puerto de negocio al host: api-gateway :8080. empleados y departamentos usan
-# expose: (visibles solo dentro de microservices-network).
-# Puertos de infraestructura del broker: 5672 (AMQP) y 15672 (management UI).
-# Reto 7: Jenkins en el host :9090, SonarQube en :9000. El nombre de proyecto
-# queda fijo para que los volúmenes no cambien si el repo se clona en otra carpeta.
-# Reto 8: Grafana :3000, Prometheus :9091 y Zipkin :9411; Loki queda interno.
+# Fase 14 (E04): el único puerto de negocio publicado es el del api-gateway (:8080). Los seis
+# servicios usan solo expose:. Además publican puerto únicamente las UIs administrativas:
+#   RabbitMQ UI :15672 · Mailhog :8025 · Prometheus :9090 · Grafana :3000 · Zipkin :9411
+#   Jenkins :8090 · SonarQube :9000 · Registry :5001
+# AMQP (5672), Loki y las bases quedan internos. El nombre de proyecto queda fijo para que los
+# volúmenes no cambien si el repo se clona en otra carpeta.
 
 name: microservicios
 
 services:
   # --- PostgreSQL de empleados-service (nadie más la usa) ---
   database-empleados:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     environment:
       POSTGRES_DB: ${EMPLEADOS_DB_NAME}
       POSTGRES_USER: ${EMPLEADOS_DB_USER}
@@ -30,11 +30,11 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - data-network
 
   # --- MySQL de departamentos-service (motor distinto a propósito) ---
   database-departamentos:
-    image: mysql:8.4
+    image: mysql:8.4.13
     environment:
       MYSQL_DATABASE: ${DEPARTAMENTOS_DB_NAME}
       MYSQL_USER: ${DEPARTAMENTOS_DB_USER}
@@ -52,7 +52,7 @@ services:
       retries: 10
       start_period: 20s
     networks:
-      - microservices-network
+      - data-network
 
   # --- API Go. Visible solo dentro de la red (expose, no ports) ---
   departamentos-service:
@@ -71,8 +71,6 @@ services:
       LOG_FORMAT: json
       # Caos controlado (Reto 8, Fase 6): retardo fijo en /departamentos. 0 = desactivado.
       CHAOS_LATENCY_MS: ${DEPARTAMENTOS_CHAOS_LATENCY_MS:-0}
-    ports:
-      - "8081:8081"
     expose:
       - "8081"
     secrets:
@@ -87,7 +85,9 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - backend-network
+      - data-network
+      - observability-network
 
   # --- API Java. Visible solo dentro de la red. Ya no espera a departamentos:
   #     el Circuit Breaker (Etapa 3) cubre esa dependencia en runtime. ---
@@ -137,7 +137,10 @@ services:
       retries: 10
       start_period: 15s
     networks:
-      - microservices-network
+      - backend-network
+      - data-network
+      - messaging-network
+      - observability-network
 
   # --- RabbitMQ. Puertos de infraestructura, no una segunda puerta de negocio.
   #     hostname fijo: el nombre del nodo (rabbit@message-broker) vive en el
@@ -153,7 +156,6 @@ services:
     secrets:
       - rabbitmq_password
     ports:
-      - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
       - vol-rabbitmq:/var/lib/rabbitmq
@@ -164,15 +166,22 @@ services:
       retries: 10
       start_period: 40s
     networks:
-      - microservices-network
+      - messaging-network
 
   # --- SMTP de desarrollo. No entrega correo real: lo guarda para verlo en :8025. ---
   mailhog:
-    image: mailhog/mailhog
+    image: mailhog/mailhog:v1.0.1
     ports:
       - "${MAILHOG_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025/api/v2/messages?limit=1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
-      - microservices-network
+      - messaging-network
+      - observability-network
 
   # --- Único puerto de negocio publicado al host ---
   api-gateway:
@@ -205,9 +214,10 @@ services:
       - "${GATEWAY_PORT:-8080}:8080"
     secrets:
       - jwt_secret
-    # El borde debe arrancar incluso si un backend falla. Solo exige que Compose
-    # haya iniciado sus contenedores; la disponibilidad se resuelve en runtime
-    # con el 503 JSON del proxy y el /health del Gateway permanece independiente.
+    # Excepción deliberada a E06 (service_healthy): el borde debe arrancar incluso si un
+    # backend nunca queda sano. Solo exige que Compose haya iniciado sus contenedores; la
+    # disponibilidad se resuelve en runtime con circuit breaker + 503 JSON (Fase 6) y el
+    # /health del Gateway permanece independiente de los backends.
     depends_on:
       empleados-service:
         condition: service_started
@@ -228,11 +238,13 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - frontend-network
+      - backend-network
+      - observability-network
 
   # --- PostgreSQL de notificaciones-service ---
   database-notificaciones:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     environment:
       POSTGRES_DB: ${NOTIFICACIONES_DB_NAME:-notificaciones_db}
       POSTGRES_USER: ${NOTIFICACIONES_DB_USER:-notificaciones}
@@ -248,7 +260,7 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - data-network
 
   # --- Consumidor Python. Solo expose: el tráfico entra por el Gateway. ---
   notificaciones-service:
@@ -274,8 +286,6 @@ services:
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
       LOG_FORMAT: json
-    ports:
-      - "8084:8084"
     volumes:
       - ./services/notificaciones-service/config/templates.json:/app/config/templates.json:ro
     secrets:
@@ -289,7 +299,7 @@ services:
       message-broker:
         condition: service_healthy
       mailhog:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
       interval: 5s
@@ -297,11 +307,14 @@ services:
       retries: 10
       start_period: 20s
     networks:
-      - microservices-network
+      - backend-network
+      - data-network
+      - messaging-network
+      - observability-network
 
   # --- PostgreSQL de perfiles-service ---
   database-perfiles:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     environment:
       POSTGRES_DB: ${PERFILES_DB_NAME:-perfiles_db}
       POSTGRES_USER: ${PERFILES_DB_USER:-perfiles}
@@ -317,7 +330,7 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - data-network
 
   # --- Consumidor Java. Solo expose: el tráfico entra por el Gateway. ---
   perfiles-service:
@@ -342,8 +355,6 @@ services:
       OTEL_METRICS_EXPORTER: none
       OTEL_LOGS_EXPORTER: none
       LOG_FORMAT: json
-    ports:
-      - "8083:8083"
     secrets:
       - perfiles_db_password
       - rabbitmq_password
@@ -361,11 +372,14 @@ services:
       retries: 12
       start_period: 90s
     networks:
-      - microservices-network
+      - backend-network
+      - data-network
+      - messaging-network
+      - observability-network
 
   # --- PostgreSQL de vacaciones-service ---
   database-vacaciones:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     environment:
       POSTGRES_DB: ${VACACIONES_DB_NAME:-vacaciones_db}
       POSTGRES_USER: ${VACACIONES_DB_USER:-vacaciones}
@@ -381,11 +395,11 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - data-network
 
   # --- PostgreSQL propio de auth-service ---
   database-auth:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine
     environment:
       POSTGRES_DB: ${AUTH_DB_NAME:-auth_db}
       POSTGRES_USER: ${AUTH_DB_USER:-auth}
@@ -401,7 +415,7 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - data-network
 
   # --- Productor Node. Solo expose: el tráfico entra por el Gateway. ---
   vacaciones-service:
@@ -424,8 +438,6 @@ services:
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
       LOG_FORMAT: json
-    ports:
-      - "8085:8085"
     secrets:
       - vacaciones_db_password
       - rabbitmq_password
@@ -443,7 +455,10 @@ services:
       retries: 10
       start_period: 20s
     networks:
-      - microservices-network
+      - backend-network
+      - data-network
+      - messaging-network
+      - observability-network
 
   # --- Identidad y seguridad. Solo expose: el tráfico entra por el Gateway. ---
   auth-service:
@@ -490,7 +505,10 @@ services:
       retries: 12
       start_period: 20s
     networks:
-      - microservices-network
+      - backend-network
+      - data-network
+      - messaging-network
+      - observability-network
 
   # --- Reto 8. Prometheus raspa los siete procesos HTTP por nombre Docker. ---
   prometheus:
@@ -501,7 +519,7 @@ services:
       - --storage.tsdb.retention.time=7d
       - --web.enable-lifecycle
     ports:
-      - "${PROMETHEUS_PORT:-9091}:9090"
+      - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./observability/prometheus/rules:/etc/prometheus/rules:ro
@@ -513,7 +531,7 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - observability-network
 
   # --- Reto 8. Loki almacena logs; no publica puerto porque se consulta desde Grafana. ---
   loki:
@@ -530,7 +548,7 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - observability-network
 
   # Promtail descubre contenedores y lee sus logs JSON mediante el socket de Docker.
   promtail:
@@ -552,7 +570,7 @@ services:
       retries: 10
       start_period: 10s
     networks:
-      - microservices-network
+      - observability-network
 
   # Zipkin recibe spans OpenTelemetry en /api/v2/spans.
   zipkin:
@@ -575,7 +593,7 @@ services:
       retries: 12
       start_period: 20s
     networks:
-      - microservices-network
+      - observability-network
 
   # Grafana queda listo con Prometheus y Loki sin configuración manual en la UI.
   grafana:
@@ -592,7 +610,7 @@ services:
       GF_SMTP_ENABLED: "true"
       GF_SMTP_HOST: mailhog:1025
       GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:-grafana-alertas@empresa.com}
-      GF_SMTP_FROM_NAME: Grafana Reto 8
+      GF_SMTP_FROM_NAME: Grafana Microservicios
       GF_SMTP_STARTTLS_POLICY: NoStartTLS
       GF_SMTP_SKIP_VERIFY: "true"
       GRAFANA_ALERT_EMAIL: ${GRAFANA_ALERT_EMAIL:-equipo-observabilidad@empresa.com}
@@ -602,13 +620,15 @@ services:
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     secrets:
       - grafana_admin_password
+      # Fase 11: URL del webhook de Discord para el contact point (provisioning/alerting).
+      - discord_webhook_url
     depends_on:
       prometheus:
         condition: service_healthy
       loki:
         condition: service_healthy
       mailhog:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
       interval: 10s
@@ -616,15 +636,14 @@ services:
       retries: 12
       start_period: 20s
     networks:
-      - microservices-network
+      - observability-network
 
-  # --- Reto 7. Jenkins publica la UI en el host :9090; dentro de la red sigue en 8080. ---
+  # --- Reto 7 / Fase 14. Jenkins publica la UI en el host :8090 (puerto del PDF); dentro de la red
+  #     sigue en 8080. Sin container_name: dos proyectos Compose no chocan por nombre global. ---
   jenkins:
     build: ./jenkins
-    container_name: jenkins
     ports:
-      - "9090:8080"
-      - "50000:50000"
+      - "${JENKINS_PORT:-8090}:8080"
     volumes:
       - jenkins_data:/var/jenkins_home
       - ./jenkins/casc.yaml:/var/jenkins_home/casc_configs/casc.yaml:ro
@@ -636,7 +655,7 @@ services:
       CASC_JENKINS_CONFIG: /var/jenkins_home/casc_configs
       JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
       JENKINS_ADMIN_PASSWORD_FILE: /run/secrets/jenkins_admin_password
-      DOCKER_NETWORK: microservicios_microservices-network
+      DOCKER_NETWORK: microservicios_cicd-network
       SONAR_HOST_URL: ${SONAR_HOST_URL:-http://sonarqube:9000}
       ADMIN_USUARIO: ${AUTH_ADMIN_USUARIO:-admin}
       ADMIN_PASSWORD_FILE: /run/secrets/auth_admin_password
@@ -648,12 +667,11 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      - microservices-network
+      - cicd-network
 
   # --- Reto 7. Base solo de SonarQube: no la usa ningún servicio de negocio. ---
   sonar-db:
-    image: postgres:16-alpine
-    container_name: sonar-db
+    image: postgres:16.15-alpine
     environment:
       POSTGRES_DB: sonar
       POSTGRES_USER: sonar
@@ -668,11 +686,10 @@ services:
       timeout: 5s
       retries: 10
     networks:
-      - microservices-network
+      - cicd-network
 
   sonarqube:
     image: sonarqube:26.10.0.133078-community
-    container_name: sonarqube
     ports:
       - "9000:9000"
     environment:
@@ -704,13 +721,12 @@ services:
         soft: 65536
         hard: 65536
     networks:
-      - microservices-network
+      - cicd-network
 
   sonar-bootstrap:
     build:
       context: ./jenkins
       dockerfile: sonar-bootstrap.Dockerfile
-    container_name: sonar-bootstrap
     depends_on:
       sonarqube:
         condition: service_healthy
@@ -723,10 +739,46 @@ services:
       - sonar_admin_password
     restart: "no"
     networks:
-      - microservices-network
+      - cicd-network
 
+  # --- Fase 14/10. Registry Docker local: Jenkins publica aquí las imágenes con tag inmutable.
+  #     Publicado en el host :5001 (el 5000 lo ocupa AirPlay en macOS y choca en otros equipos). ---
+  registry:
+    image: registry:2.8.3
+    ports:
+      - "${REGISTRY_PORT:-5001}:5000"
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - registry_data:/var/lib/registry
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/v2/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - cicd-network
+
+# Fase 14 (E03/E04): seis redes del PDF. Cada contenedor entra solo en las que necesita:
+#   frontend      → borde público (Gateway). Ningún servicio de negocio está aquí.
+#   backend       → HTTP Gateway → servicios y Empleados → Departamentos.
+#   messaging     → RabbitMQ con productores/consumidores y el SMTP de desarrollo.
+#   data          → cada base con su servicio; ninguna base es alcanzable desde frontend.
+#   observability → scraping de métricas, envío de trazas y logs, Grafana.
+#   cicd          → Jenkins, SonarQube y Registry. No ve las bases ni el broker.
 networks:
-  microservices-network:
+  frontend-network:
+    driver: bridge
+  backend-network:
+    driver: bridge
+  messaging-network:
+    driver: bridge
+  data-network:
+    driver: bridge
+  observability-network:
+    driver: bridge
+  cicd-network:
     driver: bridge
 
 volumes:
@@ -749,6 +801,7 @@ volumes:
   sonarqube_logs:
   sonarqube_extensions:
   sonar_db_data:
+  registry_data:
   prometheus_data:
   grafana_data:
   loki_data:
@@ -785,3 +838,5 @@ secrets:
     file: ./secrets/e2e_user_password.txt
   grafana_admin_password:
     file: ./secrets/grafana_admin_password.txt
+  discord_webhook_url:
+    file: ./secrets/discord_webhook_url.txt

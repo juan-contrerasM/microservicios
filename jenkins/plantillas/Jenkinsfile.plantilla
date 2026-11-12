@@ -1,0 +1,182 @@
+// Plantilla de pipeline del proyecto final (Fase 9, paquete 9.TPL — estándar E18/E19).
+//
+// Cómo instanciarla (Fase 9, Ola 3): copiar este archivo a services/<servicio>/Jenkinsfile y
+// cambiar SOLO las dos líneas de configuración de abajo. Todo lo demás es común a los siete
+// servicios; los comandos propios de cada lenguaje viven en STACKS.
+//
+// Etapas (E18): Checkout → Build → Lint → Unit → Integración → Reportes (junit + recordCoverage)
+// → SonarQube → Quality Gate (abortPipeline) → Seguridad (dependencias, imagen, secretos)
+// → Package (tag inmutable) → Push Registry → Deploy + smoke → E2E (serializada con lock).
+// Un fallo en cualquier etapa detiene las siguientes: nunca se empaqueta ni publica algo rojo.
+
+def SERVICIO = 'nombre-service'   // carpeta bajo services/ (p. ej. 'auth-service')
+def STACK = 'node'                 // java | go | node | python
+
+// Imagen de toolchain = la misma versión que el Dockerfile del servicio. Las cachés son volúmenes
+// con nombre fijo (jenkins_m2, jenkins_npm, ...) para no descargar dependencias en cada build.
+def STACKS = [
+  java: [
+    imagen: 'maven:3.9.11-eclipse-temurin-21',
+    cache: '-v jenkins_m2:/var/maven/.m2 -v /var/run/docker.sock:/var/run/docker.sock',
+    build: 'mvn -B -Dmaven.repo.local=/var/maven/.m2 -DskipTests package',
+    lint: 'mvn -B -Dmaven.repo.local=/var/maven/.m2 -q validate',
+    unit: 'mvn -B -Dmaven.repo.local=/var/maven/.m2 test',
+    integracion: 'mvn -B -Dmaven.repo.local=/var/maven/.m2 verify',   // Failsafe + Testcontainers + umbral JaCoCo
+    junit: 'target/surefire-reports/*.xml, target/failsafe-reports/*.xml',
+    cobertura: [parser: 'JACOCO', pattern: 'target/site/jacoco/jacoco.xml'],
+    sonar: 'mvn -B -Dmaven.repo.local=/var/maven/.m2 sonar:sonar',
+    deps: 'mvn -B -Dmaven.repo.local=/var/maven/.m2 org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=9',
+  ],
+  go: [
+    imagen: 'golang:1.25.11-alpine',
+    cache: '-v jenkins_gomod:/go/pkg/mod -v jenkins_gocache:/root/.cache/go-build',
+    build: 'go build ./...',
+    lint: 'go vet ./...',
+    unit: 'sh scripts/test.sh',                                       // gotestsum + coverage.out + umbral 70 %
+    integracion: 'echo "Integración: scripts/test-integration.sh departamentos (MySQL real)"',
+    junit: 'reports/junit.xml',
+    cobertura: [parser: 'GO_COV', pattern: 'coverage.out'],
+    sonar: 'sonar-scanner',
+    deps: 'go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...',
+  ],
+  node: [
+    imagen: 'node:22.21.1-alpine3.22',
+    cache: '-v jenkins_npm:/root/.npm',
+    build: 'npm ci --no-audit --no-fund',
+    lint: 'node --check src/*.js',
+    unit: 'npm test',                                                 // JUnit + LCOV + umbral 70 %
+    integracion: 'npm run test:integration --if-present',
+    junit: 'reports/junit*.xml',
+    cobertura: [parser: 'COBERTURA', pattern: 'reports/lcov.info'],
+    sonar: 'sonar-scanner',
+    deps: 'npm audit --omit=dev --audit-level=critical',
+  ],
+  python: [
+    imagen: 'python:3.12.12-slim-bookworm',
+    cache: '-v jenkins_pip:/root/.cache/pip',
+    build: 'pip install -q -r requirements-dev.txt',
+    lint: 'python -m compileall -q src',
+    unit: 'python -m pytest',                                         // JUnit + coverage.xml + --cov-fail-under=70
+    integracion: 'echo "Integración: scripts/test-integration.sh <servicio> (PostgreSQL y RabbitMQ reales)"',
+    junit: 'reports/junit*.xml',
+    cobertura: [parser: 'COBERTURA', pattern: 'reports/coverage.xml'],
+    sonar: 'sonar-scanner',
+    deps: 'pip install -q pip-audit==2.9.0 && pip-audit -r requirements.txt',
+  ],
+]
+def CFG = STACKS[STACK]
+def DIR = "services/${SERVICIO}"
+def AGENTE = "-u root --network ${env.DOCKER_NETWORK} --add-host=host.docker.internal:host-gateway ${CFG.cache}"
+
+pipeline {
+  agent any
+  options {
+    skipStagesAfterUnstable()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+  triggers {
+    pollSCM('H/2 * * * *')
+  }
+  environment {
+    REGISTRY = 'localhost:5001'
+    NOMBRE_IMAGEN = "${SERVICIO}"
+    // Tag inmutable: commit corto + número de build. `latest` solo como alias.
+    TAG = "${env.GIT_COMMIT ? env.GIT_COMMIT.take(8) : 'local'}-${env.BUILD_NUMBER}"
+    TESTCONTAINERS_RYUK_DISABLED = 'true'
+    TESTCONTAINERS_HOST_OVERRIDE = 'host.docker.internal'
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        sh 'git rev-parse HEAD'
+      }
+    }
+
+    stage('Build, Lint y pruebas') {
+      agent { docker { image CFG.imagen; reuseNode true; args AGENTE } }
+      stages {
+        stage('Build') { steps { dir(DIR) { sh CFG.build } } }
+        stage('Lint') { steps { dir(DIR) { sh CFG.lint } } }
+        stage('Unit') { steps { dir(DIR) { sh CFG.unit } } }
+        stage('Integración') { steps { dir(DIR) { sh CFG.integracion } } }
+      }
+      post {
+        always {
+          dir(DIR) {
+            junit testResults: CFG.junit, allowEmptyResults: false
+            recordCoverage tools: [CFG.cobertura], sourceCodeRetention: 'EVERY_BUILD'
+            // El contenedor corre como root: se devuelve el workspace al usuario de Jenkins.
+            sh 'chown -R "$(stat -c %u .):$(stat -c %g .)" . || true'
+          }
+        }
+      }
+    }
+
+    stage('SonarQube') {
+      steps {
+        withSonarQubeEnv('sonarqube') {
+          script {
+            def imagen = STACK == 'java' ? CFG.imagen : 'sonarsource/sonar-scanner-cli:11.4'
+            docker.image(imagen).inside(AGENTE) {
+              dir(DIR) { sh CFG.sonar }
+            }
+          }
+        }
+      }
+    }
+
+    stage('Quality Gate') {
+      steps {
+        // El proyecto Sonar exige cobertura ≥ 70 %: si no se cumple, el pipeline se detiene aquí.
+        timeout(time: 5, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    stage('Seguridad') {
+      parallel {
+        stage('Dependencias') {
+          agent { docker { image CFG.imagen; reuseNode true; args AGENTE } }
+          steps { dir(DIR) { sh CFG.deps } }
+        }
+        stage('Secretos') {
+          steps {
+            sh 'docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 detect --source /repo --no-banner --redact'
+          }
+        }
+      }
+    }
+
+    stage('Package') {
+      steps {
+        dir(DIR) {
+          sh 'docker build -t "$REGISTRY/$NOMBRE_IMAGEN:$TAG" -t "$REGISTRY/$NOMBRE_IMAGEN:latest" .'
+        }
+        // Trivy sobre la imagen recién construida: un hallazgo CRITICAL detiene el pipeline.
+        sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.67.2 image --exit-code 1 --severity CRITICAL --ignore-unfixed "$REGISTRY/$NOMBRE_IMAGEN:$TAG"'
+      }
+    }
+
+    stage('Push Registry') {
+      steps {
+        sh '''
+          docker push "$REGISTRY/$NOMBRE_IMAGEN:$TAG"
+          docker push "$REGISTRY/$NOMBRE_IMAGEN:latest"
+          docker image inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/$NOMBRE_IMAGEN:$TAG" | tee digest.txt
+        '''
+        archiveArtifacts artifacts: 'digest.txt'
+      }
+    }
+
+    stage('Deploy + smoke') {
+      options { lock(resource: 'ecosistema-e2e') }
+      steps {
+        // Fase 10 define docker-compose.deploy.yml (consume imágenes del Registry por tag) y el
+        // rollback a un tag anterior. La E2E reutiliza scripts/test-bdd.sh contra ese despliegue.
+        sh 'echo "Desplegar $NOMBRE_IMAGEN:$TAG (Fase 10) y correr bash scripts/test-bdd.sh"'
+      }
+    }
+  }
+}

@@ -15,7 +15,7 @@ if ($env:JENKINS_CI_FORCE -ne '1' -and (Test-Path $markerFile)) {
     if ($lastRev -eq $headRev) { exit 0 }
 }
 
-$JenkinsUrl = 'http://localhost:9090'
+$JenkinsUrl = 'http://localhost:8090'
 $JenkinsUser = 'admin'
 $JenkinsPassword = 'admin'
 $envFile = Join-Path $Root '.env'

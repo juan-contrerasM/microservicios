@@ -30,13 +30,13 @@ read_env() {
   printf '%s' "$line"
 }
 
-JENKINS_URL="${JENKINS_URL:-http://localhost:9090}"
+JENKINS_URL="${JENKINS_URL:-http://localhost:8090}"
 JENKINS_ADMIN_ID="${JENKINS_ADMIN_ID:-admin}"
 JENKINS_ADMIN_PASSWORD="${JENKINS_ADMIN_PASSWORD:-admin}"
 
 if [ -f "$ROOT/.env" ]; then
   JENKINS_URL="$(read_env JENKINS_URL "$ROOT/.env" 2>/dev/null)" || true
-  JENKINS_URL="${JENKINS_URL:-http://localhost:9090}"
+  JENKINS_URL="${JENKINS_URL:-http://localhost:8090}"
   id_from_env="$(read_env JENKINS_ADMIN_ID "$ROOT/.env" 2>/dev/null)" || true
   [ -n "${id_from_env:-}" ] && JENKINS_ADMIN_ID="$id_from_env"
   pass_from_env="$(read_env JENKINS_ADMIN_PASSWORD "$ROOT/.env" 2>/dev/null)" || true

@@ -29,7 +29,7 @@ la raíz.
 | `api-gateway` | Node.js 22 / Express | *(ninguna)* | **`8080` (negocio)** | [`services/api-gateway`](services/api-gateway) |
 | `empleados-service` | Java 21 / Spring Boot | PostgreSQL 16 | *no publicado* (`expose: 8080`) | [`services/empleados-service`](services/empleados-service) |
 | `departamentos-service` | Go | MySQL 8.4 | *no publicado* (`expose: 8081`) | [`services/departamentos-service`](services/departamentos-service) |
-| `message-broker` | RabbitMQ 3 | *(no es base de un servicio)* | `5672` AMQP, `15672` UI | solo en `docker-compose.yml` |
+| `message-broker` | RabbitMQ 3 | *(no es base de un servicio)* | `15672` UI (AMQP `5672` solo interno) | solo en `docker-compose.yml` |
 | `notificaciones-service` | Python 3.12 / FastAPI | PostgreSQL 16 | *no publicado* (`expose: 8084`) | [`services/notificaciones-service`](services/notificaciones-service) |
 | `perfiles-service` | Java 21 / Spring Boot | PostgreSQL 16 | *no publicado* (`expose: 8083`) | [`services/perfiles-service`](services/perfiles-service) |
 | `vacaciones-service` | Node.js 22 / Express | PostgreSQL 16 | *no publicado* (`expose: 8085`) | [`services/vacaciones-service`](services/vacaciones-service) |
@@ -38,7 +38,7 @@ la raíz.
 URL base del sistema: **`http://localhost:8080`**. Todo el tráfico de negocio pasa por el Gateway:
 `/auth`, `/empleados`, `/departamentos`, `/perfiles`, `/notificaciones`, `/vacaciones` y `/health`.
 Los puertos `8081`, `8082`, `8083`, `8084`, `8085` y `8086` no están publicados: desde el host la conexión
-se rechaza. `5672` y `15672` son del broker, no una segunda API de negocio.
+se rechaza. Solo `15672` (UI del broker) se publica; AMQP `5672` queda interno desde la Fase 14.
 
 Hay cuatro lenguajes: Java (empleados y perfiles), Go (departamentos), Node.js (Gateway y
 vacaciones) y Python (notificaciones y autenticación). El Gateway no es Spring Cloud Gateway.
@@ -112,7 +112,7 @@ flowchart LR
     G --> S[Microservicios]
     S <--> R[RabbitMQ]
 
-    P[Prometheus :9091 host] -- Pull /metrics --> G
+    P[Prometheus :9090 host] -- Pull /metrics --> G
     P -- Pull /metrics --> S
     G -- Push spans OTel/W3C --> Z[Zipkin :9411]
     S -- Push spans OTel/W3C --> Z
@@ -128,7 +128,7 @@ flowchart LR
 | Interfaz | URL |
 |---|---|
 | Grafana (dashboard «Reto 8 — Observabilidad de microservicios») | `http://localhost:3000` (usuario `GRAFANA_ADMIN_USER`) |
-| Prometheus | `http://localhost:9091` (Jenkins ya ocupa `9090`) |
+| Prometheus | `http://localhost:9090` |
 | Zipkin | `http://localhost:9411` |
 
 Loki y Promtail quedan internos.
@@ -382,7 +382,7 @@ README del servicio: [`services/departamentos-service/README.md`](services/depar
 Orquestación de los 4 contenedores con arranque ordenado:
 
 - Servicios: `empleados-service`, `departamentos-service`, `database-empleados` (Postgres), `database-departamentos` (MySQL).
-- Red interna `microservices-network`: los servicios se resuelven por nombre (p. ej. `http://departamentos-service:8081`). Nunca `localhost` entre contenedores.
+- Seis redes por capa (Fase 14: `frontend`, `backend`, `messaging`, `data`, `observability`, `cicd`; ver cabecera de `docker-compose.yml`): los servicios se resuelven por nombre (p. ej. `http://departamentos-service:8081`). Nunca `localhost` entre contenedores.
 - Un volumen por base (`vol-empleados`, `vol-departamentos`): `docker compose down` conserva datos; `down -v` los borra.
 - Healthchecks reales: `pg_isready` en Postgres; `mysqladmin ping --protocol=tcp -h 127.0.0.1` en MySQL (el ping por socket Unix daba falso "healthy" durante el mysqld temporal de inicialización).
 - `depends_on: condition: service_healthy`: cada API espera a su BD; `empleados-service` también espera a `departamentos-service`.
@@ -474,8 +474,8 @@ Si un consumidor está caído, su cola conserva la copia y los demás siguen.
 | **NATS** | Encaja en mensajería simple y tampoco trae esa consola de administración. |
 | **RabbitMQ** | Trae la management UI en `:15672`, exchanges topic y colas durables. Un `basic.publish` con routing key = `type` llega a cada cola ligada a esa key. Si un consumidor se cae, los demás siguen. |
 
-Dentro de la red los servicios hablarán `message-broker:5672`. En el host, `5672` permite
-inspeccionar AMQP y `15672` es la UI del paso 9 del enunciado. El usuario y la contraseña salen
+Dentro de la red `messaging` los servicios hablan con `message-broker:5672` (AMQP no se publica
+en el host desde la Fase 14) y `15672` es la UI del paso 9 del enunciado. El usuario y la contraseña salen
 de `RABBITMQ_USER` y `RABBITMQ_PASSWORD`. El volumen `vol-rabbitmq` monta `/var/lib/rabbitmq`:
 `docker compose down` conserva colas durables; `down -v` las borra. El `hostname` del contenedor
 está fijo en `message-broker` porque el nombre del nodo queda guardado en ese volumen.
@@ -830,7 +830,7 @@ decisiones está en [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md).
 
 | Qué | Dónde |
 |---|---|
-| Jenkins | [http://localhost:9090](http://localhost:9090) |
+| Jenkins | [http://localhost:8090](http://localhost:8090) |
 | Usuario | `JENKINS_ADMIN_ID` del `.env` (referencia: `admin`) |
 | Contraseña | `JENKINS_ADMIN_PASSWORD` del `.env` (referencia: `admin`) |
 | SonarQube | [http://localhost:9000](http://localhost:9000), usuario `admin`, clave `SONAR_ADMIN_PASSWORD` |
@@ -856,7 +856,7 @@ Disparo automático al commitear en **`main`** (una sola vez por clon):
 ```
 
 Tras eso, cada `git commit` en `main` encola `empleados-service` y `vacaciones-service` vía la
-API de Jenkins (`http://localhost:9090` y credenciales de `.env`). Si Jenkins no está levantado,
+API de Jenkins (`http://localhost:8090` y credenciales de `.env`). Si Jenkins no está levantado,
 el commit no falla; solo verás un aviso en la terminal.
 
 Los Jenkinsfiles incluyen **`pollSCM('* * * * *')`**: Jenkins revisa cambios en `main` como

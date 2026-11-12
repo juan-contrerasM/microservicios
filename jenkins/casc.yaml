@@ -36,7 +36,7 @@ credentials:
 
 unclassified:
   location:
-    url: "http://localhost:9090/"
+    url: "http://localhost:8090/"
   sonarGlobalConfiguration:
     buildWrapperEnabled: true
     installations:
