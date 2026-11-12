@@ -2,6 +2,7 @@ package com.microservicios.perfiles.event;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
 
 import com.microservicios.perfiles.config.BrokerProperties;
+import com.microservicios.perfiles.config.Metricas;
 import com.microservicios.perfiles.service.PerfilEventoService;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Channel;
@@ -47,6 +49,7 @@ public class PerfilEventListener {
 		this.objectMapper = objectMapper;
 		this.perfilEventoService = perfilEventoService;
 		this.cola = broker.getQueue();
+		Metricas.inicializarEventos(List.of("empleado.creado", "empleado.actualizado", "empleado.retirado"));
 	}
 
 	@RabbitListener(queues = "${broker.queue}")
@@ -58,11 +61,13 @@ public class PerfilEventListener {
 		} catch (EnvelopeInvalidoException ex) {
 			log.error("Mensaje inválido; se envía a DLQ: {}", ex.getMessage());
 			channel.basicReject(tag, false);
+			Metricas.evento("dlq", message.getMessageProperties().getReceivedRoutingKey());
 			return;
 		}
 		try {
-			perfilEventoService.procesar(envelope.id(), envelope.type(), envelope.data());
+			boolean aplicado = perfilEventoService.procesar(envelope.id(), envelope.type(), envelope.data());
 			channel.basicAck(tag, false);
+			Metricas.evento(aplicado ? "procesados" : "duplicados", envelope.type());
 			log.info("Evento {} ({}) procesado", envelope.id(), envelope.type());
 		} catch (Exception ex) {
 			reintentarODlq(message, channel, envelope.id(), ex);
@@ -85,6 +90,7 @@ public class PerfilEventListener {
 			log.error("Fallo definitivo procesando {} tras {} reintentos; se envía a DLQ: {}",
 					eventId, intento, causa.getMessage());
 			channel.basicReject(tag, false);
+			Metricas.evento("dlq", tipoOriginal(propiedades));
 			return;
 		}
 		headers.put(HEADER_REINTENTOS, intento + 1);
@@ -102,10 +108,17 @@ public class PerfilEventListener {
 		} catch (IOException | RuntimeException ex) {
 			log.error("No se pudo programar el reintento de {}; se envía a DLQ: {}", eventId, ex.getMessage());
 			channel.basicReject(tag, false);
+			Metricas.evento("dlq", tipoOriginal(propiedades));
 			return;
 		}
 		channel.basicAck(tag, false);
 		log.error("Fallo procesando {}; reintento {}/{} programado en {}.retry: {}",
 				eventId, intento + 1, MAX_REINTENTOS, cola, causa.getMessage());
+	}
+
+	// Tras un reintento la routing key recibida es la cola; el tipo original viaja en un header.
+	private static String tipoOriginal(MessageProperties propiedades) {
+		Object original = propiedades.getHeaders().get(HEADER_ROUTING_ORIGINAL);
+		return original != null ? original.toString() : propiedades.getReceivedRoutingKey();
 	}
 }

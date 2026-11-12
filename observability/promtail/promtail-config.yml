@@ -30,4 +30,12 @@ scrape_configs:
         target_label: container_id
     pipeline_stages:
       - docker: {}
+      # Fase 11 (C5): los siete servicios escriben JSON con `level`; se publica como label para
+      # filtrar {service="x", level="ERROR"}. traceId NO es label (cardinalidad): se consulta con
+      # `| json | traceId="..."` y Grafana lo enlaza a Zipkin con el derived field.
+      - json:
+          expressions:
+            level: level
+      - labels:
+          level:
 

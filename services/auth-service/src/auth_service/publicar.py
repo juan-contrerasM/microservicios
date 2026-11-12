@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 import pika
 
+from auth_service.metricas import registrar_saliente
 from auth_service.modelos import EventoSaliente
 from auth_service.seguridad import iso_z
 
@@ -54,6 +55,8 @@ class PublicadorRabbit:
 
 def publicar_todos(publicador, eventos: list[EventoSaliente]) -> None:
     for evento in eventos:
+        # Quien llama ya confirmó la transacción: el hecho de negocio cuenta aunque el broker falle.
+        registrar_saliente(evento)
         try:
             publicador.publicar(evento)
         except Exception:

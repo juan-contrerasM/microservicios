@@ -31,6 +31,8 @@ import com.microservicios.Reto1.repository.EmpleadoRepository;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Metrics;
 
 /**
  * Reglas de negocio para el alta y consulta de empleados.
@@ -41,6 +43,12 @@ public class EmpleadoService {
 	private static final Logger log = LoggerFactory.getLogger(EmpleadoService.class);
 	static final String CIRCUIT_BREAKER_NAME = "departamentos";
 	static final String MOTIVO_RETIRO_POR_DEFECTO = "RENUNCIA";
+
+	// Fase 11 (E20): métricas de negocio. Metrics.globalRegistry incluye el registro Prometheus de
+	// Actuator; se incrementan tras el commit, cuando el hecho de negocio ya es definitivo.
+	private static final Counter CREADOS = Metrics.counter("empleados.creados");
+	private static final Counter ACTUALIZADOS = Metrics.counter("empleados.actualizados");
+	private static final Counter RETIRADOS = Metrics.counter("empleados.retirados");
 
 	private final EmpleadoRepository empleadoRepository;
 	private final DepartamentoClient departamentoClient;
@@ -89,7 +97,10 @@ public class EmpleadoService {
 		try {
 			Empleado registrado = empleadoRepository.save(empleado);
 			log.info("Empleado registrado con id {} en estado {}", registrado.getId(), registrado.getEstado());
-			publicarDespuesDelCommit(() -> eventPublisher.publicarCreado(registrado));
+			publicarDespuesDelCommit(() -> {
+				CREADOS.increment();
+				eventPublisher.publicarCreado(registrado);
+			});
 			return registrado;
 		} catch (DataIntegrityViolationException ex) {
 			throw traducirViolacionDeUnicidad(ex);
@@ -111,7 +122,10 @@ public class EmpleadoService {
 		try {
 			Empleado guardado = empleadoRepository.save(empleado);
 			log.info("Empleado actualizado con id {}", guardado.getId());
-			publicarDespuesDelCommit(() -> eventPublisher.publicarActualizado(guardado));
+			publicarDespuesDelCommit(() -> {
+				ACTUALIZADOS.increment();
+				eventPublisher.publicarActualizado(guardado);
+			});
 			return guardado;
 		} catch (DataIntegrityViolationException ex) {
 			throw traducirViolacionDeUnicidad(ex);
@@ -142,7 +156,10 @@ public class EmpleadoService {
 		empleado.setFechaRetiro(Instant.now(clock));
 		Empleado guardado = empleadoRepository.save(empleado);
 		log.info("Empleado retirado con id {}", guardado.getId());
-		publicarDespuesDelCommit(() -> eventPublisher.publicarRetirado(guardado, motivoEvento));
+		publicarDespuesDelCommit(() -> {
+			RETIRADOS.increment();
+			eventPublisher.publicarRetirado(guardado, motivoEvento);
+		});
 		return guardado;
 	}
 

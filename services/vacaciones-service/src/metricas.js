@@ -30,6 +30,45 @@ export function metricsMiddleware(req, res, next) {
 	});
 	next();
 }
+// Fase 11 (E20): métricas de negocio y de consumo. Etiquetas de baja cardinalidad (sin ids).
+const negocio = {
+	'vacaciones.programadas': new client.Counter({
+		name: 'vacaciones_programadas_total', help: 'Períodos programados', registers: [registry],
+	}),
+	'vacaciones.iniciadas': new client.Counter({
+		name: 'vacaciones_iniciadas_total', help: 'Períodos que pasaron a EN_CURSO', registers: [registry],
+	}),
+	'vacaciones.finalizadas': new client.Counter({
+		name: 'vacaciones_finalizadas_total', help: 'Períodos que pasaron a FINALIZADA', registers: [registry],
+	}),
+};
+const eventos = Object.fromEntries(['procesados', 'duplicados', 'dlq'].map((resultado) => [
+	resultado,
+	new client.Counter({
+		name: `eventos_${resultado}_total`, help: `Eventos consumidos: ${resultado}`,
+		labelNames: ['tipo'], registers: [registry],
+	}),
+]));
+
+/** Cuenta un hecho de negocio ya confirmado en la base (tipo = nombre del evento que lo anuncia). */
+export function registrarNegocio(tipo) {
+	negocio[tipo]?.inc();
+}
+
+export function registrarEvento(resultado, tipo) {
+	eventos[resultado].inc({ tipo: tipo || 'desconocido' });
+}
+
+/**
+ * Crea en 0 las series de cada tipo consumido: increase() necesita ver el 0 para detectar el
+ * primer mensaje que llega a la DLQ (si la serie nace en 1, la alerta no se dispara).
+ */
+export function inicializarEventos(tipos) {
+	for (const tipo of tipos) {
+		for (const contador of Object.values(eventos)) contador.inc({ tipo }, 0);
+	}
+}
+
 export async function metricsHandler(_req, res) {
 	res.set('Content-Type', registry.contentType);
 	res.end(await registry.metrics());

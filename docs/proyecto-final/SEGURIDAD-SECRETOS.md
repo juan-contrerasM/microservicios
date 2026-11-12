@@ -17,6 +17,22 @@ En Linux o macOS:
 Los comandos crean `.env` y `secrets/`. Ninguno debe añadirse a Git, enviarse por chat o aparecer
 en capturas. Los archivos generados son la fuente local durante la migración a Compose Secrets.
 
+### Webhook de Discord (Fase 11)
+
+`secrets/discord_webhook_url.txt` es el único secreto que no se genera al azar: lo entrega Discord
+(Ajustes del canal → Integraciones → Webhooks). Los scripts lo toman de la variable de entorno
+`DISCORD_WEBHOOK_URL`; sin ella escriben un marcador que Grafana acepta pero que no entrega. Para
+fijarlo sin rotar los demás secretos:
+
+```sh
+printf '%s' 'https://discord.com/api/webhooks/<id>/<token>' > secrets/discord_webhook_url.txt
+docker compose up -d --force-recreate grafana
+```
+
+Grafana lo monta en `/run/secrets/discord_webhook_url` y lo lee con `$__file{...}` desde
+`observability/grafana/provisioning/alerting/notificaciones.yml`; la URL nunca aparece en Git, en
+`.env` ni en la configuración exportada.
+
 ## Verificación antes de cada push
 
 Árbol de trabajo actual:

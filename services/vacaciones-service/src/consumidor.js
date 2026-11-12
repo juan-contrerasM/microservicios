@@ -1,6 +1,8 @@
 import amqp from 'amqplib';
+import { inicializarEventos, registrarEvento } from './metricas.js';
 
 export const CLAVES = ['empleado.creado', 'empleado.retirado'];
+inicializarEventos(CLAVES);
 
 // Política común de reintento/DLQ (ver docs/eventos.md). Los cuatro consumidores usan los
 // mismos nombres para que la topología sea idéntica en RabbitMQ:
@@ -195,14 +197,16 @@ export function crearManejador({ canal, pool, queue }) {
 			// Poison: reintentarlo no lo arregla. Reject sin requeue → DLX → <q>.dlq.
 			console.error(`Mensaje inválido; se envía a DLQ: ${error.message}`);
 			canal.reject(mensaje, false);
+			registrarEvento('dlq', mensaje.fields?.routingKey);
 			return;
 		}
 		let client = null;
+		let aplicado;
 		try {
 			client = await pool.connect();
 			await client.query('BEGIN');
 			// La marca en eventos_procesados y la réplica van en la misma transacción.
-			await procesarEvento(client, envelope);
+			aplicado = await procesarEvento(client, envelope);
 			await client.query('COMMIT');
 		} catch (error) {
 			if (client) {
@@ -214,6 +218,7 @@ export function crearManejador({ canal, pool, queue }) {
 			client?.release();
 		}
 		canal.ack(mensaje);
+		registrarEvento(aplicado === false ? 'duplicados' : 'procesados', envelope.type);
 		console.log(`Evento ${envelope.id} (${envelope.type}) procesado`);
 	};
 }
@@ -227,6 +232,7 @@ export async function reintentarODlq({ canal, mensaje, eventId, queue, error }) 
 	if (intento >= MAX_REINTENTOS) {
 		console.error(`Fallo definitivo procesando ${eventId} tras ${intento} reintentos; se envía a DLQ: ${error?.message}`);
 		canal.reject(mensaje, false);
+		registrarEvento('dlq', headers[HEADER_ROUTING_ORIGINAL] ?? mensaje.fields?.routingKey);
 		return;
 	}
 	// Se conservan todos los headers del productor (traceparent, tracestate, baggage...).
@@ -246,6 +252,7 @@ export async function reintentarODlq({ canal, mensaje, eventId, queue, error }) 
 	} catch (falla) {
 		console.error(`No se pudo programar el reintento de ${eventId}; se envía a DLQ: ${falla?.message ?? falla}`);
 		canal.reject(mensaje, false);
+		registrarEvento('dlq', headers[HEADER_ROUTING_ORIGINAL]);
 		return;
 	}
 	canal.ack(mensaje);

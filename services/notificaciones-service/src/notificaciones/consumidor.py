@@ -8,7 +8,8 @@ from pika.exceptions import ChannelClosedByBroker
 
 from notificaciones.correo import crear_enviador
 from notificaciones.db import SqlRepositorio
-from notificaciones.procesar import procesar
+from notificaciones.metricas import inicializar_eventos, registrar_correo, registrar_evento
+from notificaciones.procesar import Resultado, procesar
 
 logger = logging.getLogger("notificaciones")
 
@@ -23,6 +24,7 @@ CLAVES = (
     "cuenta.activada",
     "cuenta.desactivada",
 )
+inicializar_eventos(CLAVES)
 
 # Política común de reintento/DLQ (ver docs/eventos.md). Los cuatro consumidores usan los
 # mismos nombres para que la topología sea idéntica en RabbitMQ:
@@ -133,6 +135,7 @@ def _manejador(sesiones, enviar, queue="q.notificaciones"):
             # Poison: reintentarlo no lo arregla. Reject sin requeue → DLX → <q>.dlq.
             logger.error("Mensaje inválido; se envía a DLQ: %s", error)
             canal.basic_reject(method.delivery_tag, requeue=False)
+            registrar_evento("dlq", getattr(method, "routing_key", None))
             return
         event_id = envelope["id"]
         # Los correos se acumulan y salen DESPUÉS del commit: si la transacción falla (o la
@@ -142,7 +145,7 @@ def _manejador(sesiones, enviar, queue="q.notificaciones"):
         sesion = None
         try:
             sesion = sesiones()
-            procesar(
+            resultado = procesar(
                 SqlRepositorio(sesion),
                 envelope,
                 datetime.now(timezone.utc),
@@ -158,13 +161,14 @@ def _manejador(sesiones, enviar, queue="q.notificaciones"):
             if sesion is not None:
                 sesion.close()
         canal.basic_ack(method.delivery_tag)
+        registrar_evento("duplicados" if resultado is Resultado.DUPLICADO else "procesados", envelope["type"])
         logger.info("Evento %s (%s) procesado", event_id, envelope["type"])
-        enviar_correos(enviar, correos)
+        enviar_correos(enviar, correos, envelope["type"])
 
     return on_message
 
 
-def enviar_correos(enviar, correos) -> None:
+def enviar_correos(enviar, correos, tipo: str | None = None) -> None:
     """Un fallo SMTP no deshace la notificación ya guardada ni reintenta el evento."""
     if enviar is None:
         return
@@ -172,7 +176,10 @@ def enviar_correos(enviar, correos) -> None:
         try:
             enviar(destino, asunto, cuerpo)
         except Exception:
+            registrar_correo(False, tipo)
             logger.exception("No se pudo enviar el correo; la notificación ya quedó guardada")
+        else:
+            registrar_correo(True, tipo)
 
 
 def declarar_topologia(conexion, exchange: str, queue: str):
@@ -234,6 +241,7 @@ def reintentar_o_dlq(canal, method, properties, body: bytes, event_id, queue: st
         logger.error("Fallo definitivo procesando %s tras %s reintentos; se envía a DLQ: %s",
                      event_id, intento, error)
         canal.basic_reject(method.delivery_tag, requeue=False)
+        registrar_evento("dlq", headers.get(HEADER_ROUTING_ORIGINAL) or method.routing_key)
         return
     # Se conservan todos los headers del productor (traceparent, tracestate, baggage...).
     headers[HEADER_REINTENTOS] = intento + 1
@@ -251,6 +259,7 @@ def reintentar_o_dlq(canal, method, properties, body: bytes, event_id, queue: st
     except Exception:
         logger.exception("No se pudo programar el reintento de %s; se envía a DLQ", event_id)
         canal.basic_reject(method.delivery_tag, requeue=False)
+        registrar_evento("dlq", headers.get(HEADER_ROUTING_ORIGINAL) or method.routing_key)
         return
     canal.basic_ack(method.delivery_tag)
     logger.error("Fallo procesando %s; reintento %s/%s programado en %s.retry: %s",

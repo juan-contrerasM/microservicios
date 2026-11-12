@@ -1,0 +1,138 @@
+{
+  "uid": "pf-negocio-eventos",
+  "title": "Proyecto final — Negocio, eventos y resiliencia",
+  "description": "Métricas de negocio de los siete servicios, consumo de eventos (procesados, duplicados, DLQ) y estado de los circuit breakers. Aprovisionado desde Git (Fase 11).",
+  "tags": ["proyecto-final", "microservicios", "negocio"],
+  "timezone": "browser",
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    { "id": 1, "type": "row", "title": "Resumen", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "panels": [] },
+    {
+      "id": 2, "type": "stat", "title": "Servicios arriba",
+      "description": "`up` por servicio: 1 = el scrape responde.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": {
+        "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red", "index": 0 }, "1": { "text": "UP", "color": "green", "index": 1 } } }],
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+      }, "overrides": [] },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "targets": [{ "refId": "A", "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "up", "legendFormat": "{{job}}", "instant": true }]
+    },
+
+    { "id": 9, "type": "row", "title": "Negocio", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "panels": [] },
+    {
+      "id": 10, "type": "stat", "title": "Totales desde el último arranque",
+      "description": "Contadores de negocio por servicio (Fase 11). Se reinician si el contenedor se reinicia.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 6 },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } },
+      "fieldConfig": { "defaults": { "unit": "none", "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(empleados_creados_total)", "legendFormat": "Empleados creados", "instant": true },
+        { "refId": "B", "expr": "sum(empleados_actualizados_total)", "legendFormat": "Empleados actualizados", "instant": true },
+        { "refId": "C", "expr": "sum(empleados_retirados_total)", "legendFormat": "Empleados retirados", "instant": true },
+        { "refId": "D", "expr": "sum(departamentos_creados_total)", "legendFormat": "Departamentos creados", "instant": true },
+        { "refId": "E", "expr": "sum(departamentos_consultas_total)", "legendFormat": "Consultas de departamentos", "instant": true },
+        { "refId": "F", "expr": "sum(perfiles_creados_total)", "legendFormat": "Perfiles creados", "instant": true },
+        { "refId": "G", "expr": "sum(perfiles_actualizados_total)", "legendFormat": "Perfiles actualizados", "instant": true },
+        { "refId": "H", "expr": "sum(perfiles_archivados_total)", "legendFormat": "Perfiles archivados", "instant": true },
+        { "refId": "I", "expr": "sum(vacaciones_programadas_total)", "legendFormat": "Vacaciones programadas", "instant": true },
+        { "refId": "J", "expr": "sum(vacaciones_iniciadas_total)", "legendFormat": "Vacaciones iniciadas", "instant": true },
+        { "refId": "K", "expr": "sum(vacaciones_finalizadas_total)", "legendFormat": "Vacaciones finalizadas", "instant": true },
+        { "refId": "L", "expr": "sum(cuentas_activadas_total)", "legendFormat": "Cuentas activadas", "instant": true },
+        { "refId": "M", "expr": "sum(cuentas_desactivadas_total)", "legendFormat": "Cuentas desactivadas", "instant": true },
+        { "refId": "N", "expr": "sum(recuperaciones_solicitadas_total)", "legendFormat": "Recuperaciones", "instant": true },
+        { "refId": "O", "expr": "sum(notificaciones_enviadas_total)", "legendFormat": "Correos enviados", "instant": true },
+        { "refId": "P", "expr": "sum(notificaciones_fallidas_total) or vector(0)", "legendFormat": "Correos fallidos", "instant": true }
+      ]
+    },
+    {
+      "id": 11, "type": "timeseries", "title": "Logins por resultado (por minuto)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (resultado) (rate(logins_total[5m])) * 60", "legendFormat": "{{resultado}}" }]
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Correos por tipo de evento (por minuto)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (tipo) (rate(notificaciones_enviadas_total[5m])) * 60", "legendFormat": "enviado · {{tipo}}" },
+        { "refId": "B", "expr": "sum by (tipo) (rate(notificaciones_fallidas_total[5m])) * 60", "legendFormat": "fallido · {{tipo}}" }
+      ]
+    },
+
+    { "id": 19, "type": "row", "title": "Eventos (RabbitMQ)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 }, "panels": [] },
+    {
+      "id": 20, "type": "timeseries", "title": "Mensajes enviados a DLQ (últimos 5 min)",
+      "description": "Alimenta la alerta «Mensajes enviados a una DLQ». Cualquier valor > 0 es un evento perdido hasta revisarlo.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "none", "color": { "mode": "fixed", "fixedColor": "red" } }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "job_tipo:eventos_dlq:increase5m", "legendFormat": "{{job}} · {{tipo}}" }]
+    },
+    {
+      "id": 21, "type": "timeseries", "title": "Eventos procesados (por minuto)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "job_tipo:eventos_procesados:rate5m * 60", "legendFormat": "{{job}} · {{tipo}}" }]
+    },
+    {
+      "id": 22, "type": "timeseries", "title": "Duplicados descartados (por minuto)",
+      "description": "Eventos repetidos que la deduplicación por id confirmó sin efecto (idempotencia, E12).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "job_tipo:eventos_duplicados:rate5m * 60", "legendFormat": "{{job}} · {{tipo}}" }]
+    },
+
+    { "id": 29, "type": "row", "title": "Circuit breakers", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 }, "panels": [] },
+    {
+      "id": 30, "type": "state-timeline", "title": "Gateway → backends",
+      "description": "gateway_circuit_breaker_state: 0 CLOSED, 1 HALF_OPEN, 2 OPEN.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 29 },
+      "fieldConfig": { "defaults": {
+        "mappings": [{ "type": "value", "options": {
+          "0": { "text": "CLOSED", "color": "green", "index": 0 },
+          "1": { "text": "HALF_OPEN", "color": "yellow", "index": 1 },
+          "2": { "text": "OPEN", "color": "red", "index": 2 } } }],
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 2 }] }
+      }, "overrides": [] },
+      "options": { "showValue": "auto", "mergeValues": true, "rowHeight": 0.8 },
+      "targets": [{ "refId": "A", "expr": "max by (servicio) (gateway_circuit_breaker_state)", "legendFormat": "{{servicio}}" }]
+    },
+    {
+      "id": 31, "type": "state-timeline", "title": "Empleados → Departamentos (Resilience4j)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 29 },
+      "fieldConfig": { "defaults": {
+        "mappings": [{ "type": "value", "options": {
+          "0": { "text": "CLOSED", "color": "green", "index": 0 },
+          "1": { "text": "HALF_OPEN", "color": "yellow", "index": 1 },
+          "2": { "text": "OPEN", "color": "red", "index": 2 } } }],
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 2 }] }
+      }, "overrides": [] },
+      "options": { "showValue": "auto", "mergeValues": true, "rowHeight": 0.8 },
+      "targets": [{ "refId": "A", "expr": "2 * max(resilience4j_circuitbreaker_state{name=\"departamentos\", state=\"open\"}) + max(resilience4j_circuitbreaker_state{name=\"departamentos\", state=\"half_open\"})", "legendFormat": "departamentos" }]
+    },
+    {
+      "id": 32, "type": "timeseries", "title": "Fallos definitivos hacia backends (por minuto)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 37 },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "sum by (servicio, causa) (rate(gateway_upstream_errors_total[5m])) * 60", "legendFormat": "{{servicio}} · {{causa}}" }]
+    }
+  ]
+}

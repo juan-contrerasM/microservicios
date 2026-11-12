@@ -22,6 +22,7 @@ from auth_service.casos import (
 from auth_service.config import Settings, load_settings
 from auth_service.consumidor import EstadoConsumidor, iniciar_consumidor
 from auth_service.errores import ajustar_openapi, instalar_manejadores, respuesta_error
+from auth_service.metricas import registrar_login
 from auth_service.publicar import PublicadorRabbit, publicar_todos
 from auth_service.repositorio import SqlRepositorio, base_responde, crear_motor, crear_sesiones
 from auth_service.salud import con_timeout
@@ -220,6 +221,7 @@ def crear_app(
     def login(cuerpo: LoginCuerpo):
         with abrir_repo() as (repo, _sesion):
             respuesta = iniciar_sesion(repo, tokens, cuerpo.usuario, cuerpo.contrasena, datetime.now(timezone.utc))
+        registrar_login(respuesta.status == 200)
         return _aplicar(respuesta, [])
 
     @app.post(

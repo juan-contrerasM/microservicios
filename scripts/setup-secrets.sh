@@ -37,6 +37,12 @@ for name in $secret_names; do
   printf '%s' "$value" > "$SECRET_DIR/$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]').txt"
 done
 
+# Fase 11: webhook de Discord para las alertas de Grafana. No es aleatorio: lo entrega Discord
+# (Ajustes del canal → Integraciones → Webhooks). Sin DISCORD_WEBHOOK_URL queda un marcador que
+# Grafana acepta al arrancar pero que no entrega; las alertas siguen llegando por correo a Mailhog.
+printf '%s' "${DISCORD_WEBHOOK_URL:-https://discord.com/api/webhooks/0/sin-configurar}" \
+  > "$SECRET_DIR/discord_webhook_url.txt"
+
 auth_admin=$(cat "$SECRET_DIR/auth_admin_password.txt")
 e2e_user=$(cat "$SECRET_DIR/e2e_user_password.txt")
 {

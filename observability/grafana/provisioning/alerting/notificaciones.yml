@@ -1,15 +1,33 @@
-# Contact point y política de notificación del Reto 8.
-# Canal externo: email. Grafana envía por SMTP a Mailhog (servicio `mailhog` del Compose), que el
-# enunciado admite para pruebas; la bandeja se consulta en http://localhost:8025.
-# El destinatario sale de GRAFANA_ALERT_EMAIL (docker-compose.yml); aquí no hay secretos.
-# Cambiar de canal (Telegram, Discord, Slack) es reemplazar este receiver.
+# Contact point y política de notificación (Reto 8 → Fase 11 del proyecto final).
+#
+# Canal externo: Discord. La URL del webhook es un secreto: Grafana la lee del archivo montado
+# por Docker Secrets (`$__file{...}`), nunca del repositorio ni de una variable en claro. Se
+# genera con scripts/setup-secrets.* a partir de DISCORD_WEBHOOK_URL (ver docs/guias o el README).
+#
+# Respaldo local: el mismo contact point envía también un correo por SMTP a Mailhog
+# (http://localhost:8025), para verificar alertas sin depender de Internet.
 apiVersion: 1
+
+# Receptor del Reto 8 (solo correo), reemplazado por equipo-microservicios.
+deleteContactPoints:
+  - orgId: 1
+    uid: email-reto8
 
 contactPoints:
   - orgId: 1
-    name: email-reto8
+    name: equipo-microservicios
     receivers:
-      - uid: email-reto8
+      - uid: discord-equipo
+        type: discord
+        settings:
+          url: $__file{/run/secrets/discord_webhook_url}
+          use_discord_username: false
+          message: |
+            {{ range .Alerts }}**[{{ .Status | toUpper }}] {{ .Labels.alertname }}** ({{ .Labels.severity }})
+            {{ .Annotations.summary }}
+            {{ end }}
+        disableResolveMessage: false
+      - uid: email-equipo
         type: email
         settings:
           addresses: ${GRAFANA_ALERT_EMAIL}
@@ -18,7 +36,7 @@ contactPoints:
 
 policies:
   - orgId: 1
-    receiver: email-reto8
+    receiver: equipo-microservicios
     group_by: ['alertname', 'job']
     group_wait: 10s
     group_interval: 1m

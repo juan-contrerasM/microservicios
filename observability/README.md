@@ -9,7 +9,7 @@ docker compose up -d --build
 powershell -ExecutionPolicy Bypass -File observability/verify.ps1
 ```
 
-Interfaces: Grafana `http://localhost:3000`, Prometheus `http://localhost:9091` y Zipkin
+Interfaces: Grafana `http://localhost:3000`, Prometheus `http://localhost:9090` y Zipkin
 `http://localhost:9411`. Prometheus debe mostrar exactamente siete servicios de negocio `UP`.
 
 ## Consultas LogQL de la Fase 4
@@ -37,8 +37,8 @@ Todo se aprovisiona al arrancar; no hay pasos manuales en la UI:
 |---|---|
 | `prometheus/rules/reto8-recording.yml` | Series comunes por `job` para Java, Go, Node y Python (tráfico, 4xx/5xx, p95, media, CPU, memoria) |
 | `grafana/dashboards/reto8-observabilidad.json` | Dashboard `reto8-observabilidad`: Resumen, Tráfico y Logs |
-| `grafana/provisioning/alerting/reglas.yml` | «Servicio caído» (1 m), «Tasa de errores 5xx superior al 10 %» (2 m), «Latencia p95 superior a 1 s» (1 m) |
-| `grafana/provisioning/alerting/notificaciones.yml` | Contact point `email-reto8` (SMTP a Mailhog) y política por `alertname`/`job` |
+| `grafana/provisioning/alerting/reglas.yml` | «Servicio caído» (1 m), «Tasa de errores 5xx superior al 10 %» (2 m), «Latencia p95 superior a 2 s» (2 m), «Mensajes enviados a una DLQ» (inmediata), «Memoria del proceso superior al 85 %» (5 m) |
+| `grafana/provisioning/alerting/notificaciones.yml` | Contact point `equipo-microservicios`: Discord (webhook como secreto) + correo a Mailhog; política por `alertname`/`job` |
 
 Las alertas llegan por email a la bandeja de Mailhog: `http://localhost:8025`. El destinatario se
 cambia con `GRAFANA_ALERT_EMAIL`; no hay secretos involucrados.
@@ -53,6 +53,60 @@ paneles de tráfico tengan datos, generar tráfico antes de mirarlos o capturarl
 ```powershell
 powershell -ExecutionPolicy Bypass -File observability/trafico.ps1 -Segundos 180
 ```
+
+## Proyecto final — Fase 11: negocio, eventos y canal externo
+
+### Métricas de negocio (E20)
+
+Cada servicio publica sus contadores en su ruta de métricas (`/actuator/prometheus` en Java,
+`/metrics` en el resto). Etiquetas de baja cardinalidad: nunca ids, emails ni trace ids.
+
+| Servicio | Métricas | Dónde se cuentan |
+|---|---|---|
+| empleados | `empleados_creados_total`, `empleados_actualizados_total`, `empleados_retirados_total` | Tras el commit, junto a la publicación del evento |
+| departamentos | `departamentos_creados_total`, `departamentos_consultas_total` | Respuestas 201 / 200 del handler |
+| auth | `logins_total{resultado}`, `cuentas_activadas_total`, `cuentas_desactivadas_total{tipo}`, `recuperaciones_solicitadas_total` | Login y eventos salientes confirmados |
+| perfiles | `perfiles_creados_total`, `perfiles_actualizados_total`, `perfiles_archivados_total` | Al confirmar la transacción |
+| vacaciones | `vacaciones_programadas_total`, `vacaciones_iniciadas_total`, `vacaciones_finalizadas_total` | Tras el commit (API y scheduler) |
+| notificaciones | `notificaciones_enviadas_total{tipo}`, `notificaciones_fallidas_total{tipo}` | Resultado real del envío SMTP |
+| gateway | `gateway_upstream_errors_total{servicio,causa}`, `gateway_circuit_breaker_state{servicio}` | Proxy y circuito (Fase 6) |
+| consumidores (auth, perfiles, vacaciones, notificaciones) | `eventos_procesados_total{tipo}`, `eventos_duplicados_total{tipo}`, `eventos_dlq_total{tipo}` | Manejador del mensaje: ack, duplicado por id o reject a DLQ |
+
+`prometheus/rules/proyecto-final.yml` agrega estas series por `job` y define
+`job:process_memory:ratio`: heap usado/máximo en Java; en Node, Python y Go (sin techo propio)
+el RSS frente a un presupuesto de 512 MiB por proceso.
+
+El dashboard `pf-negocio-eventos` («Proyecto final — Negocio, eventos y resiliencia») muestra
+estado de los servicios, totales de negocio, logins y correos, eventos procesados/duplicados/DLQ
+y los dos circuit breakers (Gateway → backends y Empleados → Departamentos).
+
+### Logs (contrato C5)
+
+Los siete servicios escriben una línea JSON con `timestamp`, `level`, `service`, `message`,
+`traceId` y `spanId`. En Java se renombran los campos del formato logstash con
+`logging.structured.json.*`; en Go, `slog` renombra `time`/`msg`. Promtail publica `service` y
+`level` como labels (nunca `traceId`):
+
+```logql
+{service="auth-service", level="ERROR"} | json
+{service=~".+"} | json | traceId = "TRACE_ID"
+```
+
+### Canal externo de alertas: Discord
+
+El contact point `equipo-microservicios` envía a Discord y, como respaldo local, a Mailhog. La URL
+del webhook es un secreto (`secrets/discord_webhook_url.txt`, montado en Grafana y leído con
+`$__file{...}`); nunca se escribe en Git ni en `.env`:
+
+```bash
+DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/<id>/<token>' bash scripts/setup-secrets.sh --force
+# o, sin rotar los demás secretos:
+printf '%s' 'https://discord.com/api/webhooks/<id>/<token>' > secrets/discord_webhook_url.txt
+docker compose up -d --force-recreate grafana
+```
+
+Sin webhook real queda un marcador que Grafana acepta pero que no entrega; las alertas siguen
+llegando a `http://localhost:8025`.
 
 ## Caos controlado (Fase 6)
 

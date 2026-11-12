@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.microservicios.perfiles.config.Metricas;
 import com.microservicios.perfiles.model.EventoProcesado;
 import com.microservicios.perfiles.model.Perfil;
 import com.microservicios.perfiles.repository.EventoProcesadoRepository;
@@ -30,14 +31,15 @@ public class PerfilEventoService {
 		this.clock = clock;
 	}
 
+	/** @return {@code false} si el evento ya se había procesado (duplicado) o no trae id. */
 	@Transactional
-	public void procesar(String eventId, String type, Map<String, Object> data) {
+	public boolean procesar(String eventId, String type, Map<String, Object> data) {
 		if (eventId == null || eventId.isBlank()) {
 			log.error("Evento sin id; se confirma sin efecto");
-			return;
+			return false;
 		}
 		if (eventos.existsById(eventId)) {
-			return;
+			return false;
 		}
 		Map<String, Object> carga = data == null ? Map.of() : data;
 		switch (type == null ? "" : type) {
@@ -47,6 +49,7 @@ public class PerfilEventoService {
 			default -> log.info("Evento {} ignorado por perfiles", type);
 		}
 		eventos.save(new EventoProcesado(eventId, Instant.now(clock)));
+		return true;
 	}
 
 	private void crear(Map<String, Object> data) {
@@ -78,6 +81,7 @@ public class PerfilEventoService {
 		perfil.setFechaCreacion(Instant.now(clock));
 		perfil.setArchivado(false);
 		perfiles.save(perfil);
+		Metricas.alConfirmar("perfiles.creados");
 	}
 
 	private void sincronizar(Map<String, Object> data) {
@@ -97,6 +101,7 @@ public class PerfilEventoService {
 			if (data.containsKey("cargo") && texto(data.get("cargo")) != null) perfil.setCargo(texto(data.get("cargo")));
 			if (data.containsKey("area") && texto(data.get("area")) != null) perfil.setArea(texto(data.get("area")));
 			if (data.containsKey("numeroEmpleado") && texto(data.get("numeroEmpleado")) != null) perfil.setNumeroEmpleado(texto(data.get("numeroEmpleado")));
+			Metricas.alConfirmar("perfiles.actualizados");
 		}, () -> log.error("empleado.actualizado sin perfil para {}; se confirma sin fila", empleadoId));
 	}
 
@@ -107,7 +112,10 @@ public class PerfilEventoService {
 			return;
 		}
 		perfiles.findByEmpleadoId(empleadoId).ifPresentOrElse(
-				perfil -> perfil.setArchivado(true),
+				perfil -> {
+					perfil.setArchivado(true);
+					Metricas.alConfirmar("perfiles.archivados");
+				},
 				() -> log.error("empleado.retirado sin perfil para {}; se confirma sin fila", empleadoId));
 	}
 

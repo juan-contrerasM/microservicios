@@ -7,6 +7,7 @@ import pika
 from pika.exceptions import ChannelClosedByBroker
 
 from auth_service.casos import procesar_evento
+from auth_service.metricas import inicializar_eventos, registrar_evento
 from auth_service.publicar import publicar_todos
 from auth_service.repositorio import SqlRepositorio
 from auth_service.seguridad import Tokens
@@ -19,6 +20,7 @@ CLAVES = (
     "vacaciones.iniciadas",
     "vacaciones.finalizadas",
 )
+inicializar_eventos(CLAVES)
 
 # Política común de reintento/DLQ (ver docs/eventos.md). Los cuatro consumidores usan los
 # mismos nombres para que la topología sea idéntica en RabbitMQ:
@@ -127,15 +129,18 @@ def _manejador(sesiones, publicador, tokens: Tokens, queue="q.auth"):
             # Poison: reintentarlo no lo arregla. Reject sin requeue → DLX → <q>.dlq.
             logger.error("Mensaje inválido; se envía a DLQ: %s", error)
             canal.basic_reject(method.delivery_tag, requeue=False)
+            registrar_evento("dlq", getattr(method, "routing_key", None))
             return
         event_id = envelope["id"]
         sesion = None
         try:
             sesion = sesiones()
+            repo = SqlRepositorio(sesion)
+            duplicado = repo.ya_procesado(event_id)
             # La marca en eventos_procesados y el cambio de la cuenta van en la misma
             # transacción: o quedan los dos o ninguno.
             eventos = procesar_evento(
-                SqlRepositorio(sesion),
+                repo,
                 tokens,
                 envelope,
                 datetime.now(timezone.utc),
@@ -153,6 +158,7 @@ def _manejador(sesiones, publicador, tokens: Tokens, queue="q.auth"):
         # queda en el log (publicar_todos no relanza).
         publicar_todos(publicador, eventos)
         canal.basic_ack(method.delivery_tag)
+        registrar_evento("duplicados" if duplicado else "procesados", envelope["type"])
         logger.info("Evento %s (%s) procesado", event_id, envelope["type"])
 
     return on_message
@@ -217,6 +223,7 @@ def reintentar_o_dlq(canal, method, properties, body: bytes, event_id, queue: st
         logger.error("Fallo definitivo procesando %s tras %s reintentos; se envía a DLQ: %s",
                      event_id, intento, error)
         canal.basic_reject(method.delivery_tag, requeue=False)
+        registrar_evento("dlq", headers.get(HEADER_ROUTING_ORIGINAL) or method.routing_key)
         return
     # Se conservan todos los headers del productor (traceparent, tracestate, baggage...).
     headers[HEADER_REINTENTOS] = intento + 1
@@ -234,6 +241,7 @@ def reintentar_o_dlq(canal, method, properties, body: bytes, event_id, queue: st
     except Exception:
         logger.exception("No se pudo programar el reintento de %s; se envía a DLQ", event_id)
         canal.basic_reject(method.delivery_tag, requeue=False)
+        registrar_evento("dlq", headers.get(HEADER_ROUTING_ORIGINAL) or method.routing_key)
         return
     canal.basic_ack(method.delivery_tag)
     logger.error("Fallo procesando %s; reintento %s/%s programado en %s.retry: %s",

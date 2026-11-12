@@ -1,6 +1,7 @@
 import { ErrorApi } from './errores.js';
 import { hoyUtc } from './fechas.js';
 import * as repositorio from './repositorio.js';
+import { registrarNegocio } from './metricas.js';
 
 /**
  * Transiciones por tiempo: PROGRAMADA → EN_CURSO → FINALIZADA.
@@ -34,6 +35,7 @@ export function crearTransiciones({ pool, publicar, ahora = () => new Date(), re
 
 	async function emitir(tipo, cambios) {
 		for (const { periodo, email } of cambios) {
+			registrarNegocio(tipo);
 			const data = tipo === 'vacaciones.iniciadas'
 				? {
 					vacacionesId: periodo.id,

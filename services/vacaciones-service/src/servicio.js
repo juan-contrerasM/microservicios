@@ -3,6 +3,7 @@ import { diasHabiles, hoyUtc, parseFecha } from './fechas.js';
 import * as repositorio from './repositorio.js';
 import { crearTransiciones } from './transiciones.js';
 import { evaluarAlta, puedeCancelar } from './validar.js';
+import { registrarNegocio } from './metricas.js';
 
 export { ErrorApi };
 
@@ -99,6 +100,7 @@ async function programar(pool, publicar, ahora, repo, body) {
 		});
 		email = empleado.email;
 		await client.query('COMMIT');
+		registrarNegocio('vacaciones.programadas');
 	} catch (error) {
 		await client.query('ROLLBACK');
 		throw error;

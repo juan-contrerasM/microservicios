@@ -87,7 +87,7 @@ groups:
         isPaused: false
 
       - uid: reto8-latencia-p95
-        title: Latencia p95 superior a 1 s
+        title: Latencia p95 superior a 2 s
         condition: C
         data:
           - refId: A
@@ -106,16 +106,91 @@ groups:
               type: threshold
               expression: A
               conditions:
-                - evaluator: { type: gt, params: [1] }
+                - evaluator: { type: gt, params: [2] }
         noDataState: OK
         execErrState: Error
-        for: 1m
+        for: 2m
         annotations:
-          summary: '{{ .Labels.job }} tiene p95 por encima de 1 segundo'
+          summary: '{{ .Labels.job }} tiene p95 por encima de 2 segundos'
           description: 'p95 de 5 minutos de {{ .Labels.job }}: {{ humanizeDuration .Values.A.Value }}.'
           __dashboardUid__: reto8-observabilidad
           __panelId__: '6'
         labels:
           severity: warning
           reto: '8'
+        isPaused: false
+
+  # Fase 11: eventos que terminan en DLQ y memoria del proceso.
+  - orgId: 1
+    name: proyecto-final-eventos-recursos
+    folder: Microservicios
+    interval: 30s
+    rules:
+      - uid: pf-mensajes-dlq
+        title: Mensajes enviados a una DLQ
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: job_tipo:eventos_dlq:increase5m
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        # Un mensaje en DLQ es un evento de negocio perdido hasta que alguien lo revise: sin espera.
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: '{{ .Labels.job }} envió mensajes {{ .Labels.tipo }} a su DLQ'
+          description: '{{ .Values.A.Value }} mensaje(s) {{ .Labels.tipo }} terminaron en la DLQ de {{ .Labels.job }} en los últimos 5 minutos. Revisar la cola <q>.dlq en RabbitMQ.'
+          __dashboardUid__: pf-negocio-eventos
+          __panelId__: '20'
+        labels:
+          severity: warning
+          fase: '11'
+        isPaused: false
+
+      - uid: pf-memoria-alta
+        title: Memoria del proceso superior al 85 %
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: job:process_memory:ratio
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.85] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: '{{ .Labels.job }} usa más del 85 % de su memoria disponible'
+          description: 'Uso actual de {{ .Labels.job }}: {{ humanizePercentage .Values.A.Value }} durante 5 minutos (ver job:process_memory:ratio).'
+          __dashboardUid__: reto8-observabilidad
+          __panelId__: '4'
+        labels:
+          severity: warning
+          fase: '11'
         isPaused: false

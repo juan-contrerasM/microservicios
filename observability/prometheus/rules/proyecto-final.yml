@@ -1,0 +1,31 @@
+# Recording rules de la Fase 11 (proyecto final): eventos, negocio y memoria.
+# Igual que reto8-recording.yml, solo agregan y renombran series reales por `job`; nunca usan
+# labels de alta cardinalidad.
+
+groups:
+  - name: proyecto-final-eventos
+    interval: 15s
+    rules:
+      # Mensajes enviados a la DLQ por consumidor y tipo de evento. Alimenta la alerta pf-mensajes-dlq.
+      - record: job_tipo:eventos_dlq:increase5m
+        expr: sum by (job, tipo) (increase(eventos_dlq_total[5m]))
+
+      # Eventos consumidos por resultado. Java (Micrometer) y Node/Python usan el mismo nombre.
+      - record: job_tipo:eventos_procesados:rate5m
+        expr: sum by (job, tipo) (rate(eventos_procesados_total[5m]))
+      - record: job_tipo:eventos_duplicados:rate5m
+        expr: sum by (job, tipo) (rate(eventos_duplicados_total[5m]))
+
+  - name: proyecto-final-recursos
+    interval: 15s
+    rules:
+      # Fracción de memoria usada (0..1).
+      # - Java: heap usado / heap máximo de la JVM (techo real fijado por la JVM).
+      # - Node, Python y Go no publican un techo propio: se compara el RSS con un presupuesto de
+      #   512 MiB por proceso, el mismo para todos (ver observability/README.md).
+      - record: job:process_memory:ratio
+        expr: |
+          sum by (job) (jvm_memory_used_bytes{area="heap", job=~"empleados-service|perfiles-service"})
+            / sum by (job) (jvm_memory_max_bytes{area="heap", job=~"empleados-service|perfiles-service"} > 0)
+          or
+          job:process_memory:bytes{job!~"empleados-service|perfiles-service"} / (512 * 1024 * 1024)

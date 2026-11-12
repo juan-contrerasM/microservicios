@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.microservicios.perfiles.config.Metricas;
 import com.microservicios.perfiles.dto.ActualizarPerfilRequest;
 import com.microservicios.perfiles.exception.PerfilNoEncontradoException;
 import com.microservicios.perfiles.model.Perfil;
@@ -57,6 +58,7 @@ public class PerfilConsultaService {
 		if (recibidos.redesSociales() != null) {
 			perfil.setRedesSociales(recibidos.redesSociales());
 		}
+		Metricas.alConfirmar("perfiles.actualizados");
 		return perfil;
 	}
 }

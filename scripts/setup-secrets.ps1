@@ -63,6 +63,12 @@ foreach ($name in $secretNames) {
     [System.IO.File]::WriteAllText((Join-Path $secretDir $fileName), $values[$name], [System.Text.UTF8Encoding]::new($false))
 }
 
+# Fase 11: webhook de Discord para las alertas de Grafana. No es aleatorio: lo entrega Discord
+# (Ajustes del canal -> Integraciones -> Webhooks). Sin DISCORD_WEBHOOK_URL queda un marcador que
+# Grafana acepta al arrancar pero que no entrega; las alertas siguen llegando por correo a Mailhog.
+$discord = if ($env:DISCORD_WEBHOOK_URL) { $env:DISCORD_WEBHOOK_URL } else { 'https://discord.com/api/webhooks/0/sin-configurar' }
+[System.IO.File]::WriteAllText((Join-Path $secretDir 'discord_webhook_url.txt'), $discord, [System.Text.UTF8Encoding]::new($false))
+
 $e2eContent = @"
 BASE_URL=http://localhost:8080
 ADMIN_USUARIO=admin
