@@ -295,3 +295,89 @@ Fecha: 2026-11-12.
 - `jenkins/plantillas/Jenkinsfile.plantilla` contiene todas las etapas de E18 para los cuatro
   stacks. El linter de Jenkins (`/pipeline-model-converter/validate`) respondió
   «Jenkinsfile successfully validated».
+
+### Fase 9 — siete pipelines en Jenkins
+
+Fecha: 2026-11-12. Jenkins del Compose (`http://localhost:8090`), jobs creados por JCasC.
+
+- Los siete `Jenkinsfile` se generan desde `jenkins/plantillas/Jenkinsfile.plantilla`
+  (`generar.sh`); el validador de Jenkins aceptó la plantilla y los siete archivos.
+- Primera ejecución completa, en secuencia, todas **SUCCESS** con las 14 etapas (Checkout,
+  dependencias de integración, Build, Lint, Unit, Integración, SonarQube, Quality Gate, Trivy de
+  dependencias, Gitleaks, Package con Trivy de imagen, Push Registry, E2E con BDD y Deploy):
+  api-gateway #1 (8 min 40 s), departamentos #1 (5 min), vacaciones #1 (5 min 23 s),
+  notificaciones #1 (5 min 25 s), auth #8 (4 min 42 s), empleados #1 (9 min 53 s) y perfiles #1.
+- SonarQube: siete proyectos con el gate de cobertura ≥ 70 %; los siete Quality Gates en verde.
+- Hallazgos corregidos al construir los pipelines:
+  - **PyJWT 2.10.1 con CVE crítico** de bypass de autenticación → 2.14.0.
+  - **Imágenes con CVE críticos** de OpenSSL, GnuTLS y Perl en la base, y de Tomcat, Spring y Netty
+    en Java → parches de seguridad del SO en el runtime y Spring Boot 4.1.2. Resultado: 0 CRITICAL
+    en las siete imágenes.
+  - **E2E rota desde la Fase 2:** Jenkins pasaba al daemon rutas de su workspace para secretos y
+    plantillas; ahora usa la ruta del host (`jenkins/host-repo.sh`). RabbitMQ de CI no leía su
+    contraseña desde el secreto.
+  - **Red de CI fija** (`microservicios_cicd-network`) aunque el proyecto se llame distinto:
+    Jenkins la detecta al arrancar.
+  - **Workspace sin limpiar:** un fallo simulado contaminaba el build siguiente; el checkout ahora
+    deja el workspace idéntico al commit.
+
+### Fase 10 — Registry, despliegue y rollback
+
+- Cada pipeline publica `localhost:5001/<servicio>:<commit>-<build>` y `latest`, archiva el digest
+  y despliega con `scripts/deploy.sh` (smoke test + rollback automático).
+- Trazabilidad verificada: `pfola1-auth-service-1` corría `localhost:5001/auth-service:b87f6c6b-6`
+  con `org.opencontainers.image.revision=b87f6c6bf702961c470e3bbc7d8bc60a69a68469`.
+- Despliegue y rollback manuales: `deploy.sh auth-service 97cd93e3-4`, luego `3621bde7-5` y
+  `rollback` volvió a `97cd93e3-4`; los tres pasaron el smoke test y quedaron en `.deploy/`.
+
+### Fase 12 — escalabilidad y balanceo
+
+- Traefik 3.6 como único puerto de negocio (:8080), con health checks activos a `/health`,
+  reintento entre réplicas y ruta de respaldo 502 cuando un servicio no tiene réplicas.
+  Traefik 3.5 no funcionaba con Docker Engine 29 (400 del daemon).
+- `scripts/demo-escalado.sh`: con 2 réplicas de Gateway, Empleados, Departamentos y Vacaciones,
+  120 peticiones → 120 respuestas 2xx, reparto 30/30 en Departamentos y 30/30 en Vacaciones;
+  tras detener una réplica de cada servicio sin avisar, otras 120 → 120 respuestas 2xx, 0 errores.
+- Auth, Perfiles y Notificaciones con 2 réplicas: healthy, `q.perfiles` con 2 consumidores y BDD
+  sin caos 22/22 (el evento duplicado sigue dejando una notificación y un perfil).
+- Scheduler de Vacaciones con `pg_try_advisory_lock`: prueba de integración con dos pools reales
+  a la vez, solo uno ejecuta el ciclo.
+- Prometheus descubre cada réplica por DNS; la alerta «Servicio caído» usa `absent()` para no
+  perder el caso en que caen todas.
+- BDD a través del balanceador: 23/23 escenarios, 179/179 pasos, tres ejecuciones seguidas.
+
+### Fase 13 — seguridad
+
+- Gateway: cabeceras seguras (CSP, `X-Frame-Options`, `nosniff`, `Referrer-Policy`), CORS por lista
+  blanca, 413 por cuerpo excesivo y rate limiting por IP (login y reset cuentan fallos; recuperación
+  cuenta todas) con 429 y `Retry-After`. 80 pruebas, 97,29 %.
+- JWT: además de firma, expiración, tipo, sujeto y rol, Gateway y Auth rechazan arrancar con un
+  secreto de menos de 32 bytes (RFC 7518 §3.2).
+- `test_logs_sin_secretos.py`: el ciclo completo de una cuenta no deja contraseñas, tokens de
+  activación o recuperación ni access JWT en ningún log.
+- Dependencias: 0 CRITICAL y 0 HIGH en los siete servicios (Trivy), tras subir OpenTelemetry
+  (0.217) y forzar `protobufjs`, `glob` y `propagator-jaeger` corregidos en los dos servicios Node.
+- Gitleaks: árbol y historial completo (163 commits) sin hallazgos.
+
+### Fase 16 — caos
+
+`COMPOSE_PROJECT=pfola1 bash scripts/caos.sh`, todas las verificaciones correctas:
+
+- PostgreSQL de Empleados caído → `/health` 503 en 2,0 s; recuperado → 200.
+- RabbitMQ caído → consumidores reportan `messageBroker DOWN`; el alta falla rápido con 503 C3
+  (fail-fast: no se aceptan altas cuyo evento se perdería); al volver el broker los consumidores se
+  reconectan y, cerrado el circuito, el alta responde 201.
+- Departamentos caído → alta `PENDIENTE_VALIDACION`, `GET /departamentos` 503 C3, recuperación y
+  reconciliación.
+
+### Fase 9 — fallos simulados (9.FAIL)
+
+Parámetro `SIMULAR_FALLO` del pipeline de departamentos-service, con el workspace limpio entre builds:
+
+| Build | Fallo inyectado | Etapa donde se detuvo | Etapas posteriores |
+|---|---|---|---|
+| #10 | prueba unitaria que falla | Unit | no se ejecutan |
+| #11 | umbral de cobertura 99 % | Unit | no se ejecutan |
+| #12 | `RUN exit 1` en el Dockerfile | Package | sin push ni deploy |
+| #13 | escenario BDD que espera 418 | E2E | sin deploy |
+| #14 | ninguno | — | SUCCESS completo |
