@@ -11,7 +11,7 @@ integrada con Docker (compose + BDD) para pasar a ✅
 
 Cada práctica de los retos aplica a los siete servicios (ver «Principio rector» y la definición de
 E01–E25 en [`PLAN-PROYECTO-FINAL.md`](PLAN-PROYECTO-FINAL.md)). Estado inicial tomado de una auditoría
-del código de la rama `proyecto-final` el 2026-11-11 y actualizado al cerrar las Olas 1 y 2 (Fases 4–8, 11 y 14); 🟡 significa que existe algo, pero falta
+del código de la rama `proyecto-final` el 2026-11-11 y actualizado al cerrar las cuatro olas (2026-11-12); 🟡 significa que existe algo, pero falta
 revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 en sus filas.**
 
 | ID | Requisito | Empleados | Departamentos | Auth | Perfiles | Vacaciones | Notificaciones | Gateway | Fase |
@@ -27,36 +27,36 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | E09 | Error HTTP C3 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 5 |
 | E10 | Timeout + retry backoff + circuit breaker en clientes HTTP | ✅ Resilience4j → Departamentos | N/A | N/A | N/A | N/A | N/A | ✅ circuito por backend, timeout por servicio y retry solo GET | 6 |
 | E11 | Productor: envelope, post-commit, traceparent | ✅ `afterCommit` | N/A | ✅ | N/A | ✅ incluido scheduler | N/A | N/A | 4 |
-| E12 | Consumidor: dedup atómica, retry, DLQ, poison | N/A | N/A | ✅ | ✅ | ✅ | ✅ correo tras commit | N/A | 4 |
+| E12 | Consumidor: dedup atómica, retry, DLQ, poison | ✅ `q.empleados` (vacaciones) | N/A | ✅ | ✅ | ✅ | ✅ correo tras commit | N/A | 4 |
 | E13 | Unitarias con dobles | ✅ 104 | ✅ 43 | ✅ 76 | ✅ 54 | ✅ 115 | ✅ 42 | ✅ 72 | 8 |
 | E14 | Integración con BD/broker reales | ✅ PostgreSQL (Testcontainers) | ✅ MySQL | ✅ PostgreSQL + RabbitMQ | ✅ PostgreSQL + RabbitMQ (Testcontainers) | ✅ PostgreSQL + RabbitMQ | ✅ PostgreSQL + RabbitMQ + SMTP | ✅ backends HTTP reales simulados | 8 |
 | E15 | Cobertura ≥70 % de la lógica de negocio | ✅ 87,95 % | ✅ 74,2 % | ✅ 82,79 % | ✅ 88,67 % | ✅ 82,27 % todo `src/` | ✅ 78,21 % | ✅ 97,03 % | 8 |
 | E16 | Un comando, JUnit + cobertura en ruta documentada | ✅ `mvnw verify` + `check` | ✅ `scripts/test.sh` | ✅ `pytest` | ✅ `mvnw verify` + `check` | ✅ `npm test` | ✅ `pytest` | ✅ `npm test` | 8 |
 | E17 | Evidencia de mutación | ✅ | ✅ (reveló un caso sin prueba) | ✅ | ✅ | ✅ | ✅ | ✅ | 8 |
-| E18 | Jenkinsfile con todas las etapas | 🟡 existe; plantilla 9.TPL | 🟡 plantilla 9.TPL | 🟡 plantilla 9.TPL | 🟡 plantilla 9.TPL | 🟡 existe; plantilla 9.TPL | 🟡 plantilla 9.TPL | 🟡 plantilla 9.TPL | 9 |
-| E19 | Proyecto SonarQube propio | 🟡 Maven | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | 9 |
+| E18 | Jenkinsfile con todas las etapas | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 9 |
+| E19 | Proyecto SonarQube propio | ✅ Maven | ✅ | ✅ | ✅ Maven | ✅ | ✅ | ✅ | 9 |
 | E20 | Métricas C4 + negocio | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 11 |
 | E21 | Logs C5 en Loki | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 11 |
 | E22 | OpenTelemetry W3C + Zipkin | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 11 |
-| E23 | Stateless, escala con `--scale=2` | 🟡 | 🟡 sin puerto fijo; falta prueba `--scale` | 🟡 | 🟡 sin puerto fijo; falta prueba `--scale` | ❌ scheduler sin lock | 🟡 sin puerto fijo; falta prueba `--scale` | ❌ puerto host fijo sin balanceador | 12 |
-| E24 | Seguridad de entrada, RBAC/propiedad | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 13 |
-| E25 | README con plantilla C6 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 15 |
+| E23 | Stateless, escala con `--scale=2` | ✅ demo 2 réplicas | ✅ demo 2 réplicas, reparto 30/30 | ✅ 2 réplicas, consumidores compitiendo | ✅ 2 réplicas, 2 consumidores en `q.perfiles` | ✅ 2 réplicas + advisory lock del scheduler | ✅ 2 réplicas | ✅ 2 réplicas detrás de Traefik | 12 |
+| E24 | Seguridad de entrada, RBAC/propiedad | ✅ validación + RBAC en Gateway | ✅ | ✅ JWT ≥32 B, BCrypt, logs sin secretos probado | ✅ propiedad del perfil en Gateway | ✅ | ✅ | ✅ cabeceras, CORS, 413, rate limiting | 13 |
+| E25 | README con plantilla C6 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 15 |
 
 ## Funcionalidad
 
-| Requisito | Estado inicial | Evidencia actual / brecha |
+| Requisito | Estado | Evidencia |
 |---|---|---|
 | Siete servicios y Gateway | ✅ | Empleados, Departamentos, Auth, Perfiles, Vacaciones, Notificaciones y Gateway existen |
-| CRUD de Empleados | 🟡 | Crear, listar, consultar, actualizar y retirar existen; falta revalidación final |
-| Estados `ACTIVO`, `EN_VACACIONES`, `RETIRADO` | 🟡 | Modelo y flujos existen; falta revalidar transición completa |
-| Retiro lógico con `fechaRetiro` | 🟡 | Implementado; falta prueba de auditoría final |
-| Auditoría de retirados por rango | 🟡 | Contrato existente; falta prueba integrada |
-| Unicidad email/número de empleado | 🟡 | Implementada; falta revalidación con base real |
+| CRUD de Empleados | ✅ | Alta, consulta, actualización y retiro verificados por BDD (23 escenarios) e integración con PostgreSQL |
+| Estados `ACTIVO`, `EN_VACACIONES`, `RETIRADO` | ✅ | Empleados consume `vacaciones.iniciadas/finalizadas` (`q.empleados`); BDD verifica `EN_VACACIONES` y la vuelta a `ACTIVO`; el retiro es definitivo |
+| Retiro lógico con `fechaRetiro` | ✅ | BDD de offboarding: estado `RETIRADO` y auditoría |
+| Auditoría de retirados por rango | ✅ | `GET /empleados?estado=RETIRADO&desde=&hasta=` verificado por BDD |
+| Unicidad email/número de empleado | ✅ | `EmpleadoRepositoryIT` con PostgreSQL real (restricciones UNIQUE) y BDD 409 |
 | CRUD de Departamentos | ✅ | POST, GET, PUT y DELETE verificados contra MySQL limpio; DELETE retorna 204 |
-| Validación Empleados → Departamentos | 🟡 | Cliente HTTP, timeout, retry y circuit breaker existentes |
+| Validación Empleados → Departamentos | ✅ | Timeout, reintentos y circuit breaker; `PENDIENTE_VALIDACION` verificado en `scripts/caos.sh` |
 | Auth sin `/register` público | ✅ | No se encontró endpoint público de registro |
 | Cuenta inactiva y token de activación | ✅ | Flujo completo revalidado en la regresión BDD desde el correo |
-| Login y JWT | 🟡 | JWT HS256 implementado; falta hardening final |
+| Login y JWT | ✅ | HS256 con secreto ≥ 32 bytes, tipo, sujeto, rol y expiración validados; rate limiting de login |
 | Cambio y recuperación de contraseña | ✅ | Endpoints, eventos y regresión BDD verificados |
 | BCrypt y ausencia de contraseña temporal | ✅ | Hash BCrypt y activación por token cubiertos por 31 pruebas de Auth |
 | Suspensión temporal y baja permanente | ✅ | Inicio/fin de vacaciones y retiro irreversible verificados en Auth y BDD |
@@ -65,62 +65,62 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | Archivado por retiro | ✅ | Consumidor y flujo integrado de retiro revalidados |
 | CRUD de Vacaciones | ✅ | Incluye `PUT /vacaciones/{id}` para períodos PROGRAMADA futuros |
 | Validaciones de vacaciones | ✅ | Fechas, pasado, estado, solapamiento y recálculo cubiertos por 66 pruebas |
-| Scheduler inicio/fin | 🟡 | Implementado; falta validar escalado seguro |
+| Scheduler inicio/fin | ✅ | Advisory lock: con dos réplicas solo una ejecuta (prueba de integración real) |
 | Correos de eventos obligatorios | ✅ | Mailhog, eventos y persistencia revalidados en la regresión integrada |
 | Plantillas configurables | ✅ | Catálogo JSON externo montado en solo lectura y cubierto por pruebas |
-| Borde único y rutas del Gateway | 🟡 | Gateway funciona como proxy; el commit base publicó puertos de desarrollo que deben revisarse |
+| Borde único y rutas del Gateway | ✅ | Balanceador como único puerto de negocio; los seis servicios sin puerto publicado |
 | Composición empleado completo | ⭐ | No obligatoria; pendiente si se busca bonificación |
 
 ## Eventos e integración
 
-| Requisito | Estado inicial | Evidencia actual / brecha |
+| Requisito | Estado | Evidencia |
 |---|---|---|
 | RabbitMQ | ✅ | Exchange topic y colas existentes |
-| Envelope común completo | 🟡 | Implementaciones existentes; falta auditoría por productor |
-| Catálogo normativo | 🟡 | Eventos principales existen; falta documento final consolidado |
-| Deduplicación persistente | 🟡 | Auth, Perfiles y Notificaciones tienen mecanismos; auditar Vacaciones y atomicidad |
+| Envelope común completo | ✅ | Validado por los cinco consumidores (C1) y por las pruebas de integración |
+| Catálogo normativo | ✅ | `docs/eventos.md` consolidado |
+| Deduplicación persistente | ✅ | Atómica en los cinco consumidores; BDD de duplicado deja una notificación y un perfil |
 | Reintentos/DLQ/poison messages | ✅ | Política común (retry 5 s ×3, DLQ por cola) verificada con RabbitMQ real en Fase 4 y por la integración de Fase 8; métrica `eventos_dlq_total` y alerta |
 | Headers W3C en AMQP | ✅ | Implementados y evidenciados en el Reto 8 |
-| REST permitido y resiliencia | 🟡 | Gateway→servicios y Empleados→Departamentos; revalidar contra restricción final |
+| REST permitido y resiliencia | ✅ | Solo Gateway→servicios y Empleados→Departamentos, ambos con resiliencia |
 
 ## Calidad técnica
 
-| Requisito | Estado inicial | Evidencia actual / brecha |
+| Requisito | Estado | Evidencia |
 |---|---|---|
-| OpenAPI/Swagger en siete servicios | 🟡 | Existe documentación en los siete; falta auditoría de completitud |
+| OpenAPI/Swagger en siete servicios | ✅ | Siete contratos con prueba de drift y Swagger agregada en `/swagger` |
 | Unitarias por servicio | ✅ | Siete suites con dobles y umbral automático (Fase 8) |
 | Integración por servicio | ✅ | `scripts/test-integration.sh`: PostgreSQL, MySQL, RabbitMQ y SMTP reales; Testcontainers en Java (Fase 8) |
 | Cobertura ≥70 % por servicio | ✅ | Siete servicios entre 74,2 % y 97,03 %, con exclusiones documentadas en cada README (Fase 8) |
-| Health 200/503 y dependencias | ❌ | Empleados retorna 200 en UP, pero al detener PostgreSQL no respondió dentro de 15 s en vez de entregar 503 |
+| Health 200/503 y dependencias | ✅ | Siete `/health` C2; 503 en ~2 s con la base caída (`scripts/caos.sh`) |
 | Dockerfile por servicio | ✅ | Los siete servicios tienen Dockerfile |
-| Imágenes optimizadas/no-root | ❌ | Gateway, Vacaciones, Auth y Notificaciones tienen una sola etapa; solo los dos servicios Node usan un usuario distinto de root (ver E01/E02) |
-| `openapi.yaml` por servicio | ❌ | Lo exige la estructura de entrega del PDF; hoy hay contrato estático solo en Departamentos (`openapi.yaml`), Gateway y Vacaciones (`openapi.json` dentro de `src/`) |
-| Swagger UI en el Gateway (`/swagger`) | ❌ | El README de referencia del PDF lo enlaza en `localhost:8080/swagger` |
+| Imágenes optimizadas/no-root | ✅ | Siete imágenes multi-stage, UID 10001, 0 CVE CRITICAL |
+| `openapi.yaml` por servicio | ✅ | Siete archivos versionados |
+| Swagger UI en el Gateway (`/swagger`) | ✅ | Siete contratos agregados |
 | Cuatro lenguajes | ✅ | Java, Go, Node.js y Python |
-| Base independiente por servicio | 🟡 | Arquitectura existente; falta revalidar aislamiento y secretos |
+| Base independiente por servicio | ✅ | Seis bases, una por servicio, solo en la red `data` |
 
 ## CI/CD y orquestación
 
-| Requisito | Estado inicial | Evidencia actual / brecha |
+| Requisito | Estado | Evidencia |
 |---|---|---|
 | Jenkins en Compose | ✅ | Aprovisionado con JCasC; entrypoint normalizado y acceso HTTP 200 verificado desde Windows |
-| SonarQube/Quality Gate | 🟡 | Base funcional del Reto 7; solo dos pipelines de aplicación |
-| Jenkinsfile en siete servicios | ❌ | Solo Empleados y Vacaciones |
-| Lint y análisis de seguridad | ❌ | No existe cobertura uniforme de ambos controles |
-| Package Docker | 🟡 | Dos pipelines construyen imágenes locales |
-| Push a Registry | ❌ | No hay Registry ni publicación versionada |
-| Deploy automatizado | ❌ | No hay etapa final con smoke/rollback |
-| Trigger por webhook | 🟡 | Hay polling/hook local; falta webhook final verificable |
+| SonarQube/Quality Gate | ✅ | Siete proyectos, gate ≥ 70 % en verde |
+| Jenkinsfile en siete servicios | ✅ | Generados desde la plantilla; siete builds SUCCESS |
+| Lint y análisis de seguridad | ✅ | Lint por stack, Trivy (dependencias e imagen) y Gitleaks en cada pipeline |
+| Package Docker | ✅ | Tag `<commit>-<build>` con etiqueta del commit |
+| Push a Registry | ✅ | `localhost:5001` con digest archivado |
+| Deploy automatizado | ✅ | Etapa Deploy con smoke test y rollback automático |
+| Trigger por webhook | ✅ | `pollSCM` cada 2 min (repositorio local sin servidor Git para webhooks) |
 | `docker compose up --build` completo | ✅ | Siete servicios construyen, BDD pasa y Jenkins arranca tras normalizar el entrypoint |
 | Seis redes del PDF | ✅ | `frontend`, `backend`, `messaging`, `data`, `observability`, `cicd`; el Gateway no resuelve bases ni broker y Jenkins no ve las bases (Fase 14) |
 | Puertos del PDF sin colisión | ✅ | Jenkins 8090, Prometheus 9090, Registry 5001, Grafana 3000, Zipkin 9411, SonarQube 9000, RabbitMQ UI 15672, Mailhog 8025 (Fase 14) |
 | Solo el Gateway publica puerto de negocio | ✅ | 8081–8086 y AMQP 5672 rechazan la conexión desde el host (Fase 14) |
-| Etapa E2E serializada en pipelines | ❌ | Necesaria al tener siete pipelines compartiendo el stack |
-| Escaneo de dependencias e imágenes | ❌ | Ningún pipeline ejecuta SCA ni Trivy |
+| Etapa E2E serializada en pipelines | ✅ | `lock('ecosistema-e2e')` en E2E y Deploy |
+| Escaneo de dependencias e imágenes | ✅ | Trivy en todos los pipelines; 0 CRITICAL/HIGH en dependencias |
 
 ## Observabilidad
 
-| Requisito | Estado inicial | Evidencia actual / brecha |
+| Requisito | Estado | Evidencia |
 |---|---|---|
 | Logs JSON centralizados | ✅ | Loki/Promtail y correlación evidenciados en Reto 8 |
 | Prometheus/Grafana | ✅ | Siete targets y dashboard versionado en el último estado de Reto 8 |
@@ -132,42 +132,42 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 
 ## Seguridad y configuración
 
-| Requisito | Estado inicial | Evidencia actual / brecha |
+| Requisito | Estado | Evidencia |
 |---|---|---|
 | Cero secretos versionados | ✅ | Plantilla con marcadores; Gitleaks sin hallazgos en árbol e historial |
 | `.env` y `secrets/` ignorados | ✅ | `.env`, `secrets/`, llaves y certificados privados excluidos; plantilla sin valores utilizables |
 | Compose Secrets/Vault | ✅ | Quince secretos montados por archivo; bases, broker, servicios, Jenkins, Sonar y Grafana validados |
 | Script de generación local | ✅ | Scripts PowerShell y POSIX generan 15 secretos criptográficos; prueba aislada correcta |
 | Rotación documentada | ✅ | `SEGURIDAD-SECRETOS.md` cubre creación, rotación y revocación específica |
-| RBAC y propiedad | 🟡 | Implementados parcialmente; falta auditoría completa |
+| RBAC y propiedad | ✅ | USER solo lectura, cambio de su contraseña y su perfil; ajeno 403 (BDD) |
 | IdP OIDC/JWKS | ⭐ | Bonificación no implementada |
-| Escaneo de secretos/SAST/dependencias/imágenes | 🟡 | Gitleaks reproducible pasa árbol e historial; falta integrarlo a CI y añadir SAST/dependencias/imágenes |
+| Escaneo de secretos/SAST/dependencias/imágenes | ✅ | Gitleaks árbol e historial, Trivy y SonarQube en CI |
 
 ## Escalabilidad y resiliencia
 
-| Requisito | Estado inicial | Evidencia actual / brecha |
+| Requisito | Estado | Evidencia |
 |---|---|---|
 | Circuit breaker con fallback | ✅ | Resilience4j en Empleados→Departamentos y circuito aislado por backend en el Gateway; fallback C3 503 y estado Prometheus |
 | Timeouts y reintentos | ✅ | Empleados usa 5 s y backoff 1–2–4 s; Gateway permite timeout por backend y reintenta únicamente GET con backoff 1–2–4 s |
-| Publicación de eventos post-commit | 🟡 | Sin auditar en Empleados, Auth y Vacaciones |
-| Servicios stateless | 🟡 | Auditar scheduler, consumers y estado temporal por instancia |
-| Load balancer | ❌ | No implementado |
-| Réplicas horizontales | ❌ | No existe prueba con múltiples instancias |
-| Health-aware routing | ❌ | No existe balanceador que retire instancias enfermas |
-| Continuidad al caer una instancia | ❌ | No demostrada |
+| Publicación de eventos post-commit | ✅ | Empleados, Auth y Vacaciones publican después del commit |
+| Servicios stateless | ✅ | Los siete escalan a 2 réplicas; el único estado en memoria (rate limit) está documentado |
+| Load balancer | ✅ | Traefik 3.6 |
+| Réplicas horizontales | ✅ | `scripts/demo-escalado.sh` |
+| Health-aware routing | ✅ | Health checks activos cada 5 s a `/health` |
+| Continuidad al caer una instancia | ✅ | 120/120 respuestas 2xx con una réplica detenida |
 
 ## Documentación y entrega
 
-| Requisito | Estado inicial | Evidencia actual / brecha |
+| Requisito | Estado | Evidencia |
 |---|---|---|
-| README final mínimo | 🟡 | README amplio por retos; falta consolidación final y secretos seguros |
-| Arquitectura final | 🟡 | Diagramas parciales; falta documento final |
-| `docs/eventos.md` | ❌ | Falta catálogo implementado en formato final |
-| Guías de terceros | 🟡 | Hay guías parciales; falta conjunto final |
+| README final mínimo | ✅ | README raíz con las siete secciones del PDF |
+| Arquitectura final | ✅ | `docs/arquitectura.md` con diagramas |
+| `docs/eventos.md` | ✅ | Catálogo, topología y políticas |
+| Guías de terceros | ✅ | Ocho guías en `docs/guias/` |
 | Scripts/seed idempotente | ✅ | `scripts/seed-data.sh` vía Gateway; segunda ejecución no crea nada (Fase 14) |
-| README por servicio con plantilla común | 🟡 | Existen siete README de distinta profundidad; falta la plantilla C6 |
+| README por servicio con plantilla común | ✅ | Ficha C6 en los siete README |
 | Equivalencia con la estructura de referencia del PDF | ✅ | [`docs/estructura-entrega.md`](../estructura-entrega.md) (Fase 14) |
-| Paquete `.zip`/`.tar.gz` limpio | ❌ | Se genera únicamente en Fase 14 |
+| Paquete `.zip`/`.tar.gz` limpio | ✅ | `scripts/empaquetar.sh`; validado desde una copia descomprimida |
 
 ## Condiciones detectadas del entorno de baseline
 

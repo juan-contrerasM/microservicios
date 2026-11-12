@@ -17,7 +17,9 @@
    | `GET /empleados/circuit-breaker` · `POST /empleados/reconciliar` | Estado del circuito y reconciliación de `PENDIENTE_VALIDACION` |
    | `GET /health` · `GET /actuator/prometheus` | Salud C2 y métricas |
 4. **Eventos:** publica `empleado.creado`, `empleado.actualizado`, `empleado.retirado` después del
-   commit; no consume.
+   commit; consume `vacaciones.iniciadas` (`ACTIVO → EN_VACACIONES`) y `vacaciones.finalizadas`
+   (`EN_VACACIONES → ACTIVO`) desde `q.empleados`, con deduplicación, reintentos y DLQ; un
+   `RETIRADO` no cambia.
 5. **Configuración:** `DB_HOST/PORT/NAME/USER`, `DB_PASSWORD_FILE`, `DEPARTAMENTOS_SERVICE_URL`
    (`http://departamentos-lb:8000`), `DEPARTAMENTOS_SERVICE_TIMEOUT`, `CB_*`, `BROKER_URL`,
    `RABBITMQ_USER`, `RABBITMQ_PASSWORD_FILE`, `OTEL_*`.
@@ -27,7 +29,8 @@
    Testcontainers). JUnit en `target/*-reports/`, JaCoCo en `target/site/jacoco/`, umbral 70 %.
    Cobertura actual 87,95 %. Exclusiones: DTO, entidad JPA, configuración y `main`.
 8. **Observabilidad:** Micrometer (`/actuator/prometheus`), logs JSON C5 y agente OpenTelemetry.
-   Negocio: `empleados_creados_total`, `empleados_actualizados_total`, `empleados_retirados_total`.
+   Negocio: `empleados_creados_total`, `empleados_actualizados_total`, `empleados_retirados_total` y
+   `eventos_{procesados,duplicados,dlq}_total{tipo}` del consumidor de vacaciones.
 9. **Resiliencia:** cliente a Departamentos con timeout 5 s, reintentos 1–2–4 s y circuit breaker;
    con el circuito abierto el empleado queda `PENDIENTE_VALIDACION`. Publicación post-commit: si el
    broker falla, el empleado queda guardado y el error se registra.

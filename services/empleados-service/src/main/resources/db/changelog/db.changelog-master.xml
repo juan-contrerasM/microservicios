@@ -7,4 +7,5 @@
 
 	<include file="db/changelog/changes/001-create-empleados.xml"/>
 	<include file="db/changelog/changes/002-add-fecha-retiro.xml"/>
+	<include file="db/changelog/changes/003-eventos-procesados.xml"/>
 </databaseChangeLog>

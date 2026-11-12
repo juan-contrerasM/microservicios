@@ -9,6 +9,8 @@ public class BrokerProperties {
 	private String username;
 	private String password;
 	private String exchange;
+	// Cola propia de Empleados para vacaciones.* (estado EN_VACACIONES).
+	private String queue = "q.empleados";
 	private int connectionTimeoutMs = 3000;
 
 	public String getUrl() {
@@ -49,5 +51,13 @@ public class BrokerProperties {
 
 	public void setConnectionTimeoutMs(int connectionTimeoutMs) {
 		this.connectionTimeoutMs = connectionTimeoutMs;
+	}
+
+	public String getQueue() {
+		return queue;
+	}
+
+	public void setQueue(String queue) {
+		this.queue = queue;
 	}
 }

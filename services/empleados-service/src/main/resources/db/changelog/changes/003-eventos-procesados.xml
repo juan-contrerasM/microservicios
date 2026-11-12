@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+		xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+		xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+			https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+	<!-- Proyecto final: deduplicación de los eventos de vacaciones que consume Empleados (E12). -->
+	<changeSet id="003-eventos-procesados" author="proyecto-final">
+		<createTable tableName="eventos_procesados">
+			<column name="id" type="VARCHAR(64)">
+				<constraints primaryKey="true" nullable="false"/>
+			</column>
+			<column name="procesado_en" type="TIMESTAMP">
+				<constraints nullable="false"/>
+			</column>
+		</createTable>
+		<rollback>
+			<dropTable tableName="eventos_procesados"/>
+		</rollback>
+	</changeSet>
+</databaseChangeLog>

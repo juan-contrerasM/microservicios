@@ -86,3 +86,13 @@ Then('eventualmente el empleado puede iniciar sesión nuevamente', async functio
     intervaloMs: this.entorno.pollIntervaloMs,
   });
 });
+
+// Proyecto final: Empleados consume vacaciones.* y refleja el estado EN_VACACIONES del PDF.
+Then('eventualmente el empleado de prueba queda en estado {string}', async function (estado) {
+  await eventualmente(async () => {
+    const { status, cuerpo } = await pedir(this, 'GET', `/empleados/${encodeURIComponent(this.empleado.id)}`, {
+      token: this.tokenAdmin || this.token,
+    });
+    return status === 200 && cuerpo?.estado === estado;
+  }, { intentos: this.entorno.pollIntentos, intervaloMs: this.entorno.pollIntervaloMs });
+});

@@ -87,7 +87,8 @@ flowchart LR
   X --> QP[q.perfiles] --> PER[perfiles]
   X --> QV[q.vacaciones] --> VAC
   X --> QN[q.notificaciones] --> NOT[notificaciones]
-  QA & QP & QV & QN -. reject / 3 reintentos .-> DLX{{onboarding.dlx}} --> DLQ[<q>.dlq]
+  X --> QE[q.empleados] --> EMP
+  QA & QP & QV & QN & QE -. reject / 3 reintentos .-> DLX{{onboarding.dlx}} --> DLQ[<q>.dlq]
 ```
 
 Cada consumidor deduplica por el `id` del envelope en la misma transacción que su efecto, reintenta

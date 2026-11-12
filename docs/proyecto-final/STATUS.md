@@ -32,23 +32,25 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 | 6 | 2 | Resiliencia síncrona: CB, timeout y retry (E10) | A + B | ✅ | Gateway con circuito por backend, timeout por servicio, retry GET 1–2–4 s y métricas; Empleados→Departamentos revalidado. |
 | 7 | 1 | Contenerización multi-stage y no root (E01, E02) | C + A + B | ✅ | Construcción limpia correcta; siete aplicaciones healthy como UID/GID `10001:10001`. |
 | 8 | 2 | Pruebas, cobertura ≥70 % por servicio y BDD (E13–E17) | A + B + D | ✅ | Siete servicios ≥70 % con umbral automático; integración real en los siete (`scripts/test-integration.sh`); un mutante eliminado por servicio; BDD 23/23 tres veces seguidas. |
-| 9 | 2–3 | Jenkinsfile y SonarQube en los siete servicios (E18, E19) | C | 🟡 | Plantilla 9.TPL validada por el linter de Jenkins (`jenkins/plantillas/`); los siete Jenkinsfile y proyectos Sonar quedan para la Ola 3. |
-| 10 | 3 | Registry, artefactos, despliegue y rollback | C | ⬜ | Registry en `:5001` |
+| 9 | 3 | Jenkinsfile y SonarQube en los siete servicios (E18, E19) | C | ✅ | Siete pipelines generados desde la plantilla, todos SUCCESS con 14 etapas; siete proyectos Sonar con gate ≥70 %; los cuatro fallos simulados se detienen en su etapa. |
+| 10 | 3 | Registry, artefactos, despliegue y rollback | C | ✅ | Tag `<commit>-<build>` + digest en `:5001`; etapa Deploy con smoke test y rollback automático (`scripts/deploy.sh`); commit → imagen → contenedor trazable. |
 | 11 | 2 | Observabilidad uniforme: métricas, logs y trazas (E20–E22) | D + A + B | ✅ | Métricas de negocio y de eventos en los siete, logs C5 uniformes, traza de onboarding por los siete servicios, cinco alertas y dashboard nuevo. Alerta real de DLQ entregada en Discord y por correo. |
-| 12 | 3 | Escalabilidad, balanceo y alta disponibilidad (E23) | C + A + B | ⬜ | Balanceador, réplicas, lock del scheduler |
-| 13 | 3 | Seguridad integral (E24) | D | ⬜ | RBAC, rate limiting, cabeceras, escaneos |
+| 12 | 3 | Escalabilidad, balanceo y alta disponibilidad (E23) | C + A + B | ✅ | Traefik con health checks activos; 2 réplicas, reparto 30/30 y 0 errores al caer una; lock del scheduler; los siete escalan. |
+| 13 | 3 | Seguridad integral (E24) | D | ✅ | Cabeceras, CORS, 413, rate limiting, JWT ≥32 bytes, logs sin secretos probado; 0 CVE CRITICAL/HIGH; Gitleaks árbol + historial limpio. |
 | 14 | 2 | Orquestación, redes, puertos y estructura (E03, E04, E06) | C | ✅ | Seis redes con aislamiento verificado; solo Gateway y UIs publican puerto (8080, 8090, 9090, 5001…); Registry en el `up` principal; imágenes fijadas; semilla idempotente. |
-| 15 | 4 | Documentación final y README por servicio (E25) | D + A + B | ⬜ | README raíz, arquitectura, eventos, guías |
-| 16 | 4 | Validación final, caos y paquete | Todos | ⬜ | Paquete reproducible y matriz sin celdas rojas |
+| 15 | 4 | Documentación final y README por servicio (E25) | D + A + B | ✅ | README raíz con las 7 secciones del PDF, `docs/arquitectura.md`, ocho guías y ficha C6 en los siete README. |
+| 16 | 4 | Validación final, caos y paquete | Todos | ✅ | Paquete limpio validado desde otra ruta (26 contenedores healthy, BDD 23/23); caos con verificación automática; matriz sin celdas rojas ni amarillas. |
 
 ## Punto actual
 
-**Ola 1 cerrada y validada con Docker**: Fases 4, 5 y 7, stack completo, RabbitMQ real y BDD 18/18.
-**Ola 2 cerrada y validada con Docker:** Fases 6, 8, 11 y 14 cerradas y plantilla de la Fase 9
-validada. Alerta real entregada en el canal de Discord del equipo (2026-11-12).
+**Proyecto completo: las cuatro olas (Fases 0–16) están cerradas y validadas con Docker.**
 
-**Siguiente:** Ola 3 — Fase 9 completa (siete Jenkinsfile desde la plantilla), Fase 10 (Registry,
-tags inmutables, despliegue y rollback), Fase 12 (balanceo y réplicas) y Fase 13 (seguridad).
+- Siete pipelines de Jenkins en verde con 14 etapas, despliegue desde el Registry y rollback.
+- Balanceador Traefik, siete servicios escalables y demostración de continuidad ante la caída de una réplica.
+- Seguridad del borde, 0 CVE CRITICAL/HIGH y secretos limpios en árbol e historial.
+- Documentación final (README, arquitectura, guías y fichas C6) y paquete reproducible (`scripts/empaquetar.sh`).
+
+Pendiente opcional: bonificaciones del plan (IdP OIDC/JWKS, `/empleados/{id}/completo`, `/health/services`).
 
 ## Decisiones
 
@@ -57,8 +59,8 @@ tags inmutables, despliegue y rollback), Fase 12 (balanceo y réplicas) y Fase 1
 | Rama de trabajo | `proyecto-final` + ramas cortas `proyecto-final/fN-<tema>` | Vigente |
 | Punto de restauración | Etiqueta `reto8-completo` sobre `b28c220` | Publicada en remoto |
 | Gestión de secretos | Docker Compose Secrets | Implementada (Fase 2) |
-| Registry | `registry:2.8.3` local persistente en `:5001` | En el `up` principal (Fase 14); publicación desde Jenkins en Fase 10 |
-| Load balancer | Traefik o Nginx | Pendiente de selección (Fase 12) |
+| Registry | `registry:2.8.3` local persistente en `:5001` | Implementado; publicación y despliegue desde Jenkins (Fase 10) |
+| Load balancer | Traefik 3.6 (health checks activos, reintento, ruta de respaldo 502) | Implementado (Fase 12) |
 | Auth obligatoria | JWT HS256 propio, endurecido | Vigente |
 | IdP OIDC/JWKS | Bonificación posterior | Opcional |
 | Canal de alertas | Discord con webhook como secreto (`$__file`) + correo a Mailhog como respaldo local | Implementado y evidenciado (Fase 11) |

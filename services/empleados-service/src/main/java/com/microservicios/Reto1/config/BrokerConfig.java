@@ -4,6 +4,11 @@ import java.time.Clock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.DirectExchange;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
@@ -68,5 +73,53 @@ public class BrokerConfig {
 						onboardingExchange.getName(), ex.getMessage());
 			}
 		};
+	}
+
+	// --- Proyecto final: consumo de vacaciones.* para el estado EN_VACACIONES (ver
+	// EmpleadoVacacionesService). Misma topología que los demás consumidores (docs/eventos.md):
+	// <q> con dead-letter a onboarding.dlx, <q>.retry con TTL 5 s que vuelve a <q>, y <q>.dlq.
+	public static final String DLX_EXCHANGE = "onboarding.dlx";
+	public static final int RETRY_TTL_MS = 5000;
+
+	@Bean
+	public DirectExchange dlxExchange() {
+		return new DirectExchange(DLX_EXCHANGE, true, false);
+	}
+
+	@Bean
+	public Queue empleadosQueue(BrokerProperties broker) {
+		return QueueBuilder.durable(broker.getQueue())
+				.deadLetterExchange(DLX_EXCHANGE)
+				.deadLetterRoutingKey(broker.getQueue())
+				.build();
+	}
+
+	@Bean
+	public Queue empleadosRetryQueue(BrokerProperties broker) {
+		return QueueBuilder.durable(broker.getQueue() + ".retry")
+				.ttl(RETRY_TTL_MS)
+				.deadLetterExchange("")
+				.deadLetterRoutingKey(broker.getQueue())
+				.build();
+	}
+
+	@Bean
+	public Queue empleadosDlq(BrokerProperties broker) {
+		return QueueBuilder.durable(broker.getQueue() + ".dlq").build();
+	}
+
+	@Bean
+	public Binding bindingVacacionesIniciadas(Queue empleadosQueue, TopicExchange onboardingExchange) {
+		return BindingBuilder.bind(empleadosQueue).to(onboardingExchange).with("vacaciones.iniciadas");
+	}
+
+	@Bean
+	public Binding bindingVacacionesFinalizadas(Queue empleadosQueue, TopicExchange onboardingExchange) {
+		return BindingBuilder.bind(empleadosQueue).to(onboardingExchange).with("vacaciones.finalizadas");
+	}
+
+	@Bean
+	public Binding bindingEmpleadosDlq(Queue empleadosDlq, DirectExchange dlxExchange, BrokerProperties broker) {
+		return BindingBuilder.bind(empleadosDlq).to(dlxExchange).with(broker.getQueue());
 	}
 }

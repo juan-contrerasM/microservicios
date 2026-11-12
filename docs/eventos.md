@@ -18,7 +18,7 @@ contradice, prevalece el catálogo. El contrato del envelope es C1 de
 | Cola de reintento | `q.<servicio>.retry` | durable, `x-message-ttl: 5000`, `x-dead-letter-exchange: ""` (exchange por defecto), `x-dead-letter-routing-key: q.<servicio>`. **Sin bindings** |
 | Cola de mensajes muertos | `q.<servicio>.dlq` | durable, enlazada a `onboarding.dlx` con routing key `q.<servicio>` |
 
-Las cuatro colas de consumidor son `q.auth`, `q.perfiles`, `q.notificaciones` y `q.vacaciones`.
+Las cinco colas de consumidor son `q.auth`, `q.perfiles`, `q.notificaciones`, `q.vacaciones` y `q.empleados` (proyecto final: estado `EN_VACACIONES` del empleado).
 Cada servicio declara sus tres colas al arrancar (idempotente); los productores solo declaran el
 exchange `onboarding.eventos`.
 
@@ -63,8 +63,8 @@ productor ──type──▶ onboarding.eventos (topic) ──binding──▶ 
 | `cuenta.activada` | 1 | auth-service | Notificaciones | Primer `reset-password` o `vacaciones.finalizadas` sobre una suspendida, después del commit |
 | `cuenta.desactivada` | 1 | auth-service | Notificaciones | `vacaciones.iniciadas` sobre una activa o `empleado.retirado`, después del commit |
 | `vacaciones.programadas` | 1 | vacaciones-service | Notificaciones | `POST /vacaciones` 201, después del commit |
-| `vacaciones.iniciadas` | 1 | vacaciones-service (scheduler) | Auth, Notificaciones | `PROGRAMADA → EN_CURSO`, después del commit |
-| `vacaciones.finalizadas` | 1 | vacaciones-service (scheduler) | Auth, Notificaciones | `EN_CURSO → FINALIZADA`, después del commit |
+| `vacaciones.iniciadas` | 1 | vacaciones-service (scheduler) | Auth, Notificaciones, Empleados (`ACTIVO → EN_VACACIONES`) | `PROGRAMADA → EN_CURSO`, después del commit |
+| `vacaciones.finalizadas` | 1 | vacaciones-service (scheduler) | Auth, Notificaciones, Empleados (`EN_VACACIONES → ACTIVO`) | `EN_CURSO → FINALIZADA`, después del commit |
 
 Exchange de todos: `onboarding.eventos`. Routing key de todos: el propio `type`.
 
@@ -74,6 +74,7 @@ Exchange de todos: `onboarding.eventos`. Routing key de todos: el propio `type`.
 |---|---|
 | `q.auth` | `empleado.creado`, `empleado.retirado`, `vacaciones.iniciadas`, `vacaciones.finalizadas` |
 | `q.perfiles` | `empleado.creado`, `empleado.actualizado`, `empleado.retirado` |
+| `q.empleados` | `vacaciones.iniciadas`, `vacaciones.finalizadas` |
 | `q.notificaciones` | `empleado.creado`, `empleado.retirado`, `usuario.creado`, `usuario.recuperacion`, `cuenta.activada`, `cuenta.desactivada`, `vacaciones.programadas`, `vacaciones.iniciadas`, `vacaciones.finalizadas` |
 | `q.vacaciones` | `empleado.creado`, `empleado.retirado` |
 

@@ -381,3 +381,24 @@ Parámetro `SIMULAR_FALLO` del pipeline de departamentos-service, con el workspa
 | #12 | `RUN exit 1` en el Dockerfile | Package | sin push ni deploy |
 | #13 | escenario BDD que espera 418 | E2E | sin deploy |
 | #14 | ninguno | — | SUCCESS completo |
+
+### Fase 16 — estado `EN_VACACIONES` (hueco funcional encontrado en la auditoría final)
+
+- El PDF exige los estados `ACTIVO`, `EN_VACACIONES` y `RETIRADO`; Empleados definía
+  `EN_VACACIONES` pero ningún flujo lo asignaba. Ahora Empleados consume `vacaciones.iniciadas` y
+  `vacaciones.finalizadas` en `q.empleados` (deduplicación atómica, 3 reintentos y DLQ, como los demás
+  consumidores; tabla `eventos_procesados` con changeset Liquibase reversible).
+- `ACTIVO → EN_VACACIONES → ACTIVO`; un `RETIRADO` no cambia. Pruebas unitarias del servicio y del
+  listener; `mvn verify` con PostgreSQL real en verde.
+- BDD del ciclo de vacaciones ampliada con el estado del empleado: 23/23 escenarios y 181/181 pasos.
+
+### Fase 16 — validación desde el paquete
+
+- `bash scripts/empaquetar.sh` → `.tar.gz` y `.zip` de 455 archivos generados con `git archive`; la
+  verificación del script no encontró `.env`, secretos, `node_modules`, `target` ni reportes.
+- Copia descomprimida en otra ruta (`C:\Users\sebas\pf-validacion`), sin `.env` ni `secrets/`:
+  `bash scripts/setup-secrets.sh` (16 secretos) y `docker compose -p pfvalidacion up -d --build`.
+- Resultado: 26 contenedores en ejecución, todos los que tienen healthcheck `healthy`, incluidos los
+  siete servicios y el balanceador; Swagger agregada 200; Registry vacío (instalación limpia).
+- `bash scripts/seed-data.sh` creó los datos de prueba y la BDD completa pasó 23/23 sobre bases
+  nuevas. Después `docker compose -p pfvalidacion down -v`.

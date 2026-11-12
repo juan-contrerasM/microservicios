@@ -29,9 +29,11 @@ Característica: Ciclo de vacaciones
     Entonces la respuesta debe tener código 200
     Y el período queda en estado "EN_CURSO"
     Y eventualmente el empleado no puede iniciar sesión porque la cuenta no está activa
+    Y eventualmente el empleado de prueba queda en estado "EN_VACACIONES"
     Y eventualmente recibe una notificación "CUENTA" que contiene "Su cuenta fue desactivada"
     Cuando fuerzo el fin de las vacaciones
     Entonces la respuesta debe tener código 200
     Y el período queda en estado "FINALIZADA"
     Y eventualmente el empleado puede iniciar sesión nuevamente
+    Y eventualmente el empleado de prueba queda en estado "ACTIVO"
     Y eventualmente recibe una notificación "CUENTA" que contiene "Bienvenido de regreso. Su cuenta ha sido reactivada"
