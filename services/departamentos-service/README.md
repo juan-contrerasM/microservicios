@@ -1,5 +1,34 @@
 # departamentos-service
 
+## Ficha del servicio (plantilla C6)
+
+1. **Propósito:** catálogo de departamentos (CRUD). Lo consulta Empleados para validar el alta.
+2. **Tecnología:** Go 1.25 + chi + MySQL 8.4. Go aporta un binario pequeño y rápido para un servicio
+   de lectura intensiva; MySQL demuestra un motor de base distinto al resto.
+3. **Endpoints** (Swagger: `/swagger/index.html`, contrato: [`openapi.yaml`](openapi.yaml)):
+
+   | Método y ruta | Descripción |
+   |---|---|
+   | `POST /departamentos` | Alta (409 si el id existe) |
+   | `GET /departamentos` · `GET /departamentos/{id}` | Listado y consulta |
+   | `PUT /departamentos/{id}` · `DELETE /departamentos/{id}` | Actualización y borrado (204) |
+   | `GET /health` · `GET /metrics` | Salud C2 y métricas |
+4. **Eventos:** no publica ni consume (`N/A`).
+5. **Configuración:** `PORT`, `DB_HOST/PORT/NAME/USER`, `DB_PASSWORD_FILE`, `OTEL_*`,
+   `CHAOS_LATENCY_MS` (latencia artificial para pruebas de caos; 0 = desactivada).
+6. **Migraciones:** golang-migrate (`db/migrations/NNNN_*.up.sql` / `.down.sql`) al arrancar;
+   `PRIMARY KEY` como garantía de unicidad.
+7. **Pruebas:** `sh scripts/test.sh` (gotestsum): JUnit en `reports/junit.xml`, `coverage.out`,
+   umbral 70 % (`COBERTURA_MINIMA`). Cobertura actual 74,2 %, sin excluir paquetes. Integración:
+   `internal/integration` (build tag `integration`) contra MySQL real.
+8. **Observabilidad:** `client_golang` (`/metrics`), `slog` JSON con el contrato C5, OpenTelemetry
+   (otelhttp + Zipkin). Negocio: `departamentos_creados_total`, `departamentos_consultas_total`.
+9. **Resiliencia:** no llama a otros servicios (`N/A` en E10); `/health` responde 503 en < 3 s si
+   MySQL no contesta.
+10. **Decisiones:** `chi` por su compatibilidad con `net/http` estándar; la unicidad la garantiza el
+    esquema (la comprobación previa solo mejora el mensaje 409).
+
+
 Servicio de gestión de departamentos — Reto 2. Go + [chi](https://github.com/go-chi/chi) +
 MySQL, sin ORM (acceso a datos con `database/sql` directo).
 

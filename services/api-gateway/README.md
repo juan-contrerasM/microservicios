@@ -1,5 +1,33 @@
 # api-gateway
 
+## Ficha del servicio (plantilla C6)
+
+1. **Propósito:** único borde de negocio: autentica (JWT), autoriza (RBAC y propiedad del perfil),
+   enruta a los seis servicios con resiliencia y publica la Swagger UI agregada.
+2. **Tecnología:** Node.js 22 + Express, `jsonwebtoken`, `fetch` nativo. Sin base de datos. No se usa
+   Spring Cloud Gateway para no repetir Java/Spring Boot.
+3. **Endpoints** (contrato: [`openapi.yaml`](openapi.yaml); UI agregada en `/swagger`): todas las
+   rutas de negocio de los seis servicios (`/auth/*`, `/empleados*`, `/departamentos*`, `/perfiles*`,
+   `/vacaciones*`, `/notificaciones*`) más `GET /health`, `GET /metrics`, `GET /openapi.json` y
+   `GET /swagger/specs/{servicio}`. Tabla completa en el [README raíz](../../README.md#5-endpoints-principales-del-api-gateway).
+4. **Eventos:** no publica ni consume (`N/A`).
+5. **Configuración:** `PORT`, `*_URL` de cada servicio (vía el balanceador: `http://<servicio>-lb:8000`),
+   `JWT_SECRET_FILE` (≥ 32 bytes), `PROXY_TIMEOUT_MS` y `*_PROXY_TIMEOUT_MS`,
+   `PROXY_RETRY_DELAYS_MS`, `CB_FAILURE_THRESHOLD`, `CB_OPEN_DURATION_MS`, `CORS_ORIGINS`,
+   `MAX_BODY_BYTES`, `AUTH_RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_WINDOW_MS`, `OTEL_*`.
+6. **Migraciones:** `N/A` (sin base de datos).
+7. **Pruebas:** `npm test`: JUnit y LCOV en `reports/`, umbral 70 %. 80 pruebas, cobertura 97,29 %.
+   La integración levanta servidores HTTP reales como backends (JWT, RBAC, proxy, 503 y circuito).
+8. **Observabilidad:** prom-client (`/metrics`), logs JSON C5, OpenTelemetry. Negocio/resiliencia:
+   `gateway_upstream_errors_total{servicio,causa}` y `gateway_circuit_breaker_state{servicio}`.
+9. **Resiliencia:** circuito independiente por backend, timeout por servicio, reintento 1–2–4 s solo
+   en `GET`, fallback 503 C3; `/health` propio sin consultar backends (el borde sigue UP).
+10. **Seguridad y decisiones:** cabeceras seguras (CSP, `X-Frame-Options`, `nosniff`), CORS por lista
+    blanca, límite de tamaño de cuerpo (413) y rate limiting por IP en login (fallos), reset (fallos)
+    y recuperación (todas): 429 con `Retry-After`. El límite vive en memoria de cada réplica: con N
+    réplicas es N veces mayor, suficiente para frenar fuerza bruta. Escala detrás del balanceador.
+
+
 Punto de entrada único del ecosistema — Reto 3. Gateway de **aplicación** (código), no un
 enrutador declarativo tipo Traefik/Nginx.
 

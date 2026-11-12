@@ -1,0 +1,920 @@
+> Bitácora histórica de los Retos 1–8, conservada como referencia. El README vigente del proyecto
+> final es [`../README.md`](../README.md).
+
+# Sistema de Onboarding/Offboarding de Empleados — Monorepo
+
+Monorepo de microservicios del curso. Un módulo por servicio bajo `services/`, cada uno con su
+propio lenguaje, base de datos y Dockerfile, orquestados desde un único `docker-compose.yml` en
+la raíz.
+
+> Antes de tocar código: lee [`CLAUDE.md`](CLAUDE.md) (convenciones del repo).
+> Reto 8 (vigente, implementado y verificado): [`docs/reto8/PLAN-RETO8.md`](docs/reto8/PLAN-RETO8.md) y
+> [`docs/reto8/STATUS.md`](docs/reto8/STATUS.md).
+>
+> Reto 7 (cerrado): [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md) y
+> [`docs/reto7/STATUS.md`](docs/reto7/STATUS.md). La sección de CI está al final de este archivo.
+> Reto 6 (cerrado): [`docs/reto6/PLAN-RETO6.md`](docs/reto6/PLAN-RETO6.md),
+> [`docs/reto6/STATUS.md`](docs/reto6/STATUS.md) y
+> [`docs/reto6/EVIDENCIAS.md`](docs/reto6/EVIDENCIAS.md).
+> Reto 5 (cerrado): [`docs/reto5/PLAN-RETO5.md`](docs/reto5/PLAN-RETO5.md) y
+> [`docs/reto5/STATUS.md`](docs/reto5/STATUS.md).
+> Reto 4 (cerrado): [`docs/reto4/PLAN-RETO4.md`](docs/reto4/PLAN-RETO4.md) y
+> [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md).
+> Reto 3 (cerrado): [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md) y
+> [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md).
+> Reto 2 (cerrado): [`docs/reto2/PLAN-RETO2.md`](docs/reto2/PLAN-RETO2.md) y
+> [`docs/reto2/STATUS.md`](docs/reto2/STATUS.md).
+
+## Servicios
+
+| Servicio | Lenguaje | Motor de BD | Puerto host | Carpeta |
+|---|---|---|---|---|
+| `api-gateway` | Node.js 22 / Express | *(ninguna)* | **`8080` (negocio)** | [`services/api-gateway`](services/api-gateway) |
+| `empleados-service` | Java 21 / Spring Boot | PostgreSQL 16 | *no publicado* (`expose: 8080`) | [`services/empleados-service`](services/empleados-service) |
+| `departamentos-service` | Go | MySQL 8.4 | *no publicado* (`expose: 8081`) | [`services/departamentos-service`](services/departamentos-service) |
+| `message-broker` | RabbitMQ 3 | *(no es base de un servicio)* | `15672` UI (AMQP `5672` solo interno) | solo en `docker-compose.yml` |
+| `notificaciones-service` | Python 3.12 / FastAPI | PostgreSQL 16 | *no publicado* (`expose: 8084`) | [`services/notificaciones-service`](services/notificaciones-service) |
+| `perfiles-service` | Java 21 / Spring Boot | PostgreSQL 16 | *no publicado* (`expose: 8083`) | [`services/perfiles-service`](services/perfiles-service) |
+| `vacaciones-service` | Node.js 22 / Express | PostgreSQL 16 | *no publicado* (`expose: 8085`) | [`services/vacaciones-service`](services/vacaciones-service) |
+| `auth-service` | Python 3.12 / FastAPI | PostgreSQL 16 | *no publicado* (`expose: 8086`) | [`services/auth-service`](services/auth-service) |
+
+URL base del sistema: **`http://localhost:8080`**. Todo el tráfico de negocio pasa por el Gateway:
+`/auth`, `/empleados`, `/departamentos`, `/perfiles`, `/notificaciones`, `/vacaciones` y `/health`.
+Los puertos `8081`, `8082`, `8083`, `8084`, `8085` y `8086` no están publicados: desde el host la conexión
+se rechaza. Solo `15672` (UI del broker) se publica; AMQP `5672` queda interno desde la Fase 14.
+
+Hay cuatro lenguajes: Java (empleados y perfiles), Go (departamentos), Node.js (Gateway y
+vacaciones) y Python (notificaciones y autenticación). El Gateway no es Spring Cloud Gateway.
+
+## Reto 8 — observabilidad y monitoreo
+
+La infraestructura del Reto 8 se configura como código bajo [`observability/`](observability/) y se
+levanta con el mismo `docker compose up`: datasources, dashboard, recording rules, alertas y contact
+point se aprovisionan desde Git, sin pasos manuales en la UI. Operación y comandos detallados:
+[`observability/README.md`](observability/README.md). Plan y estado: [`docs/reto8/`](docs/reto8/).
+Paso a paso para ejecutar y sustentar: [`docs/reto8/MANUAL-SUSTENTACION.md`](docs/reto8/MANUAL-SUSTENTACION.md).
+
+### Los tres pilares
+
+| Pilar | Qué responde | Implementación |
+|---|---|---|
+| **Métricas** | ¿Está sano el sistema? ¿Cuánto tráfico, latencia y errores? | Cada servicio expone formato Prometheus; Prometheus lo raspa cada 15 s |
+| **Logs** | ¿Qué pasó exactamente en una petición? | JSON a `stdout` con `timestamp`, `level`, `service`, `traceId`; Promtail → Loki |
+| **Trazas** | ¿Por dónde pasó una petición y dónde tardó? | OpenTelemetry con W3C Trace Context → Zipkin, incluida la propagación por RabbitMQ |
+
+Los tres se unen por el `traceId`: un log en Loki enlaza con su traza en Zipkin (campo derivado del
+datasource Loki).
+
+### Pull vs. Push
+
+- **Pull (métricas):** Prometheus decide cuándo consultar `/metrics` de cada servicio. Así detecta
+  por sí mismo un servicio caído (`up = 0`), que es justamente lo que dispara la alerta de
+  disponibilidad: un servicio caído no podría avisar que se cayó.
+- **Push (trazas y logs):** los spans se envían a Zipkin al terminar y Promtail empuja los logs a
+  Loki. Son eventos de cada petición; esperar a que alguien los consulte obligaría a acumularlos
+  dentro del servicio.
+
+### Estándares: CNCF, OpenTelemetry y W3C Trace Context
+
+OpenTelemetry es el proyecto de la CNCF que define una API y SDK de instrumentación neutrales
+respecto del backend. Usarlo en los cuatro lenguajes permite cambiar Zipkin por Jaeger o Tempo sin
+tocar el código de negocio. La propagación usa **W3C Trace Context** (`traceparent`, `tracestate`) y
+`baggage`: es el formato que entienden por igual Java, Go, Node y Python. En RabbitMQ el contexto
+viaja en los headers AMQP del mensaje, nunca en el cuerpo del evento.
+
+### Librerías por servicio
+
+| Servicio | Lenguaje | Métricas | Trazas | Logs JSON |
+|---|---|---|---|---|
+| api-gateway | Node 22 | `prom-client` | OpenTelemetry Node SDK | logger JSON propio |
+| vacaciones-service | Node 22 | `prom-client` | OpenTelemetry Node SDK + span raíz del scheduler | logger JSON propio |
+| empleados-service | Java 21 | Micrometer / Actuator | OpenTelemetry Java agent | logging estructurado de Spring Boot |
+| perfiles-service | Java 21 | Micrometer / Actuator | OpenTelemetry Java agent | logging estructurado de Spring Boot |
+| departamentos-service | Go | `prometheus/client_golang` | `otelhttp` + exportador Zipkin | `log/slog` JSON |
+| auth-service | Python 3.12 | `prometheus-fastapi-instrumentator` | OpenTelemetry FastAPI/SQLAlchemy/Pika | `logging` + formateador JSON |
+| notificaciones-service | Python 3.12 | `prometheus-fastapi-instrumentator` | OpenTelemetry FastAPI/SQLAlchemy/Pika | `logging` + formateador JSON |
+
+Cada librería nombra distinto las métricas HTTP (Micrometer publica `http_server_requests_seconds`;
+el instrumentador de FastAPI agrupa el estado como `2xx`). En lugar de falsificar nombres en el
+código, las recording rules de
+[`observability/prometheus/rules/`](observability/prometheus/rules/reto8-recording.yml) producen
+series comunes por `job`: `job:http_requests:rate1m`, `job:http_requests_5xx:ratio_rate1m`,
+`job:http_request_duration_seconds:p95_5m`, `job:process_cpu:cores_rate1m`, etc.
+
+### Por qué Zipkin
+
+Es el backend recomendado por el enunciado para el entorno académico: un solo contenedor, una UI
+simple para buscar por `traceId` y recepción directa en `/api/v2/spans` desde todos los SDK, sin
+necesitar un OTel Collector. El sampling es del 100 %, válido solo para demostración.
+
+### Arquitectura
+
+```mermaid
+flowchart LR
+    C[Cliente] --> G[API Gateway]
+    G --> S[Microservicios]
+    S <--> R[RabbitMQ]
+
+    P[Prometheus :9090 host] -- Pull /metrics --> G
+    P -- Pull /metrics --> S
+    G -- Push spans OTel/W3C --> Z[Zipkin :9411]
+    S -- Push spans OTel/W3C --> Z
+    R -. traceparent en headers AMQP .-> S
+
+    D[Docker logs JSON] --> PT[Promtail]
+    PT -- Push logs --> L[Loki :3100 interno]
+    GF[Grafana :3000] -- PromQL --> P
+    GF -- LogQL --> L
+    GF -- SMTP --> M[Mailhog / email]
+```
+
+| Interfaz | URL |
+|---|---|
+| Grafana (dashboard «Reto 8 — Observabilidad de microservicios») | `http://localhost:3000` (usuario `GRAFANA_ADMIN_USER`) |
+| Prometheus | `http://localhost:9090` |
+| Zipkin | `http://localhost:9411` |
+
+Loki y Promtail quedan internos.
+
+### Dashboard y alertas
+
+El dashboard aprovisionado tiene tres filas: **Resumen** (estado `UP/DOWN` de los siete targets,
+CPU y memoria), **Tráfico** (peticiones/s, latencia p95 y media, proporción 5xx, errores 4xx/5xx y
+ranking del servicio más lento) y **Logs** (WARN/ERROR desde Loki). Un selector filtra por servicio.
+
+| Alerta | Condición | Severidad |
+|---|---|---|
+| Servicio caído | `up == 0` durante 1 minuto | critical |
+| Tasa de errores 5xx superior al 10 % | `job:http_requests_5xx:ratio_rate1m > 0.1` durante 2 minutos | critical |
+| Latencia p95 superior a 1 s | `job:http_request_duration_seconds:p95_5m > 1` durante 1 minuto | warning |
+
+**Canal de alertas: email (SMTP) recibido en Mailhog.** El contact point `email-reto8` envía cada
+alerta (`FIRING`) y su resolución (`RESOLVED`) a `GRAFANA_ALERT_EMAIL` por el SMTP `mailhog:1025`. La
+bandeja se ve en `http://localhost:8025`. Por qué este canal: el enunciado lo admite explícitamente
+para pruebas, Mailhog ya formaba parte del stack desde el Reto 5 y no requiere webhooks, tokens ni
+cuentas externas, así que no hay secretos que proteger y cualquiera puede reproducir la evidencia.
+Cambiar a Telegram, Discord o Slack es reemplazar el receiver en
+[`notificaciones.yml`](observability/grafana/provisioning/alerting/notificaciones.yml).
+
+### Caos controlado
+
+```powershell
+powershell -ExecutionPolicy Bypass -File observability/trafico.ps1 -Segundos 180
+powershell -ExecutionPolicy Bypass -File observability/caos.ps1 -Escenario caida
+powershell -ExecutionPolicy Bypass -File observability/caos.ps1 -Escenario latencia -LatenciaMs 1500
+```
+
+`caida` detiene `departamentos-service` sin borrarlo, espera la alerta y lo vuelve a iniciar.
+`latencia` activa `CHAOS_LATENCY_MS` (retardo fijo, solo en `/departamentos`, nunca en `/health` ni
+`/metrics`) y lo devuelve a `0` al terminar. Ambos restauran el sistema aunque se interrumpan. El
+procedimiento y los resultados están en [`docs/reto8/EVIDENCIAS.md`](docs/reto8/EVIDENCIAS.md).
+
+### Pruebas: simulación del caos
+
+Ejecutadas el 2026-11-03 sobre el stack completo. Detalle, tiempos y comandos en
+[`docs/reto8/EVIDENCIAS.md`](docs/reto8/EVIDENCIAS.md).
+
+**1. Dashboard con métricas reales y servicio caído.** `docker compose stop departamentos-service`:
+a los 12 s Prometheus marca el target `DOWN` y el panel de estado cambia a rojo.
+
+![Dashboard con departamentos-service DOWN](docs/reto8/capturas/01-dashboard-caida.png)
+
+**2. Alerta recibida en el canal.** El email «Servicio caído» llegó 82 s después de detener el
+servicio, y el `RESOLVED` al restaurarlo. Durante la caída también se dispararon «5xx > 10 %» (21 % en
+el Gateway) y «p95 > 1 s».
+
+![Emails de alerta en Mailhog](docs/reto8/capturas/03-mailhog-alertas.png)
+
+**3. Traza distribuida completa.** `POST /empleados`: Gateway → empleados → departamentos → RabbitMQ →
+auth, perfiles y notificaciones. 67 spans, 7 servicios, una sola raíz.
+
+![Traza de onboarding en Zipkin](docs/reto8/capturas/08-zipkin-onboarding.png)
+
+**4. Latencia inducida.** Con `CHAOS_LATENCY_MS=1500` en departamentos (retardo fijo, revertido a `0`
+al terminar), el panel de latencia refleja el incremento y se dispara la alerta «Latencia p95».
+
+![Latencia p95 durante los dos experimentos](docs/reto8/capturas/07-latencia-p95-caos.png)
+
+![Traza lenta: el 99 % en departamentos](docs/reto8/capturas/04-zipkin-latencia-departamentos.png)
+
+**¿Qué servicio del ecosistema tardó más en responder y cómo lo identificaron?**
+
+- **Con la latencia inducida: `departamentos-service`**, con p95 de 1,87 s. Se identificó en tres
+  pasos: el panel «Ranking de latencia» y «Latencia p95» de Grafana lo pusieron primero; en Zipkin, la
+  traza `2e2dacd62aff20c6a7b8374618e7352b` muestra que su span ocupa 1,503 s de 1,515 s (99 %); y en
+  Loki, filtrando por ese `traceId`, aparecen los logs del Gateway (1514 ms) y de departamentos
+  (1502 ms). El Gateway también subió a 1,62 s: la latencia de un backend se propaga al borde.
+- **Sin caos: `auth-service`** (≈ 0,31 s de media), porque el login verifica la contraseña con un hash
+  costoso a propósito. Es lentitud esperada, no un defecto.
+
+![Logs de la misma petición en Loki](docs/reto8/capturas/05-loki-traceid.png)
+
+## Arranque desde cero
+
+```bash
+cp .env.example .env      # ajustar credenciales si hace falta
+docker compose up --build
+```
+
+Verificar que las bases de datos y el broker queden `(healthy)`:
+
+```bash
+docker compose ps
+```
+
+La UI de RabbitMQ queda en **`http://localhost:15672`** (usuario y contraseña: `RABBITMQ_USER` /
+`RABBITMQ_PASSWORD` del `.env`). El exchange y las colas los declaran los servicios al arrancar;
+en esta etapa el broker sano no exige crearlos a mano.
+
+Detener conservando datos:
+
+```bash
+docker compose down
+```
+
+Detener y borrar también los volúmenes (reinicio total, se pierden los datos — útil para
+reproducir el esquema desde cero):
+
+```bash
+docker compose down -v
+```
+
+## Documentación OpenAPI / Swagger
+
+Desde el navegador, con el compose arriba:
+
+- [Swagger del Gateway](http://127.0.0.1:8080/swagger)
+- [Spec del Gateway](http://127.0.0.1:8080/openapi.json)
+
+Si `localhost` responde y `127.0.0.1` no, usa [http://localhost:8080/swagger](http://localhost:8080/swagger).
+`/swagger` redirige a `/swagger/index.html`. Ese documento lista las rutas públicas.
+
+Los otros Swagger no tienen puerto publicado. La URL es la del contenedor; el archivo es el contrato en el repo.
+
+| Servicio | UI (red Docker) | Spec |
+|---|---|---|
+| Gateway | [http://127.0.0.1:8080/swagger](http://127.0.0.1:8080/swagger) | [http://127.0.0.1:8080/openapi.json](http://127.0.0.1:8080/openapi.json) · [`openapi.json`](services/api-gateway/src/openapi.json) |
+| empleados | `http://empleados-service:8080/swagger-ui.html` | `http://empleados-service:8080/v3/api-docs` |
+| departamentos | `http://departamentos-service:8081/swagger/index.html` | [`openapi.yaml`](services/departamentos-service/internal/httpapi/swagger/openapi.yaml) |
+| perfiles | `http://perfiles-service:8083/swagger-ui.html` | `http://perfiles-service:8083/v3/api-docs` |
+| notificaciones | `http://notificaciones-service:8084/docs` | `http://notificaciones-service:8084/openapi.json` |
+| vacaciones | `http://vacaciones-service:8085/swagger/index.html` | [`openapi.json`](services/vacaciones-service/src/openapi.json) |
+| autenticación | `http://auth-service:8086/docs` | `http://auth-service:8086/openapi.json` |
+
+El botón **Authorize** usa el esquema `BearerAuth`. Pega solamente el access JWT retornado por
+`POST /auth/login`; Swagger agrega el prefijo `Bearer`.
+
+## Colección de Postman (Reto 3)
+
+Importar [`docs/reto3/Reto3.postman_collection.json`](docs/reto3/Reto3.postman_collection.json).
+Variable `gateway_url` = `http://localhost:8080`.
+
+Con el compose arriba, en Postman:
+
+1. Carpetas **0–3** (sistema sano): health del Gateway, enrutamiento, departamentos, empleados.
+2. Carpeta **1**: las peticiones de acceso directo a `:8081`/`:8082` **deben fallar** (conexión
+   rechazada). Esa pantalla de error es la evidencia del punto de entrada único.
+3. Carpeta **4**: en Docker Desktop, **Stop** `departamentos-service` o `empleados-service` y
+   envía las peticiones A o B. El Gateway sigue UP y responde `503` JSON. Luego **Start** otra
+   vez.
+4. Carpeta **5**: detén `departamentos-service` y ejecútala completa. Las tres primeras altas
+   deben tardar segundos y las siguientes milisegundos, todas con `PENDIENTE_VALIDACION`.
+5. Inicia `departamentos-service`, espera 35 segundos y ejecuta la carpeta **6**. Comprueba
+   `HALF_OPEN → CLOSED` y la reconciliación de pendientes.
+
+La colección de Reto 2 (`docs/reto2/Reto2.postman_collection.json`) apunta a dos puertos y
+quedó obsoleta para el tráfico público.
+
+## Reto 3 — avance
+
+Plan: [`docs/reto3/PLAN-RETO3.md`](docs/reto3/PLAN-RETO3.md). Avance:
+[`docs/reto3/STATUS.md`](docs/reto3/STATUS.md). Colección:
+[`docs/reto3/Reto3.postman_collection.json`](docs/reto3/Reto3.postman_collection.json).
+
+### Etapa 1 — `api-gateway` (Node.js)
+
+Tercer microservicio, en un lenguaje distinto a Java y Go:
+
+- Express + `http-proxy-middleware`. Enruta `/empleados/*` y `/departamentos/*` **sin** strip
+  de path; propaga cuerpo, query, cabeceras y código de estado.
+- `GET /health` propio (`200` `{ "status": "UP", "service": "api-gateway" }`), independiente
+  de los backends.
+- Si el destino no responde: `503` JSON descriptivo (`mensaje` + `servicio`), no HTML de
+  Express.
+- Dockerfile `node:22-alpine`. Tests: `cd services/api-gateway && npm test` (10/10).
+
+Se eligió Node.js + Express porque el Gateway es código de aplicación: en retos posteriores debe
+validar JWT/JWKS, propagar identidad y permitir composición de respuestas. Además introduce un
+tercer lenguaje sin repetir Java ni Go. Traefik/Nginx quedan para balanceo, no sustituyen este
+borde de aplicación.
+
+| Ruta pública | Destino interno |
+|---|---|
+| `GET /health` | El propio Gateway; no consulta backends |
+| `/empleados` y `/empleados/*` | `http://empleados-service:8080` conservando path, query, cuerpo, cabeceras y status |
+| `/departamentos` y `/departamentos/*` | `http://departamentos-service:8081` conservando path, query, cuerpo, cabeceras y status |
+
+README del servicio: [`services/api-gateway/README.md`](services/api-gateway/README.md).
+
+### Etapa 2 — borde único en Compose
+
+- `api-gateway` es el único servicio con `ports:` (`8080:8080`).
+- `empleados-service` y `departamentos-service` usan `expose:` (8080 y 8081 internos).
+- En Docker Desktop, Stop de un backend + petición por Postman a esa ruta = `503` JSON del
+  Gateway; `/health` del borde sigue `UP`.
+- El Gateway solo usa `depends_on: service_started`: arranca aunque un backend no llegue a
+  saludable y puede responder su propio `/health` y el `503` descriptivo.
+
+### Etapa 3 — Circuit Breaker y fallback
+
+La llamada `empleados → departamentos` está protegida por Resilience4j para Spring Boot 4.
+Los reintentos del Reto 2 se conservan dentro de `CLOSED`; cada agotamiento completo cuenta como
+un solo fallo lógico del circuito.
+
+| Parámetro | Valor | Motivo |
+|---|---|---|
+| Instancia | `departamentos` | Protege exactamente la dependencia síncrona del consumidor |
+| Ventana / mínimo de llamadas | `3` / `3`, `COUNT_BASED` | Tres fallos lógicos seguidos abren el circuito |
+| Umbral | `100 %` | Con ventana de tres, exige que fallen las tres |
+| Tiempo en `OPEN` | `30s` | Después permite comprobar recuperación sin reiniciar |
+| Llamadas en `HALF_OPEN` | `1` | Un éxito cierra; un fallo vuelve a abrir |
+| Timeout HTTP | `5s` | Límite de cada intento hacia departamentos |
+| Backoff | `1s → 2s → 4s` | Conserva tolerancia a fallos transitorios |
+| Timeout del Gateway | `35s` | Supera el peor caso de 4×5s + 7s de backoff |
+
+Si la dependencia no responde, se prioriza disponibilidad: el alta devuelve `201` y se persiste
+como `PENDIENTE_VALIDACION`, nunca con un departamento inventado. Cuando departamentos vuelve,
+`POST /empleados/reconciliar` revalida cada pendiente; solo los departamentos existentes pasan a
+`ACTIVO`. `GET /empleados/circuit-breaker` expone `CLOSED`, `OPEN` o `HALF_OPEN`.
+
+### Etapa 4 — pruebas y evidencias
+
+La ejecución real del 21 de septiembre de 2026 quedó documentada en
+[`docs/reto3/EVIDENCIAS.md`](docs/reto3/EVIDENCIAS.md). Resultado central:
+
+| Solicitud con departamentos detenido | Tiempo | Estado persistido |
+|---|---:|---|
+| 1 | 11.155s | `PENDIENTE_VALIDACION` |
+| 2 | 9.645s | `PENDIENTE_VALIDACION` |
+| 3 | 9.704s | `PENDIENTE_VALIDACION`; circuito abre |
+| 4–8 | 33–39ms | `PENDIENTE_VALIDACION`; sin llamada de red |
+
+Al restaurar departamentos, el circuito pasó automáticamente a `HALF_OPEN`. Un alta con
+`departamentoId: NO-EXISTE` respondió `400` en 180ms y lo llevó a `CLOSED`, sin reiniciar
+empleados ni el Gateway. La reconciliación posterior evaluó 16 pendientes y activó los 16.
+
+## Qué se implementó en el Reto 2 (etapas 1 y 2 de ese plan)
+
+Detalle del plan: [`docs/reto2/PLAN-RETO2.md`](docs/reto2/PLAN-RETO2.md). Avance histórico:
+[`docs/reto2/STATUS.md`](docs/reto2/STATUS.md).
+
+### Etapa 1 — `departamentos-service` (Go)
+
+Segundo microservicio, en un lenguaje distinto al de empleados:
+
+- Go + [chi](https://github.com/go-chi/chi) + MySQL 8.4, sin ORM (`database/sql`).
+- Endpoints: `POST /departamentos` (201 / 400 si el id ya existe), `GET /departamentos/{id}` (200 / 404), `GET /departamentos` (200).
+- `GET /health` real: hace `PING` a MySQL (`200 UP` / `503 DOWN`). Lo usa Docker como healthcheck del contenedor.
+- Esquema versionado con `golang-migrate` (`db/migrations/0001_create_departamentos.up.sql` / `.down.sql`), aplicado al arrancar. `id` es `PRIMARY KEY` (unicidad en el esquema); el error 1062 se traduce a 400.
+- Dockerfile multi-stage. Variables de entorno (nunca hosts/credenciales hardcodeados).
+
+README del servicio: [`services/departamentos-service/README.md`](services/departamentos-service/README.md).
+
+### Etapa 2 — `docker-compose.yml` raíz
+
+Orquestación de los 4 contenedores con arranque ordenado:
+
+- Servicios: `empleados-service`, `departamentos-service`, `database-empleados` (Postgres), `database-departamentos` (MySQL).
+- Seis redes por capa (Fase 14: `frontend`, `backend`, `messaging`, `data`, `observability`, `cicd`; ver cabecera de `docker-compose.yml`): los servicios se resuelven por nombre (p. ej. `http://departamentos-service:8081`). Nunca `localhost` entre contenedores.
+- Un volumen por base (`vol-empleados`, `vol-departamentos`): `docker compose down` conserva datos; `down -v` los borra.
+- Healthchecks reales: `pg_isready` en Postgres; `mysqladmin ping --protocol=tcp -h 127.0.0.1` en MySQL (el ping por socket Unix daba falso "healthy" durante el mysqld temporal de inicialización).
+- `depends_on: condition: service_healthy`: cada API espera a su BD; `empleados-service` también espera a `departamentos-service`.
+- Credenciales y URLs inyectadas desde `.env` (plantilla: `.env.example`).
+- El healthcheck de `empleados-service` apunta a `GET /health` (Etapa 3).
+
+### Etapa 3 — evolución de `empleados-service`
+
+- Liquibase versiona el esquema (`UNIQUE` en `email` y `numeroEmpleado`); Hibernate en `validate`.
+- `POST /empleados` responde **201**. Duplicados y departamento inexistente responden **400**.
+  `GET /empleados` lista todos los registrados (**200**), como pide el §4 del enunciado.
+- Cliente HTTP a `departamentos-service`: timeout 3s, 4 intentos, backoff 1s→2s→4s. Si se agotan, **503** y no persiste.
+- `GET /health` hace PING real a PostgreSQL (`200 UP` / `503 DOWN`).
+
+### Etapa 5 — pruebas, evidencia y documentación final
+
+Verificado end-to-end con `docker compose up --build` (Docker Engine 28.4). Evidencia real:
+
+**Arranque ordenado — `docker compose ps` tras un `docker compose down -v && up --build` desde cero:**
+
+```
+NAME                             IMAGE                        STATUS
+micro-database-departamentos-1   mysql:8.4                    Up (healthy)
+micro-database-empleados-1       postgres:16-alpine           Up (healthy)
+micro-departamentos-service-1    micro-departamentos-service  Up (healthy)
+micro-empleados-service-1        micro-empleados-service      Up (healthy)
+```
+
+Sin errores de conexión en los logs de ningún servicio.
+
+**Persistencia — contraste `down` vs `down -v`:**
+
+```bash
+$ docker compose down && docker compose up -d   # SIN -v
+$ curl http://localhost:8080/empleados/E001
+{"id":"E001", ... "estado":"ACTIVO"}            # 200 — el dato sobrevive
+
+$ docker compose down -v && docker compose up -d --build   # CON -v
+$ curl http://localhost:8080/empleados/E001
+{"mensaje":"El empleado con id E001 no existe"}  # 404 — se perdió con el volumen
+```
+
+**Flujo completo del §8 del PDF**, incluida la validación cruzada real entre servicios: crear
+departamento `IT` → registrar empleado con `departamentoId: "IT"` → `201`, conservando los 10
+campos del modelo canónico. Las cuatro validaciones responden `400`: id duplicado, email
+duplicado, `numeroEmpleado` duplicado y departamento inexistente.
+
+**Tolerancia a fallos real** (no solo en teoría): con `docker compose stop
+departamentos-service`, registrar un empleado tarda ~8-20s (los reintentos con backoff
+1s→2s→4s) y responde `503` sin persistir nada; `docker compose start departamentos-service` y
+el mismo request vuelve a responder `201` normalmente.
+
+**Colección Postman** (`Reto2.postman_collection.json`) corrida con `newman` contra el sistema
+real: 17 requests / 34 assertions en las carpetas 0-2, y 3 assertions en la carpeta de
+resiliencia — 0 fallos en ambas corridas.
+
+**Swagger UI** accesible en ambos servicios (`empleados-service` redirige `/swagger-ui.html` →
+`/swagger-ui/index.html`, código 200 final; `departamentos-service` sirve `/swagger/index.html`
+directo).
+
+## Decisiones técnicas (Reto 2)
+
+Resumen — el detalle y el "por qué" de cada una está en `docs/PLAN-RETO2.md` y en el README de
+cada servicio afectado:
+
+1. **Motor de BD por servicio**: PostgreSQL para empleados, MySQL para departamentos
+   (persistencia poliglota deliberada).
+2. **Creación de esquema**: changelogs versionados con rollback — Liquibase en `empleados-service`,
+   `golang-migrate` en `departamentos-service`. Nunca auto-DDL de ORM como mecanismo definitivo.
+3. **Garantía de unicidad**: restricción a nivel de esquema (`UNIQUE`/`PRIMARY KEY`) además de
+   consulta previa desde el código, para no depender solo de una ventana de "consultar y luego
+   insertar".
+
+## Message broker (Reto 4, criterio 1)
+
+El onboarding deja de ser solo HTTP: un alta tiene que avisar a otros dominios sin que
+`empleados-service` los conozca. El broker es **RabbitMQ 3** (`rabbitmq:3-management`), servicio
+`message-broker` en el compose.
+
+Se eligió RabbitMQ porque este flujo es un aviso a varios servicios, cada uno con su cola, y el
+enunciado pide republicar el mismo mensaje desde una consola de administración. RabbitMQ trae
+esa UI en `:15672`, un exchange topic y colas durables. La routing key es el `type` del evento.
+Si un consumidor está caído, su cola conserva la copia y los demás siguen.
+
+| Opción | Por qué no es la de este sistema |
+|---|---|
+| **Kafka** | El fan-out de este volumen es un exchange y una cola por consumidor, no un log de particiones. Además hay que sumar otra consola para republicar un mensaje, y el enunciado pide hacerlo desde una UI de administración. |
+| **Redis Streams** | Sirve como log ligero, pero no trae una consola para publicar el mismo envelope dos veces. Esa republicación es la evidencia de deduplicación del criterio 3. |
+| **NATS** | Encaja en mensajería simple y tampoco trae esa consola de administración. |
+| **RabbitMQ** | Trae la management UI en `:15672`, exchanges topic y colas durables. Un `basic.publish` con routing key = `type` llega a cada cola ligada a esa key. Si un consumidor se cae, los demás siguen. |
+
+Dentro de la red `messaging` los servicios hablan con `message-broker:5672` (AMQP no se publica
+en el host desde la Fase 14) y `15672` es la UI del paso 9 del enunciado. El usuario y la contraseña salen
+de `RABBITMQ_USER` y `RABBITMQ_PASSWORD`. El volumen `vol-rabbitmq` monta `/var/lib/rabbitmq`:
+`docker compose down` conserva colas durables; `down -v` las borra. El `hostname` del contenedor
+está fijo en `message-broker` porque el nombre del nodo queda guardado en ese volumen.
+
+### Correo con Mailhog
+
+Mailhog es un SMTP de desarrollo. No entrega a internet: guarda el mensaje para verlo en
+[http://localhost:8025](http://localhost:8025). El puerto de la bandeja es `8025`. El SMTP,
+`1025`, solo existe dentro de la red Docker.
+
+El compose inyecta en `notificaciones-service`:
+
+| Variable | Valor | Para qué |
+|---|---|---|
+| `SMTP_HOST` | `mailhog` | Nombre del contenedor |
+| `SMTP_PORT` | `1025` | Puerto SMTP |
+| `SMTP_FROM` | `onboarding@empresa.com` | Remitente |
+
+Si `SMTP_HOST` queda vacío, no se envía correo. En el compose siempre apunta a `mailhog`.
+
+Después de guardar la fila y escribir el log `[NOTIFICACIÓN]`, el servicio manda ese mismo
+`mensaje`. El asunto depende del tipo:
+
+| Tipo | Asunto |
+|---|---|
+| `BIENVENIDA` | Bienvenida |
+| `DESVINCULACION` | Desvinculación |
+| `VACACIONES` | Vacaciones programadas |
+
+Si Mailhog no responde, el error queda en el log. La fila ya está guardada y el mensaje de
+RabbitMQ se confirma. El mismo `id` de evento no manda un segundo correo, porque la
+deduplicación ocurre antes de registrar la notificación.
+
+Para ver uno: con el compose arriba, abre la bandeja y crea un empleado que todavía no exista
+(`POST /empleados`). Los avisos anteriores no se reenvían.
+
+El código está en `notificaciones-service`:
+
+- `src/notificaciones/config.py`: `Settings` lee `SMTP_HOST`, `SMTP_PORT` y `SMTP_FROM`.
+- `src/notificaciones/correo.py`: `crear_enviador` abre la conexión SMTP y manda el mensaje.
+- `src/notificaciones/consumidor.py`: al arrancar crea el enviador y se lo pasa a `procesar`.
+- `src/notificaciones/procesar.py`: guarda la fila, escribe el log y llama al enviador. El mapa `ASUNTOS` define el asunto.
+
+Al arrancar, cada servicio declara de forma idempotente el exchange topic `onboarding.eventos`
+y su cola:
+
+| Cola | Bindings |
+|---|---|
+| `q.notificaciones` | `empleado.creado`, `empleado.retirado`, `vacaciones.programadas` |
+| `q.perfiles` | `empleado.creado`, `empleado.actualizado`, `empleado.retirado` |
+| `q.vacaciones` | `empleado.creado`, `empleado.retirado` |
+
+La routing key es el `type` del evento. El ack es manual y el prefetch es 1. Esas colas quedan
+en 0 porque el consumidor confirma el mensaje al recibirlo. Para ver el JSON, crea antes del
+POST una cola `q.prueba` atada a `onboarding.eventos` y léela con Get messages, Ack requeue false.
+
+### Una copia por cola
+
+RabbitMQ no guarda un solo mensaje y espera a que lo lean N servicios. Al publicar, el exchange
+copia el mensaje en cada cola atada a esa routing key. Cada cola tiene su copia y su propio ack.
+
+Con `empleado.creado` quedan tres copias: `q.vacaciones`, `q.notificaciones` y `q.perfiles`. Si
+vacaciones ya confirmó y notificaciones todavía no, la copia de `q.vacaciones` desaparece y la
+de `q.notificaciones` sigue hasta que ese servicio haga ack. Una cola no bloquea a las otras.
+No hay un contador de servicios pendientes: el reparto ocurrió al publicar.
+
+La cola no es el almacén del negocio. Vacaciones, al consumir `empleado.creado`, guarda
+`empleadoId`, `email` y `estado` en `empleados_replica`, tabla de su propia base, y después
+confirma. Un `POST /vacaciones` posterior lee esa tabla. El detalle de por qué es una réplica y
+no un GET a empleados está en [Réplica de empleados en vacaciones](#réplica-de-empleados-en-vacaciones).
+
+## Estado del proyecto
+
+Reto 2: ver [`docs/reto2/STATUS.md`](docs/reto2/STATUS.md). Todas las etapas de ese plan (0-5)
+están implementadas y verificadas end-to-end.
+
+Reto 3: ver [`docs/reto3/STATUS.md`](docs/reto3/STATUS.md). Todas las etapas 0–4 están
+implementadas y verificadas: Gateway, borde único, Circuit Breaker, fallback, recuperación,
+reconciliación, colección Postman y evidencias reproducibles.
+
+Reto 4: ver [`docs/reto4/STATUS.md`](docs/reto4/STATUS.md). Las etapas 0 a 7 están cerradas.
+La evidencia de la corrida está en [`docs/reto4/EVIDENCIAS.md`](docs/reto4/EVIDENCIAS.md).
+
+## Eventos (Reto 4)
+
+Contrato del catálogo [`docs/reto4/catalogo-de-eventos.pdf`](docs/reto4/catalogo-de-eventos.pdf).
+El envelope no cambia entre tipos:
+
+```json
+{
+  "id": "uuid",
+  "type": "empleado.creado",
+  "version": 1,
+  "occurredAt": "2027-03-01T10:00:00Z",
+  "producer": "empleados-service",
+  "data": {}
+}
+```
+
+`id` es la clave de deduplicación. Republicar el mismo `id` no repite el efecto.
+
+| `type` | `data` | Quién publica | Quién consume |
+|---|---|---|---|
+| `empleado.creado` | `empleadoId`, `nombre`, `apellido`, `email`, `numeroEmpleado`, `cargo`, `area`, `departamentoId`, `fechaIngreso`, `estado` | empleados | perfiles, notificaciones, vacaciones |
+| `empleado.actualizado` | `empleadoId`, `nombre`, `apellido`, `email`, `cargo`, `area`, `departamentoId` | empleados | perfiles |
+| `empleado.retirado` | `empleadoId`, `email`, `fechaRetiro`, `motivo` | empleados | perfiles, notificaciones, vacaciones |
+| `vacaciones.programadas` | `vacacionesId`, `empleadoId`, `email`, `fechaInicio`, `fechaFin`, `diasHabiles` | vacaciones | notificaciones |
+
+`empleado.retirado` usa `motivo` `RENUNCIA` cuando el `DELETE` no trae cuerpo. `diasHabiles`
+cuenta lunes a viernes, inclusive, sin festivos. Del 15 al 30 de marzo de 2027 son 12.
+
+En el Reto 4 el alta y el retiro disparaban `BIENVENIDA` y `DESVINCULACION`. Desde el Reto 5,
+`empleado.creado` solo prepara el destinatario: `usuario.creado` lleva el token y produce la
+notificación `SEGURIDAD`; `cuenta.desactivada` produce el aviso `CUENTA`. El scheduler ya publica
+`vacaciones.iniciadas` y `vacaciones.finalizadas`.
+
+## Réplica de empleados en vacaciones
+
+Vacaciones no llama a empleados por HTTP para aceptar un período. Guarda una réplica con
+`empleado.creado` (id, email, estado) y la pasa a `RETIRADO` con `empleado.retirado`. Así puede
+programar vacaciones aunque empleados esté caído. El costo es la ventana hasta que el evento
+llega: un alta recién hecha puede responder 400 `El empleado con id {id} no existe`, y un retiro
+recién hecho puede aceptar un período unos segundos más. El `POST` reintenta esa espera. No
+consume `empleado.actualizado`: el email del evento de vacaciones es el del alta.
+
+## Cómo repetir el flujo
+
+Fechas de ejemplo: **2027-03-15** a **2027-03-30**. No uses junio de 2026: esa fecha ya pasó y
+`fechaInicio` anterior a hoy responde 400.
+
+1. `docker compose up --build` y espera `healthy`.
+2. Si `localhost` se queda colgado, usa `http://127.0.0.1:8080`.
+3. Importa [`docs/reto4/Reto4.postman_collection.json`](docs/reto4/Reto4.postman_collection.json) y corre las carpetas 0 a 7 en orden. Hace falta una base vacía: un segundo `POST` de `E001` o de `IT` no es 201.
+4. Carpeta 8, a mano: en `http://localhost:15672` publica dos veces el mismo JSON en `onboarding.eventos` con routing key `empleado.creado`. El `id` del envelope no se cambia. Después `GET /notificaciones/E002` trae una sola `BIENVENIDA` y `GET /perfiles/E002` un solo perfil.
+5. Carpeta 9, a mano: `8081`, `8083`, `8084` y `8085` rechazan la conexión.
+
+Para correr las carpetas automáticas con Newman, sobre datos limpios:
+
+```bash
+npx newman run docs/reto4/Reto4.postman_collection.json \
+  --folder "0. Salud y departamento" \
+  --folder "1. Alta y fan-out" \
+  --folder "2. Actualizar empleado" \
+  --folder "3. Perfil por REST" \
+  --folder "4. Programar vacaciones" \
+  --folder "5. Validaciones de vacaciones" \
+  --folder "6. Consultar y cancelar" \
+  --folder "7. Retiro y auditoria" \
+  --env-var "gateway_url=http://127.0.0.1:8080"
+```
+
+Swagger de cada servicio responde dentro de la red Docker. Desde el navegador se abre el del
+Gateway: [http://127.0.0.1:8080/swagger](http://127.0.0.1:8080/swagger).
+
+## Reto 5 — JWT, RBAC y ciclo de vida de la cuenta
+
+El Reto 5 agrega `auth-service`, protege el borde con JWT HS256 y conecta la cuenta con el alta,
+las vacaciones y el retiro. La única URL de negocio sigue siendo `http://localhost:8080`.
+
+### Obtener y usar un token
+
+1. Copia `.env.example` a `.env` y levanta el sistema.
+2. Inicia sesión con la semilla `admin` / `Admin1234!`:
+
+   ```bash
+   curl -X POST http://localhost:8080/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"usuario":"admin","contrasena":"Admin1234!"}'
+   ```
+
+3. Usa `token` como `Authorization: Bearer <token>` para crear el departamento y los empleados.
+4. El alta publica `empleado.creado`; auth crea una cuenta `PENDIENTE_ACTIVACION` y publica
+   `usuario.creado`. Consulta `GET /notificaciones/{empleadoId}` y extrae el token del aviso
+   `SEGURIDAD`.
+5. Envía ese valor a `POST /auth/reset-password`, inicia sesión con el email del empleado y usa
+   el nuevo access JWT.
+
+La colección [`docs/reto5/Reto5.postman_collection.json`](docs/reto5/Reto5.postman_collection.json)
+automatiza el flujo completo y guarda `admin_token`, `reset_token` y `user_token`.
+
+### Autenticación y autorización
+
+El Gateway valida firma, expiración, `sub` y `role` una sola vez. Centralizarlo evita mantener
+librerías JWT en Java, Go, Node y Python, y simplifica la futura migración a JWKS. La excepción
+es `POST /auth/change-password`: auth vuelve a validar el token porque necesita el `sub` para
+cambiar la clave de su dueño y debe rechazar un reset token usado como access token.
+
+- `ADMIN`: lectura y escritura total.
+- `USER`: lectura; puede cambiar su propia clave y editar solamente `PUT /perfiles/{sub}`.
+- Token ausente, alterado, expirado o de reset usado como Bearer: `401`.
+- Access JWT válido sin permiso o sin propiedad del perfil: `403`.
+
+`JWT_SECRET` se define en `.env` y Docker Compose inyecta exactamente el mismo valor al Gateway
+y a auth. No se incluye en la imagen ni en el código fuente.
+
+### Scheduler de vacaciones
+
+`vacaciones-service` ejecuta `node-cron` en UTC con `VACACIONES_CRON` (cada minuto por defecto):
+
+- `PROGRAMADA` con `fechaInicio <= hoy` → `EN_CURSO` + `vacaciones.iniciadas`.
+- `EN_CURSO` con `fechaFin < hoy` → `FINALIZADA` + `vacaciones.finalizadas`.
+
+Para una demostración inmediata existen `POST /vacaciones/{id}/forzar-inicio` y
+`POST /vacaciones/{id}/forzar-fin`, documentados como desarrollo y autorizados solo para
+`ADMIN`. Newman programa las fechas para mañana y usa esos endpoints para evitar competir con
+el cron.
+
+La versión actual acepta una sola instancia de vacaciones. Con N instancias, las N ejecutan el
+cron; las transiciones SQL atómicas reducen la duplicación y los consumidores deduplican por id,
+pero eso no sustituye la coordinación del productor. El Reto 31 debe resolverlo con un lock
+distribuido como ShedLock.
+
+### Secuencia del ciclo de vida
+
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant GW as API Gateway
+    participant Emp as empleados-service
+    participant MQ as RabbitMQ
+    participant Auth as auth-service
+    participant Notif as notificaciones-service
+    participant Vac as vacaciones-service
+
+    Admin->>GW: POST /empleados + JWT ADMIN
+    GW->>Emp: POST /empleados
+    Emp-->>MQ: empleado.creado
+    MQ-->>Auth: empleado.creado
+    Auth->>Auth: cuenta PENDIENTE_ACTIVACION
+    Auth-->>MQ: usuario.creado + tokenActivacion
+    MQ-->>Notif: usuario.creado
+    Notif->>Notif: aviso SEGURIDAD
+    Admin->>GW: POST /auth/reset-password
+    GW->>Auth: reset token + nueva clave
+    Auth->>Auth: cuenta ACTIVA
+    Auth-->>MQ: cuenta.activada
+    Admin->>GW: POST /vacaciones/{id}/forzar-inicio
+    GW->>Vac: iniciar período
+    Vac-->>MQ: vacaciones.iniciadas
+    MQ-->>Auth: vacaciones.iniciadas
+    Auth->>Auth: SUSPENDIDA_TEMPORAL
+    Auth-->>MQ: cuenta.desactivada(VACACIONES)
+    Admin->>GW: POST /vacaciones/{id}/forzar-fin
+    GW->>Vac: finalizar período
+    Vac-->>MQ: vacaciones.finalizadas
+    MQ-->>Auth: vacaciones.finalizadas
+    Auth->>Auth: ACTIVA si no fue retirada
+    Auth-->>MQ: cuenta.activada(FIN_VACACIONES)
+    Admin->>GW: DELETE /empleados/{id}
+    GW->>Emp: retiro lógico
+    Emp-->>MQ: empleado.retirado
+    MQ-->>Auth: empleado.retirado
+    Auth->>Auth: DESACTIVADA_PERMANENTE
+    Note over Auth: Un vacaciones.finalizadas posterior no reactiva la cuenta
+```
+
+### Ejecutar la validación
+
+Con datos limpios:
+
+```bash
+docker compose down -v
+docker compose up --build -d
+npx newman run docs/reto5/Reto5.postman_collection.json \
+  --folder "0. Salud y login de admin" \
+  --folder "1. Alta con JWT de admin" \
+  --folder "2. Petición denegada" \
+  --folder "3. Activar E001 y leer" \
+  --folder "4. Recuperar contraseña" \
+  --folder "5. Escritura denegada y propiedad" \
+  --folder "6. Cambio de contraseña" \
+  --folder "7. Vacaciones: suspensión y reactivación" \
+  --folder "8. Caso borde: retiro durante las vacaciones" \
+  --folder "9. Offboarding de E001" \
+  --folder "10. Reglas que el USER no salta" \
+  --env-var "gateway_url=http://127.0.0.1:8080"
+```
+
+La evidencia reproducible se registra en
+[`docs/reto5/EVIDENCIAS.md`](docs/reto5/EVIDENCIAS.md).
+
+## Reto 6 — automatización de pruebas
+
+El Reto 6 agrega una suite BDD de extremo a extremo sin cambiar los contratos de negocio. La
+pirámide queda repartida así:
+
+| Nivel | Alcance | Herramienta | Comando |
+|---|---|---|---|
+| Unitarias de dominio | Vacaciones, validaciones, fechas y transiciones | `node:test` + dobles | `cd services/vacaciones-service && npm test` |
+| Unitarias de negocio | Empleados, resiliencia, eventos y controladores | JUnit 5 + Mockito | `cd services/empleados-service && ./mvnw clean test` |
+| Integración con BD real | Repositorio de empleados y migraciones Liquibase sobre PostgreSQL | Testcontainers + Failsafe | `cd services/empleados-service && ./mvnw clean verify` |
+| Unitarias de seguridad | Login, tokens y regla de no reactivar retirados | pytest | `cd services/auth-service && python -m pytest` |
+| BDD / E2E | Sistema completo visto únicamente por el Gateway | Cucumber.js + Gherkin en español | `cd e2e-tests && npm test` |
+
+BDD expresa el comportamiento en escenarios legibles (`Dado/Cuando/Entonces`). Se eligió
+Cucumber.js porque interpreta Gherkin en español, crea un `World` aislado por escenario y genera
+HTML, JSON y JUnit sin sumar otro proyecto Maven. La suite usa `fetch`, datos únicos y polling
+acotado en lugar de pausas fijas.
+
+### Prerrequisitos y ejecución
+
+- Docker Desktop con Compose, Node.js 22, JDK 21, Maven Wrapper y Python 3.12.
+- Copiar `.env.example` a `.env` en la raíz y `e2e-tests/.env.example` a `e2e-tests/.env`.
+- Levantar el sistema y esperar todos los health checks: `docker compose up --build -d` y
+  `docker compose ps`.
+- Instalar una vez las dependencias BDD: `cd e2e-tests && npm ci`.
+- Ejecutar toda la aceptación: `npm test`.
+
+Las suites de los tres servicios se preparan y ejecutan así desde la raíz:
+
+```bash
+cd services/vacaciones-service
+npm ci
+npm test
+
+cd ../empleados-service
+./mvnw clean verify
+
+cd ../auth-service
+python -m pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest
+```
+
+En PowerShell usa `.\mvnw.cmd clean verify` para empleados. Docker debe estar activo para las
+cinco pruebas de integración de ese servicio.
+
+La suite cubre salud del Gateway; JWT ausente, malformado y alterado; permisos ADMIN/USER;
+onboarding asíncrono; validaciones de alta; programación, solapamiento y ciclo completo de
+vacaciones; retiro definitivo, auditoría y recuperación bloqueada. El tiempo de vacaciones se
+controla con fechas UTC relativas y `forzar-inicio` / `forzar-fin`.
+
+| Reporte generado por `npm test` | Uso |
+|---|---|
+| `e2e-tests/reports/cucumber.html` | Evidencia visual navegable |
+| `e2e-tests/reports/cucumber.json` | Resultado estructurado de Cucumber |
+| `e2e-tests/reports/junit.xml` | Integración posterior con Jenkins |
+
+Los reportes se regeneran y están ignorados por Git. El proceso devuelve código distinto de cero
+ante cualquier fallo. La validación final pasó tres veces seguidas sobre el mismo despliegue: 18
+escenarios y 137 pasos en cada corrida. La prueba negativa temporal también confirmó el mensaje,
+el exit code y los reportes fallidos. Detalle y cobertura:
+[`docs/reto6/EVIDENCIAS.md`](docs/reto6/EVIDENCIAS.md).
+
+## Reto 7 — Integración continua
+
+Cada cambio se compila, se prueba y se empaqueta solo. Jenkins corre dentro del mismo
+`docker compose` que el resto del sistema y publica, en su interfaz, los reportes que el Reto 6
+ya escribe en disco: JUnit, cobertura y los escenarios BDD en español. El detalle de las
+decisiones está en [`docs/reto7/PLAN-RETO7.md`](docs/reto7/PLAN-RETO7.md).
+
+### Acceso
+
+| Qué | Dónde |
+|---|---|
+| Jenkins | [http://localhost:8090](http://localhost:8090) |
+| Usuario | `JENKINS_ADMIN_ID` del `.env` (referencia: `admin`) |
+| Contraseña | `JENKINS_ADMIN_PASSWORD` del `.env` (referencia: `admin`) |
+| SonarQube | [http://localhost:9000](http://localhost:9000), usuario `admin`, clave `SONAR_ADMIN_PASSWORD` |
+
+No hay contraseña inicial en `jenkins_home/secrets/initialAdminPassword`. El asistente de
+instalación está apagado y JCasC crea el usuario al arrancar.
+
+### Cómo levantarlo
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Eso incluye Jenkins, SonarQube y su Postgres. Los jobs `verificar-docker`, `empleados-service`
+y `vacaciones-service` aparecen solos: salen de `jenkins/casc.yaml` y leen el Jenkinsfile de
+cada servicio en el monorepo montado en `/workspace`. No se importan a mano en la interfaz.
+
+Disparo automático al commitear en **`main`** (una sola vez por clon):
+
+```bash
+./jenkins/install-git-hooks.sh
+```
+
+Tras eso, cada `git commit` en `main` encola `empleados-service` y `vacaciones-service` vía la
+API de Jenkins (`http://localhost:8090` y credenciales de `.env`). Si Jenkins no está levantado,
+el commit no falla; solo verás un aviso en la terminal.
+
+Los Jenkinsfiles incluyen **`pollSCM('* * * * *')`**: Jenkins revisa cambios en `main` como
+mucho **cada minuto** (el cron de Jenkins no admite 30 segundos). Para un rescate cada **30 s**
+sin commitear de nuevo, en otra terminal:
+
+```bash
+./jenkins/poll-main-every-30s.sh
+```
+
+En PowerShell: `./jenkins/poll-main-every-30s.ps1`. Hook y poller comparten marca en
+`.git/jenkins-last-ci-rev` para no encolar dos veces el mismo commit. También puedes usar
+**Build Now** a mano.
+`verificar-docker` tiene que mostrar `docker --version` y `docker ps` en verde antes de correr
+los otros dos.
+
+### Etapas
+
+Las dos pipelines (Java en empleados, Node en vacaciones) recorren lo mismo:
+
+| Etapa | Qué comprueba |
+|---|---|
+| Checkout | Imprime el commit que Jenkins sacó de `file:///workspace`, rama `main` |
+| Build | Compila (`mvn compile` o `npm ci`) sin ejecutar pruebas |
+| Test | Corre las pruebas del Reto 6 y publica JUnit y cobertura aunque alguna falle |
+| SonarQube | Manda el código y el reporte de cobertura a SonarQube. Sonar no ejecuta las pruebas |
+| Quality Gate | Espera el gate `Reto7` (cobertura ≥ 70 %). Si no pasa, el pipeline se detiene |
+| Package | Construye `micro/<servicio>:<BUILD_NUMBER>` y `micro/<servicio>:latest` |
+| E2E Tests | Levanta el sistema como proyecto `micro-ci` (Gateway en el puerto 18080), corre la BDD y apaga ese proyecto con `down -v` |
+
+Un build con pruebas fallidas queda **amarillo** (`UNSTABLE`) y no sigue a Package ni a E2E.
+Uno que no compila, no empaqueta o no pasa el Quality Gate queda **rojo** (`FAILURE`).
+Verde es que todas las etapas pasaron.
+
+El E2E usa el proyecto Compose `micro-ci`, no el de la carpeta. Su `down -v` borra solo
+`micro-ci_vol-*`. El Gateway de esa corrida publica el **18080** para no pisar el `:8080` del
+equipo. Las dos pipelines comparten el lock `ecosistema-e2e`, así que no levantan el stack a
+la vez.
+
+La suite BDD que corre es la que ya está en `e2e-tests/`, incluidas
+`03-vacaciones.feature` y `04-offboarding.feature` desde que el Reto 6 cerró las fases 7 y 8.
+
+### Reportes publicados
+
+| Stage | Archivo | Paso de Jenkins | Dónde se mira |
+|---|---|---|---|
+| Test (Java) | `target/surefire-reports/*.xml`, `target/failsafe-reports/*.xml` | `junit` | Pestaña Test Result, tendencia entre builds |
+| Test (Java) | `target/site/jacoco/jacoco.xml` | `recordCoverage` parser `JACOCO` | Pestaña Coverage |
+| Test (Node) | `reports/junit.xml` | `junit` | Test Result |
+| Test (Node) | `reports/lcov.info` | `recordCoverage` parser `LCOV` | Coverage |
+| SonarQube | el mismo XML o lcov | `mvn sonar:sonar` o `sonar-scanner` | [http://localhost:9000](http://localhost:9000), proyecto y Quality Gate |
+| E2E | `e2e-tests/reports/junit.xml` | `junit` | Test Result (escenarios) |
+| E2E | `e2e-tests/reports/cucumber.json` | `cucumber` | Pestaña Cucumber Reports, en español |
+| E2E | `e2e-tests/reports/cucumber.html` | `publishHTML` | Enlace «Reporte BDD» |
+| E2E | `docker-logs.txt` | `archiveArtifacts` | Artefactos del build |
+
+Las capturas de un build verde, de Test Result, de Coverage, del reporte BDD y de un fallo
+identificado en la interfaz están en [`docs/reto7/EVIDENCIAS.md`](docs/reto7/EVIDENCIAS.md).

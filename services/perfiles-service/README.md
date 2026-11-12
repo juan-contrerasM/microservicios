@@ -1,5 +1,32 @@
 # perfiles-service
 
+## Ficha del servicio (plantilla C6)
+
+1. **Propósito:** perfil del empleado (datos de contacto, biografía, foto, redes sociales),
+   sincronizado por eventos de Empleados y archivado al retiro.
+2. **Tecnología:** Java 21 + Spring Boot 4.1 + Spring AMQP + PostgreSQL 16.
+3. **Endpoints** (Swagger: `/swagger-ui.html`, contrato: [`openapi.yaml`](openapi.yaml)):
+
+   | Método y ruta | Descripción |
+   |---|---|
+   | `GET /perfiles` · `GET /perfiles/{empleadoId}` | Listado y consulta (incluye archivados) |
+   | `PUT /perfiles/{empleadoId}` | Edición; el Gateway solo deja editar el perfil propio (o ADMIN) |
+   | `GET /health` · `GET /actuator/prometheus` | Salud C2 (base + broker) y métricas |
+4. **Eventos:** consume `empleado.creado`, `empleado.actualizado` y `empleado.retirado`; no publica.
+5. **Configuración:** `DB_*`, `DB_PASSWORD_FILE`, `BROKER_URL`, `RABBITMQ_*`, `BROKER_QUEUE`
+   (`q.perfiles`), `OTEL_*`.
+6. **Migraciones:** Liquibase (`src/main/resources/db/changelog/`) con rollback; `ddl-auto=validate`.
+7. **Pruebas:** `./mvnw verify` (unitarias + `PerfilesIT` con PostgreSQL y RabbitMQ en
+   Testcontainers); JaCoCo combinado con regla `check` ≥ 70 %. Cobertura actual 88,67 %.
+   Exclusiones: `main`, DTO, entidades, repositorios y configuración del broker.
+8. **Observabilidad:** Micrometer, logs JSON C5, agente OpenTelemetry. Negocio:
+   `perfiles_creados_total`, `perfiles_actualizados_total`, `perfiles_archivados_total` y
+   `eventos_*_total{tipo}`.
+9. **Resiliencia:** ack manual, prefetch 1, deduplicación atómica por id, 3 reintentos con 5 s y DLQ.
+10. **Decisiones:** el perfil es una réplica de lectura alimentada por eventos (sin llamadas
+    síncronas a Empleados); archivar en vez de borrar conserva el historial del retirado.
+
+
 Réplica del perfil de cada empleado. Java 21, Spring Boot, PostgreSQL propio y Spring AMQP.
 No comparte carpeta ni base con `empleados-service`. No publica eventos: el `PUT` solo edita
 los campos de RRHH.

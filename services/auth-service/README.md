@@ -1,5 +1,39 @@
 # auth-service
 
+## Ficha del servicio (plantilla C6)
+
+1. **Propósito:** identidad: cuentas nacidas de `empleado.creado` (sin registro público), login con
+   JWT, activación y recuperación por token, cambio de contraseña y estados
+   `PENDIENTE_ACTIVACION`, `ACTIVA`, `SUSPENDIDA_TEMPORAL` y `DESACTIVADA_PERMANENTE`.
+2. **Tecnología:** Python 3.12 + FastAPI + SQLAlchemy + PostgreSQL 16; BCrypt y PyJWT (HS256).
+3. **Endpoints** (Swagger: `/docs`, contrato: [`openapi.yaml`](openapi.yaml)):
+
+   | Método y ruta | Descripción |
+   |---|---|
+   | `POST /auth/login` | Access JWT (401 si la cuenta no está activa) |
+   | `POST /auth/recover-password` | Publica `usuario.recuperacion` (respuesta genérica) |
+   | `POST /auth/reset-password` | Activa o restablece con el token |
+   | `POST /auth/change-password` | Cambio con el access token |
+   | `GET /health` · `GET /metrics` | Salud C2 y métricas |
+4. **Eventos:** consume `empleado.creado`, `empleado.retirado`, `vacaciones.iniciadas` y
+   `vacaciones.finalizadas`; publica `usuario.creado`, `usuario.recuperacion`, `cuenta.activada` y
+   `cuenta.desactivada`.
+5. **Configuración:** `DB_*`, `DB_PASSWORD_FILE`, `BROKER_URL`, `RABBITMQ_*`, `JWT_SECRET_FILE`
+   (≥ 32 bytes), `JWT_ACCESS_MINUTES`, `RESET_TOKEN_MINUTES`, `AUTH_ADMIN_USUARIO`,
+   `AUTH_ADMIN_EMAIL`, `AUTH_ADMIN_PASSWORD_FILE`, `OTEL_*`.
+6. **Migraciones:** Alembic (`alembic/versions/`), con `downgrade` probado contra PostgreSQL real.
+7. **Pruebas:** `pytest`: JUnit en `reports/junit.xml`, `reports/coverage.xml`, umbral 70 %.
+   Cobertura actual 83,32 % (líneas + ramas). Integración en `tests/integracion/` con PostgreSQL y
+   RabbitMQ reales; `test_logs_sin_secretos.py` verifica que ningún log contiene contraseñas ni tokens.
+8. **Observabilidad:** prometheus-fastapi-instrumentator, logs JSON C5, OpenTelemetry (FastAPI,
+   SQLAlchemy, pika). Negocio: `logins_total{resultado}`, `cuentas_activadas_total`,
+   `cuentas_desactivadas_total{tipo}`, `recuperaciones_solicitadas_total` y `eventos_*_total{tipo}`.
+9. **Resiliencia:** consumidor con deduplicación atómica, reintentos (3 × 5 s) y DLQ; publicación
+   después del commit; el administrador semilla se crea al arrancar si no existe.
+10. **Decisiones:** sin `/register` (las cuentas nacen del onboarding); el retiro desactiva de forma
+    irreversible aunque llegue durante unas vacaciones; el token de reset no sirve como access token.
+
+
 Identidad del onboarding. Crea la cuenta cuando llega `empleado.creado`, firma el access JWT
 y publica los eventos de usuario y de cuenta. Python 3.12, FastAPI, PostgreSQL propio, Alembic
 y pika.

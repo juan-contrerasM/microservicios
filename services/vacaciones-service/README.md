@@ -1,5 +1,37 @@
 # vacaciones-service
 
+## Ficha del servicio (plantilla C6)
+
+1. **Propósito:** períodos de vacaciones (programar, modificar, cancelar) y scheduler que los inicia
+   y finaliza, publicando los eventos que suspenden y reactivan la cuenta.
+2. **Tecnología:** Node.js 22 + Express + `pg` + PostgreSQL 16; `node-cron` para el scheduler.
+3. **Endpoints** (Swagger: `/swagger/index.html`, contrato: [`openapi.yaml`](openapi.yaml)):
+
+   | Método y ruta | Descripción |
+   |---|---|
+   | `GET /vacaciones?empleadoId=` · `GET /vacaciones/{id}` | Listado y consulta |
+   | `POST /vacaciones` | Programar (fechas coherentes, futuras, sin solapamiento, empleado activo) |
+   | `PUT /vacaciones/{id}` · `DELETE /vacaciones/{id}` | Modificar o cancelar un período futuro |
+   | `POST /vacaciones/{id}/forzar-inicio` · `/forzar-fin` | Transiciones manuales (solo ADMIN) |
+   | `GET /health` · `GET /metrics` | Salud C2 y métricas |
+4. **Eventos:** publica `vacaciones.programadas`, `vacaciones.iniciadas`, `vacaciones.finalizadas`;
+   consume `empleado.creado` y `empleado.retirado` (réplica local de empleados).
+5. **Configuración:** `PORT`, `DB_*`, `DB_PASSWORD_FILE`, `BROKER_URL`, `RABBITMQ_*`,
+   `BROKER_QUEUE` (`q.vacaciones`), `VACACIONES_CRON`, `HEALTH_TIMEOUT_MS`, `OTEL_*`.
+6. **Migraciones:** node-pg-migrate (`migrations/`), cada una con `down`, aplicadas al arrancar.
+7. **Pruebas:** `npm test` sobre todo `src/` salvo `index.js` y `telemetria.js` (arranque):
+   JUnit y LCOV en `reports/`, umbral 70 %. Cobertura actual 82,67 %. Integración:
+   `npm run test:integration` con PostgreSQL y RabbitMQ reales.
+8. **Observabilidad:** prom-client, logs JSON C5, OpenTelemetry (http, pg, amqplib). Negocio:
+   `vacaciones_programadas_total`, `vacaciones_iniciadas_total`, `vacaciones_finalizadas_total` y
+   `eventos_*_total{tipo}`.
+9. **Resiliencia y escalado:** consumidor con deduplicación, reintentos y DLQ; publicación tras el
+   commit; el scheduler toma un `pg_try_advisory_lock` por tick (`src/lock.js`), así que con varias
+   réplicas solo una ejecuta las transiciones.
+10. **Decisiones:** días hábiles calculados al programar; el scheduler y los endpoints `forzar-*`
+    comparten la misma transición para que la demostración use el código de producción.
+
+
 Programa períodos de vacaciones y publica `vacaciones.programadas`. Desde el Reto 5 también
 observa el paso del tiempo: un scheduler inicia y finaliza los períodos y publica
 `vacaciones.iniciadas` y `vacaciones.finalizadas`. Node.js 22, Express y PostgreSQL propio.

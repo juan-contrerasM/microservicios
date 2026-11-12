@@ -59,3 +59,6 @@ coverage.out
 
 # Fase 10: historial local de despliegues (scripts/deploy.sh)
 .deploy/
+
+# Fase 16: paquetes de entrega generados por scripts/empaquetar.sh
+dist/

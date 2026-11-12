@@ -1,5 +1,33 @@
 # notificaciones-service
 
+## Ficha del servicio (plantilla C6)
+
+1. **Propósito:** envía los correos del ciclo de vida (activación, recuperación, cuenta, vacaciones)
+   y guarda el historial de notificaciones por empleado.
+2. **Tecnología:** Python 3.12 + FastAPI + SQLAlchemy + PostgreSQL 16; `smtplib` hacia Mailhog.
+3. **Endpoints** (Swagger: `/docs`, contrato: [`openapi.yaml`](openapi.yaml)):
+
+   | Método y ruta | Descripción |
+   |---|---|
+   | `GET /notificaciones` · `GET /notificaciones/{empleadoId}` | Historial (vacío no es 404) |
+   | `GET /health` · `GET /metrics` | Salud C2 (base + broker) y métricas |
+4. **Eventos:** consume `empleado.creado`, `empleado.retirado`, `usuario.creado`,
+   `usuario.recuperacion`, `cuenta.activada`, `cuenta.desactivada` y `vacaciones.*`; no publica.
+5. **Configuración:** `DB_*`, `DB_PASSWORD_FILE`, `BROKER_URL`, `RABBITMQ_*`, `BROKER_QUEUE`,
+   `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `NOTIFICACIONES_TEMPLATES_FILE` (plantillas montadas en
+   solo lectura desde `config/templates.json`), `OTEL_*`.
+6. **Migraciones:** Alembic (`alembic/versions/`) con `downgrade` probado contra PostgreSQL real.
+7. **Pruebas:** `pytest`: JUnit y `coverage.xml` en `reports/`, umbral 70 %. Cobertura actual
+   78,21 %. Integración con PostgreSQL, RabbitMQ y Mailhog reales en `tests/integracion/`.
+8. **Observabilidad:** prometheus-fastapi-instrumentator, logs JSON C5 (sin destinatarios ni
+   tokens), OpenTelemetry. Negocio: `notificaciones_enviadas_total{tipo}`,
+   `notificaciones_fallidas_total{tipo}` y `eventos_*_total{tipo}`.
+9. **Resiliencia:** deduplicación por id; los correos salen **después** del commit, así un
+   reintento nunca duplica un correo; un fallo SMTP no deshace la notificación guardada.
+10. **Decisiones:** plantillas externas en JSON para cambiar textos sin recompilar; el historial se
+    consulta por API en lugar de exponer la base.
+
+
 Consumidor de la cola `q.notificaciones`. No lo llama nadie para crear avisos: registra la
 traza cuando llegan eventos y deja consultarla. Python 3.12, FastAPI, PostgreSQL propio y pika.
 
