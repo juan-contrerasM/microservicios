@@ -262,7 +262,7 @@ pipeline {
         // Despliegue de prueba aislado (proyecto micro-ci) y BDD completa contra él.
         sh """
           set -eu
-          export HOST_REPO="$(sh jenkins/host-repo.sh)"
+          export HOST_REPO="\$(sh jenkins/host-repo.sh)"
           export GATEWAY_PORT=18080 RABBITMQ_MANAGEMENT_PORT=15673 MAILHOG_UI_PORT=18025
           docker compose --env-file /workspace/.env -f docker-compose.yml -f jenkins/docker-compose.ci.yml \\
             -p micro-ci up -d --build ${NEGOCIO}
