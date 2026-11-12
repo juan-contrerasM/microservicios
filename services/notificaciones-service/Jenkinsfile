@@ -120,7 +120,13 @@ pipeline {
         checkout scm
         // Workspace idéntico al commit: checkout no borra archivos sin versionar, y un fallo simulado
         // (prueba inyectada, Dockerfile roto) o un reporte viejo contaminaría el build siguiente.
-        sh 'git reset --hard -q && git clean -fdxq'
+        // Los agentes corren como root: antes de limpiar se devuelve la propiedad del workspace
+        // al usuario de Jenkins con un contenedor efímero que monta sus mismos volúmenes.
+        sh '''
+          docker run --rm --volumes-from "$(hostname)" alpine:3.21 chown -R "$(id -u):$(id -g)" "$WORKSPACE"
+          git reset --hard -q
+          git clean -fdxq
+        '''
         script {
           // Tag inmutable: commit corto + número de build. `latest` es solo un alias.
           env.TAG = "${sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()}-${env.BUILD_NUMBER}"

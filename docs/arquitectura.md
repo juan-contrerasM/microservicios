@@ -169,6 +169,11 @@ sequenceDiagram
 - **Balanceador (Traefik):** descubre las réplicas de su proyecto Compose, las verifica con health
   checks activos a `/health` cada 5 s, reintenta en otra réplica ante errores de conexión y, si un
   servicio se queda sin réplicas, responde 502 (el Gateway lo convierte en 503 y abre el circuito).
+- **Broker caído (fail-fast deliberado):** el `/health` C2 de los servicios que publican o consumen
+  incluye RabbitMQ, así que el balanceador los saca de rotación y el Gateway responde 503 en el acto.
+  Se prefiere eso a aceptar un alta cuyo evento de onboarding se perdería (la publicación es
+  post-commit y no hay outbox). Al volver el broker, los consumidores se reconectan solos y el
+  circuito del Gateway se cierra tras su ventana de 30 s (`scripts/caos.sh` lo verifica).
 - **Escalado:** ningún servicio publica puerto ni usa `container_name`; `docker compose up --scale
   <servicio>=2` funciona en los siete. Los consumidores compiten por la misma cola y la deduplicación
   evita efectos dobles; el scheduler de Vacaciones toma un `pg_try_advisory_lock` por tick.
