@@ -53,7 +53,7 @@ export function loadConfig(env = process.env) {
 			? requiredUrl(env, 'VACACIONES_URL')
 			: undefined,
 		authUrl: requiredUrl(env, 'AUTH_URL'),
-		jwtSecret: required(env, 'JWT_SECRET'),
+		jwtSecret: secretoJwt(env),
 		proxyTimeoutMs,
 		proxyTimeouts: {
 			'auth-service': Number(env.AUTH_PROXY_TIMEOUT_MS || proxyTimeoutMs),
@@ -70,5 +70,20 @@ export function loadConfig(env = process.env) {
 		// que traiga variable; las demás usan RUTAS_OPENAPI_POR_DEFECTO (src/swagger.js).
 		rutasOpenapi: rutasOpenapi(env),
 		swaggerTimeoutMs: Number(env.SWAGGER_SPEC_TIMEOUT_MS || 3_000),
+		// Fase 13: orígenes CORS permitidos (lista separada por comas; vacía = sin CORS), tamaño
+		// máximo de cuerpo y límite de intentos por IP y minuto en login/recuperación/reset.
+		corsOrigins: String(env.CORS_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),
+		maxBodyBytes: Number(env.MAX_BODY_BYTES || 1_048_576),
+		rateLimitMax: Number(env.AUTH_RATE_LIMIT_MAX || 20),
+		rateLimitVentanaMs: Number(env.AUTH_RATE_LIMIT_WINDOW_MS || 60_000),
 	};
+}
+
+// Fase 13: HS256 con una clave corta es atacable por fuerza bruta (RFC 7518 §3.2 pide ≥ 256 bits).
+function secretoJwt(env) {
+	const valor = required(env, 'JWT_SECRET');
+	if (Buffer.byteLength(valor) < 32) {
+		throw new Error('JWT_SECRET debe tener al menos 32 bytes');
+	}
+	return valor;
 }

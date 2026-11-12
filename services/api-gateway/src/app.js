@@ -6,6 +6,7 @@ import { exigirAcceso } from './auth.js';
 import { manejarError, rutaNoEncontrada } from './errors.js';
 import { backendProxy } from './proxy.js';
 import { metricsHandler, metricsMiddleware } from './metricas.js';
+import { cabecerasSeguras, cors, limiteCuerpo, limiteDePeticiones } from './seguridad.js';
 import { swaggerRouter } from './swagger.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,10 @@ export function createApp({
 	circuitOpenMs = 30_000,
 	rutasOpenapi = {},
 	swaggerTimeoutMs = 3_000,
+	corsOrigins = [],
+	maxBodyBytes = 1_048_576,
+	rateLimitMax = 20,
+	rateLimitVentanaMs = 60_000,
 	fetchImpl = fetch,
 }) {
 	if (!jwtSecret) {
@@ -44,6 +49,21 @@ export function createApp({
 		circuitOpenMs,
 	});
 	app.disable('x-powered-by');
+	// Detrás del balanceador (Fase 12): req.ip sale de X-Forwarded-For del primer proxy.
+	app.set('trust proxy', 1);
+	// Fase 13 (E24): cabeceras seguras, CORS explícito, límite de cuerpo y rate limiting.
+	app.use(cabecerasSeguras());
+	app.use(cors(corsOrigins));
+	app.use(limiteCuerpo(maxBodyBytes));
+	app.use(limiteDePeticiones({
+		rutas: new Map([
+			['POST /auth/login', 'fallos'],
+			['POST /auth/reset-password', 'fallos'],
+			['POST /auth/recover-password', 'todas'],
+		]),
+		maximo: rateLimitMax,
+		ventanaMs: rateLimitVentanaMs,
+	}));
 	app.use(metricsMiddleware);
 	app.get('/metrics', metricsHandler);
 

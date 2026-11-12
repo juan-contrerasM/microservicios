@@ -20,7 +20,9 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: up{job=~"api-gateway|empleados-service|departamentos-service|perfiles-service|notificaciones-service|vacaciones-service|auth-service"}
+              # Fase 12: con descubrimiento DNS una réplica caída desaparece de los targets; si caen
+              # todas, absent() devuelve 0 para ese job y la alerta se dispara igual.
+              expr: 'min by (job) (up{job=~"api-gateway|empleados-service|departamentos-service|perfiles-service|notificaciones-service|vacaciones-service|auth-service"}) or (absent(up{job="api-gateway"}) * 0) or (absent(up{job="empleados-service"}) * 0) or (absent(up{job="departamentos-service"}) * 0) or (absent(up{job="perfiles-service"}) * 0) or (absent(up{job="notificaciones-service"}) * 0) or (absent(up{job="vacaciones-service"}) * 0) or (absent(up{job="auth-service"}) * 0)'
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200
@@ -38,7 +40,7 @@ groups:
         for: 1m
         annotations:
           summary: '{{ .Labels.job }} no responde al scrape de Prometheus'
-          description: 'El target {{ .Labels.job }} ({{ .Labels.instance }}) lleva al menos 1 minuto en DOWN (up = 0).'
+          description: 'Alguna réplica de {{ .Labels.job }} (o todas) lleva al menos 1 minuto sin responder al scrape (up = 0 o sin targets).'
           __dashboardUid__: reto8-observabilidad
           __panelId__: '2'
         labels:

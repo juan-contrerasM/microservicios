@@ -49,6 +49,9 @@ def load_settings() -> Settings:
             f"@{db_host}:{db_port}/{db_name}"
         )
     settings = Settings(**values)
+    if len(settings.jwt_secret.encode()) < 32:
+        # Fase 13: HS256 con clave corta es atacable por fuerza bruta (RFC 7518 §3.2: ≥ 256 bits).
+        raise RuntimeError("JWT_SECRET es obligatoria y debe tener al menos 32 bytes")
     if not settings.jwt_secret:
         raise RuntimeError("La variable de entorno JWT_SECRET es obligatoria")
     if not settings.rabbitmq_password or not settings.auth_admin_password:

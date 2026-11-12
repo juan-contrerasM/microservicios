@@ -5,7 +5,8 @@ const tracer = trace.getTracer('vacaciones-scheduler');
 
 /**
  * Corre el ciclo de transiciones con la expresión de VACACIONES_CRON.
- * Una sola instancia: con N réplicas cada una dispararía el job (ver README, Reto 31).
+ * Con N réplicas cada una dispara el job; index.js lo envuelve en conLockDeScheduler (lock.js)
+ * para que solo una ejecute las transiciones de cada tick.
  */
 export function iniciarScheduler({ expresion, ejecutarCiclo }) {
 	if (!cron.validate(expresion)) {

@@ -7,6 +7,7 @@ import { crearConsumidor } from './consumidor.js';
 import { baseResponde, crearPool } from './db.js';
 import { crearPublicador } from './publicar.js';
 import { evaluarChecks } from './salud.js';
+import { conLockDeScheduler } from './lock.js';
 import { iniciarScheduler } from './scheduler.js';
 import { crearServicio } from './servicio.js';
 
@@ -24,7 +25,8 @@ await migrate({
 let consumidorConectado = false;
 const publicar = crearPublicador(config);
 const servicio = crearServicio({ pool, publicar });
-iniciarScheduler({ expresion: config.cron, ejecutarCiclo: servicio.ejecutarCiclo });
+// Fase 12: con varias réplicas solo la que toma el advisory lock ejecuta cada tick (src/lock.js).
+iniciarScheduler({ expresion: config.cron, ejecutarCiclo: conLockDeScheduler(pool, servicio.ejecutarCiclo) });
 crearConsumidor({
 	config,
 	pool,

@@ -13,6 +13,7 @@ import { crearConsumidor } from '../../src/consumidor.js';
 import { baseResponde, crearPool } from '../../src/db.js';
 import { crearPublicador } from '../../src/publicar.js';
 import { evaluarChecks } from '../../src/salud.js';
+import { conLockDeScheduler } from '../../src/lock.js';
 import { crearServicio } from '../../src/servicio.js';
 
 const databaseUrl = process.env.IT_DATABASE_URL;
@@ -180,5 +181,29 @@ test('CRUD HTTP completo y transiciones con eventos publicados', { skip: omitir 
 	for (const evento of recibidos) {
 		assert.equal(evento.producer, 'vacaciones-service');
 		assert.equal(evento.data.empleadoId, EMPLEADO);
+	}
+});
+
+test('dos réplicas del scheduler: el advisory lock real deja ejecutar solo a una', { skip: omitir }, async () => {
+	let ejecuciones = 0;
+	const cicloLento = async () => {
+		ejecuciones += 1;
+		await new Promise((r) => setTimeout(r, 500));
+		return { iniciados: [], finalizados: [] };
+	};
+	// Dos pools = dos réplicas con su propia conexión a la misma base.
+	const otroPool = crearPool(databaseUrl);
+	try {
+		const [a, b] = await Promise.all([
+			conLockDeScheduler(pool, cicloLento)(),
+			conLockDeScheduler(otroPool, cicloLento)(),
+		]);
+		assert.equal(ejecuciones, 1);
+		assert.equal([a, b].filter((r) => r.omitido).length, 1);
+		// Al terminar se libera: el siguiente tick lo toma cualquiera.
+		await conLockDeScheduler(otroPool, cicloLento)();
+		assert.equal(ejecuciones, 2);
+	} finally {
+		await otroPool.end();
 	}
 });

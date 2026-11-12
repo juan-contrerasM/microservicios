@@ -12,13 +12,13 @@
     "start": "node --import ./src/telemetria.js src/index.js",
     "openapi:export": "node scripts/exportar-openapi.js",
     "pretest": "node -e \"require('node:fs').mkdirSync('reports',{recursive:true})\"",
-    "test": "node --test --experimental-test-coverage --test-coverage-include=src/app.js --test-coverage-include=src/auth.js --test-coverage-include=src/circuit-breaker.js --test-coverage-include=src/config.js --test-coverage-include=src/errors.js --test-coverage-include=src/logger.js --test-coverage-include=src/metricas.js --test-coverage-include=src/proxy.js --test-coverage-include=src/swagger.js --test-coverage-lines=${COBERTURA_MINIMA:-70} --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
+    "test": "node --test --experimental-test-coverage --test-coverage-include=src/app.js --test-coverage-include=src/auth.js --test-coverage-include=src/circuit-breaker.js --test-coverage-include=src/config.js --test-coverage-include=src/errors.js --test-coverage-include=src/logger.js --test-coverage-include=src/metricas.js --test-coverage-include=src/proxy.js --test-coverage-include=src/seguridad.js --test-coverage-include=src/swagger.js --test-coverage-lines=${COBERTURA_MINIMA:-70} --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.67.2",
-    "@opentelemetry/exporter-zipkin": "^2.2.0",
-    "@opentelemetry/sdk-node": "^0.207.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.75.0",
+    "@opentelemetry/exporter-zipkin": "^2.7.1",
+    "@opentelemetry/sdk-node": "^0.217.0",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.3",
     "prom-client": "^15.1.3",
@@ -28,5 +28,10 @@
   "devDependencies": {
     "@apidevtools/swagger-parser": "10.1.1",
     "supertest": "^7.1.4"
+  },
+  "overrides": {
+    "protobufjs": "8.8.1",
+    "glob": "^11.1.0",
+    "@opentelemetry/propagator-jaeger": "2.9.0"
   }
 }

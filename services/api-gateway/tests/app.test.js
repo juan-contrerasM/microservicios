@@ -6,7 +6,7 @@ import request from 'supertest';
 import { createApp, VERSION } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 
-const SECRET = 'secreto-de-prueba';
+const SECRET = 'secreto-de-prueba-con-al-menos-32-bytes';
 
 function firmar(payload, options = {}) {
 	return jwt.sign(payload, SECRET, { algorithm: 'HS256', expiresIn: '1h', ...options });

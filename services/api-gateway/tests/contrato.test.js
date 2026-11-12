@@ -16,7 +16,7 @@ import { loadConfig } from '../src/config.js';
 import { manejarError } from '../src/errors.js';
 import { RUTAS_OPENAPI_POR_DEFECTO } from '../src/swagger.js';
 
-const SECRET = 'secreto-de-prueba';
+const SECRET = 'secreto-de-prueba-con-al-menos-32-bytes';
 const raiz = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CAMPOS_C3 = ['error', 'message', 'path', 'status', 'timestamp', 'traceId'];
 const TRACEPARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01';

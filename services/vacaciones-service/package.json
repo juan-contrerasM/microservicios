@@ -17,9 +17,9 @@
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.67.2",
-    "@opentelemetry/exporter-zipkin": "^2.2.0",
-    "@opentelemetry/sdk-node": "^0.207.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.75.0",
+    "@opentelemetry/exporter-zipkin": "^2.7.1",
+    "@opentelemetry/sdk-node": "^0.217.0",
     "amqplib": "^0.10.5",
     "express": "^4.21.2",
     "node-cron": "^4.6.0",
@@ -30,5 +30,10 @@
   "devDependencies": {
     "@apidevtools/swagger-parser": "10.1.1",
     "yaml": "2.6.1"
+  },
+  "overrides": {
+    "protobufjs": "8.8.1",
+    "glob": "^11.1.0",
+    "@opentelemetry/propagator-jaeger": "2.9.0"
   }
 }

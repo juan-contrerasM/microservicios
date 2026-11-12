@@ -84,6 +84,17 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+    # Fase 12: el Gateway (y Empleados) llegan aquí por Traefik vía el alias departamentos-lb, que reparte
+    # entre réplicas y saca de rotación la que falle su /health (health check activo).
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.departamentos.rule: Host(`departamentos-lb`)
+      traefik.http.routers.departamentos.entrypoints: interno
+      traefik.http.routers.departamentos.middlewares: reintento@file
+      traefik.http.services.departamentos.loadbalancer.server.port: "8081"
+      traefik.http.services.departamentos.loadbalancer.healthcheck.path: /health
+      traefik.http.services.departamentos.loadbalancer.healthcheck.interval: 5s
+      traefik.http.services.departamentos.loadbalancer.healthcheck.timeout: 3s
     networks:
       - backend-network
       - data-network
@@ -99,7 +110,7 @@ services:
       DB_NAME: ${EMPLEADOS_DB_NAME}
       DB_USER: ${EMPLEADOS_DB_USER}
       DB_PASSWORD_FILE: /run/secrets/empleados_db_password
-      DEPARTAMENTOS_SERVICE_URL: http://departamentos-service:8081
+      DEPARTAMENTOS_SERVICE_URL: http://departamentos-lb:8000
       DEPARTAMENTOS_SERVICE_TIMEOUT: ${DEPARTAMENTOS_SERVICE_TIMEOUT}
       DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS: ${DEPARTAMENTOS_SERVICE_MAX_ATTEMPTS}
       DEPARTAMENTOS_SERVICE_INITIAL_BACKOFF: ${DEPARTAMENTOS_SERVICE_INITIAL_BACKOFF}
@@ -136,6 +147,17 @@ services:
       timeout: 3s
       retries: 10
       start_period: 15s
+    # Fase 12: el Gateway (y Empleados) llegan aquí por Traefik vía el alias empleados-lb, que reparte
+    # entre réplicas y saca de rotación la que falle su /health (health check activo).
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.empleados.rule: Host(`empleados-lb`)
+      traefik.http.routers.empleados.entrypoints: interno
+      traefik.http.routers.empleados.middlewares: reintento@file
+      traefik.http.services.empleados.loadbalancer.server.port: "8080"
+      traefik.http.services.empleados.loadbalancer.healthcheck.path: /health
+      traefik.http.services.empleados.loadbalancer.healthcheck.interval: 5s
+      traefik.http.services.empleados.loadbalancer.healthcheck.timeout: 3s
     networks:
       - backend-network
       - data-network
@@ -183,17 +205,64 @@ services:
       - messaging-network
       - observability-network
 
-  # --- Único puerto de negocio publicado al host ---
+  # --- Fase 12. Balanceador: único puerto de negocio publicado al host (:8080) ---
+  # Traefik descubre por la API de Docker los contenedores de ESTE proyecto (constraint por
+  # com.docker.compose.project) con traefik.enable=true y reparte entre sus réplicas sanas:
+  #   web     (:8080, publicado)  → réplicas de api-gateway
+  #   interno (:8000, solo backend) → servicios de negocio, por los alias <servicio>-lb
+  # Health check activo contra /health de cada réplica: la que falla sale de rotación sola.
+  balanceador:
+    # Imagen traefik:v3.6.1 + ruta de respaldo 502 (infrastructure/traefik/dinamico.yml).
+    build: ./infrastructure/traefik
+    command:
+      - --providers.file.filename=/etc/traefik/dinamico.yml
+      - --entrypoints.web.address=:8080
+      - --entrypoints.interno.address=:8000
+      - --entrypoints.metricas.address=:8082
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=${COMPOSE_PROJECT_NAME}_backend-network
+      - --providers.docker.constraints=Label(`com.docker.compose.project`,`${COMPOSE_PROJECT_NAME}`)
+      - --ping=true
+      - --ping.entrypoint=metricas
+      - --metrics.prometheus=true
+      - --metrics.prometheus.entrypoint=metricas
+      - --metrics.prometheus.addServicesLabels=true
+      - --log.format=json
+      - --accesslog=false
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    volumes:
+      # Solo lectura: Traefik lee contenedores y salud, no los modifica.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping", "--ping.entrypoint=metricas", "--entrypoints.metricas.address=:8082"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      frontend-network:
+      backend-network:
+        aliases:
+          - empleados-lb
+          - departamentos-lb
+          - perfiles-lb
+          - notificaciones-lb
+          - vacaciones-lb
+          - auth-lb
+      observability-network:
+
   api-gateway:
     build: ./services/api-gateway
     environment:
       PORT: 8080
-      EMPLEADOS_URL: http://empleados-service:8080
-      DEPARTAMENTOS_URL: http://departamentos-service:8081
-      NOTIFICACIONES_URL: http://notificaciones-service:8084
-      PERFILES_URL: http://perfiles-service:8083
-      VACACIONES_URL: http://vacaciones-service:8085
-      AUTH_URL: http://auth-service:8086
+      EMPLEADOS_URL: http://empleados-lb:8000
+      DEPARTAMENTOS_URL: http://departamentos-lb:8000
+      NOTIFICACIONES_URL: http://notificaciones-lb:8000
+      PERFILES_URL: http://perfiles-lb:8000
+      VACACIONES_URL: http://vacaciones-lb:8000
+      AUTH_URL: http://auth-lb:8000
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       PROXY_TIMEOUT_MS: ${PROXY_TIMEOUT_MS}
       AUTH_PROXY_TIMEOUT_MS: ${AUTH_PROXY_TIMEOUT_MS:-5000}
@@ -210,8 +279,9 @@ services:
       OTEL_PROPAGATORS: ${OTEL_PROPAGATORS:-tracecontext,baggage}
       OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-always_on}
       LOG_FORMAT: json
-    ports:
-      - "${GATEWAY_PORT:-8080}:8080"
+    # Fase 12: sin puerto de host; el tráfico entra por el balanceador y escala con --scale.
+    expose:
+      - "8080"
     secrets:
       - jwt_secret
     # Excepción deliberada a E06 (service_healthy): el borde debe arrancar incluso si un
@@ -237,8 +307,18 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+    # Fase 12: Traefik (servicio balanceador) publica el :8080 y reparte entre las réplicas
+    # sanas del Gateway; el Gateway ya no publica puerto propio y escala con --scale.
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.gateway.rule: PathPrefix(`/`)
+      traefik.http.routers.gateway.entrypoints: web
+      traefik.http.routers.gateway.middlewares: reintento@file
+      traefik.http.services.gateway.loadbalancer.server.port: "8080"
+      traefik.http.services.gateway.loadbalancer.healthcheck.path: /health
+      traefik.http.services.gateway.loadbalancer.healthcheck.interval: 5s
+      traefik.http.services.gateway.loadbalancer.healthcheck.timeout: 3s
     networks:
-      - frontend-network
       - backend-network
       - observability-network
 
@@ -306,6 +386,17 @@ services:
       timeout: 3s
       retries: 10
       start_period: 20s
+    # Fase 12: el Gateway (y Empleados) llegan aquí por Traefik vía el alias notificaciones-lb, que reparte
+    # entre réplicas y saca de rotación la que falle su /health (health check activo).
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.notificaciones.rule: Host(`notificaciones-lb`)
+      traefik.http.routers.notificaciones.entrypoints: interno
+      traefik.http.routers.notificaciones.middlewares: reintento@file
+      traefik.http.services.notificaciones.loadbalancer.server.port: "8084"
+      traefik.http.services.notificaciones.loadbalancer.healthcheck.path: /health
+      traefik.http.services.notificaciones.loadbalancer.healthcheck.interval: 5s
+      traefik.http.services.notificaciones.loadbalancer.healthcheck.timeout: 3s
     networks:
       - backend-network
       - data-network
@@ -371,6 +462,17 @@ services:
       timeout: 5s
       retries: 12
       start_period: 90s
+    # Fase 12: el Gateway (y Empleados) llegan aquí por Traefik vía el alias perfiles-lb, que reparte
+    # entre réplicas y saca de rotación la que falle su /health (health check activo).
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.perfiles.rule: Host(`perfiles-lb`)
+      traefik.http.routers.perfiles.entrypoints: interno
+      traefik.http.routers.perfiles.middlewares: reintento@file
+      traefik.http.services.perfiles.loadbalancer.server.port: "8083"
+      traefik.http.services.perfiles.loadbalancer.healthcheck.path: /health
+      traefik.http.services.perfiles.loadbalancer.healthcheck.interval: 5s
+      traefik.http.services.perfiles.loadbalancer.healthcheck.timeout: 3s
     networks:
       - backend-network
       - data-network
@@ -454,6 +556,17 @@ services:
       timeout: 3s
       retries: 10
       start_period: 20s
+    # Fase 12: el Gateway (y Empleados) llegan aquí por Traefik vía el alias vacaciones-lb, que reparte
+    # entre réplicas y saca de rotación la que falle su /health (health check activo).
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.vacaciones.rule: Host(`vacaciones-lb`)
+      traefik.http.routers.vacaciones.entrypoints: interno
+      traefik.http.routers.vacaciones.middlewares: reintento@file
+      traefik.http.services.vacaciones.loadbalancer.server.port: "8085"
+      traefik.http.services.vacaciones.loadbalancer.healthcheck.path: /health
+      traefik.http.services.vacaciones.loadbalancer.healthcheck.interval: 5s
+      traefik.http.services.vacaciones.loadbalancer.healthcheck.timeout: 3s
     networks:
       - backend-network
       - data-network
@@ -504,6 +617,17 @@ services:
       timeout: 3s
       retries: 12
       start_period: 20s
+    # Fase 12: el Gateway (y Empleados) llegan aquí por Traefik vía el alias auth-lb, que reparte
+    # entre réplicas y saca de rotación la que falle su /health (health check activo).
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.auth.rule: Host(`auth-lb`)
+      traefik.http.routers.auth.entrypoints: interno
+      traefik.http.routers.auth.middlewares: reintento@file
+      traefik.http.services.auth.loadbalancer.server.port: "8086"
+      traefik.http.services.auth.loadbalancer.healthcheck.path: /health
+      traefik.http.services.auth.loadbalancer.healthcheck.interval: 5s
+      traefik.http.services.auth.loadbalancer.healthcheck.timeout: 3s
     networks:
       - backend-network
       - data-network

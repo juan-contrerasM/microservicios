@@ -86,7 +86,7 @@ def DIR = "services/${SERVICIO}"
 def AGENTE = "-u root --network ${env.DOCKER_NETWORK} --add-host=host.docker.internal:host-gateway ${CFG.cache}"
 // Servicios de negocio que levanta el despliegue de prueba (proyecto micro-ci).
 def NEGOCIO = 'api-gateway empleados-service departamentos-service notificaciones-service perfiles-service ' +
-  'vacaciones-service auth-service mailhog message-broker'
+  'vacaciones-service auth-service mailhog message-broker balanceador'
 
 pipeline {
   agent any

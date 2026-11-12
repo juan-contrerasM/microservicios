@@ -20,9 +20,9 @@ RAIZ = Path(__file__).resolve().parents[1]
 @pytest.fixture
 def config(monkeypatch):
     # env.py lee la URL con load_settings(), que exige estos secretos.
-    monkeypatch.setenv("JWT_SECRET", "solo-para-generar-sql")
-    monkeypatch.setenv("RABBITMQ_PASSWORD", "solo-para-generar-sql")
-    monkeypatch.setenv("AUTH_ADMIN_PASSWORD", "solo-para-generar-sql")
+    monkeypatch.setenv("JWT_SECRET", "solo-para-generar-sql-con-32-bytes-o-mas")
+    monkeypatch.setenv("RABBITMQ_PASSWORD", "solo-para-generar-sql-con-32-bytes-o-mas")
+    monkeypatch.setenv("AUTH_ADMIN_PASSWORD", "solo-para-generar-sql-con-32-bytes-o-mas")
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://auth:x@localhost:5432/auth_db")
     buffer = io.StringIO()
     # Sin config_file_name para que env.py no reconfigure el logging de la suite.

@@ -1,0 +1,24 @@
+# Fase 12: ruta de respaldo del entrypoint interno. Si un servicio se queda sin réplicas sanas,
+# Traefik retira su router y, sin esto, un <servicio>-lb respondería 404 (que parece una respuesta
+# de negocio). Con prioridad mínima, esta ruta solo atiende ese caso y apunta a un puerto cerrado:
+# Traefik responde 502 y el Gateway lo trata como backend caído (circuit breaker + 503 C3).
+http:
+  routers:
+    sin-replicas:
+      rule: HostRegexp(`^[a-z]+-lb$`)
+      entryPoints: [interno]
+      priority: 1
+      service: sin-replicas
+  services:
+    sin-replicas:
+      loadBalancer:
+        servers:
+          - url: http://127.0.0.1:9
+  # Fase 12: si una réplica cae, durante los segundos que tarda el health check en sacarla de
+  # rotación las conexiones fallan. Traefik reintenta en otra réplica solo cuando la petición no
+  # llegó al backend (error de red), así que es seguro también para POST/PUT/DELETE.
+  middlewares:
+    reintento:
+      retry:
+        attempts: 3
+        initialInterval: 100ms
