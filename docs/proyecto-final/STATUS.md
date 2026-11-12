@@ -29,7 +29,7 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 | 3B | — | Funcionalidad faltante Node/Python | B | ✅ | Vacaciones modificables, plantillas externas, ciclo de cuenta |
 | 4 | 1 | Eventos, idempotencia, retry y DLQ (E11, E12) | A + B | ✅ | RabbitMQ real: dedup atómica, poison en cuatro DLQ, recuperación transitoria y agotamiento de tres reintentos sin re-fan-out. |
 | 5 | 1 | Contrato HTTP: OpenAPI, errores, health, migraciones (E05, E07–E09) | A + B | ✅ | Siete health 200; Empleados 503 en 2,13 s con PostgreSQL caído; siete contratos Swagger 200 y BDD 18/18. |
-| 6 | 2 | Resiliencia síncrona: CB, timeout y retry (E10) | A + B | ⬜ | Gateway sin circuit breaker ni reintentos |
+| 6 | 2 | Resiliencia síncrona: CB, timeout y retry (E10) | A + B | ✅ | Gateway con circuito por backend, timeout por servicio, retry GET 1–2–4 s y métricas; Empleados→Departamentos revalidado. |
 | 7 | 1 | Contenerización multi-stage y no root (E01, E02) | C + A + B | ✅ | Construcción limpia correcta; siete aplicaciones healthy como UID/GID `10001:10001`. |
 | 8 | 2 | Pruebas, cobertura ≥70 % por servicio y BDD (E13–E17) | A + B + D | ⬜ | Gateway, Perfiles y Departamentos con pocas pruebas |
 | 9 | 2–3 | Jenkinsfile y SonarQube en los siete servicios (E18, E19) | C | ⬜ | Hoy solo Empleados y Vacaciones |
@@ -44,7 +44,7 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 ## Punto actual
 
 **Ola 1 cerrada y validada con Docker**: Fases 4, 5 y 7, stack completo, RabbitMQ real y BDD 18/18.
-**Ola 2 en curso:** Fases 6, 8, 11 y 14, junto con la plantilla de la Fase 9.
+**Ola 2 en curso:** Fase 6 cerrada; continúan las Fases 8, 11 y 14, junto con la plantilla de la Fase 9.
 
 ## Decisiones
 

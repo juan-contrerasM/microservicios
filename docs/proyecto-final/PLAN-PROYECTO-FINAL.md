@@ -239,7 +239,7 @@ termina en DLQ sin bloquear la cola; columnas E11/E12 en verde.
 **Cierre:** siete Swagger UI navegables desde el Gateway, siete `openapi.yaml`, health 200/503
 demostrado por dependencia en cada servicio.
 
-### Fase 6 — Resiliencia de la comunicación síncrona (Ola 2)
+### Fase 6 — Resiliencia de la comunicación síncrona (Ola 2, cerrada)
 
 **Frentes:** B (Gateway) y A (Empleados). **Estándar:** E10.
 

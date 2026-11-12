@@ -25,7 +25,7 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | E07 | `/health` C2 con 200/503 real | ✅ timeout 2 s por check | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ propio | 5 |
 | E08 | OpenAPI completo + Swagger UI + `openapi.yaml` + `bearerAuth` | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ `/swagger` con 7 contratos | 5 |
 | E09 | Error HTTP C3 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 5 |
-| E10 | Timeout + retry backoff + circuit breaker en clientes HTTP | ✅ Resilience4j → Departamentos | N/A | N/A | N/A | N/A | N/A | ❌ solo timeout de 35 s | 6 |
+| E10 | Timeout + retry backoff + circuit breaker en clientes HTTP | ✅ Resilience4j → Departamentos | N/A | N/A | N/A | N/A | N/A | ✅ circuito por backend, timeout por servicio y retry solo GET | 6 |
 | E11 | Productor: envelope, post-commit, traceparent | ✅ `afterCommit` | N/A | ✅ | N/A | ✅ incluido scheduler | N/A | N/A | 4 |
 | E12 | Consumidor: dedup atómica, retry, DLQ, poison | N/A | N/A | ✅ | ✅ | ✅ | ✅ correo tras commit | N/A | 4 |
 | E13 | Unitarias con dobles | 🟡 | 🟡 | ✅ | ❌ 1 archivo | ✅ | ✅ | ❌ 1 archivo | 8 |
@@ -147,8 +147,8 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 
 | Requisito | Estado inicial | Evidencia actual / brecha |
 |---|---|---|
-| Circuit breaker con fallback | 🟡 | Resilience4j en Empleados→Departamentos; el Gateway no tiene circuit breaker hacia los backends |
-| Timeouts y reintentos | 🟡 | Completos en Empleados→Departamentos; el Gateway solo tiene un timeout de 35 s, sin reintentos |
+| Circuit breaker con fallback | ✅ | Resilience4j en Empleados→Departamentos y circuito aislado por backend en el Gateway; fallback C3 503 y estado Prometheus |
+| Timeouts y reintentos | ✅ | Empleados usa 5 s y backoff 1–2–4 s; Gateway permite timeout por backend y reintenta únicamente GET con backoff 1–2–4 s |
 | Publicación de eventos post-commit | 🟡 | Sin auditar en Empleados, Auth y Vacaciones |
 | Servicios stateless | 🟡 | Auditar scheduler, consumers y estado temporal por instancia |
 | Load balancer | ❌ | No implementado |

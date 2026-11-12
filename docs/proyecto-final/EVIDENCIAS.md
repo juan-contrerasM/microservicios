@@ -176,3 +176,23 @@ Fecha: 2026-11-11. Proyecto Compose aislado: `pfola1`.
 - Hallazgo de orquestación pendiente para Fase 14: los nombres globales `sonar-db`, `sonarqube`,
   `sonar-bootstrap` y `jenkins` colisionan con otros proyectos Compose; sus contenedores detenidos
   tuvieron que retirarse, conservando los volúmenes.
+
+### Fase 6 — resiliencia síncrona
+
+Fecha: 2026-11-11. Stack integrado: `pfola1`.
+
+- Gateway: circuito independiente para cada uno de los seis backends, timeout configurable por
+  servicio y fallback C3 con HTTP 503.
+- Solo `GET` se reintenta, con tres esperas configurables de 1, 2 y 4 segundos; los métodos que
+  cambian estado se ejecutan una vez para evitar duplicados.
+- Las métricas `gateway_circuit_breaker_state{servicio}` y
+  `gateway_upstream_errors_total{servicio,causa}` permiten observar estado y fallos.
+- Suite del Gateway: 72/72 pruebas correctas. Incluye `CLOSED → OPEN → HALF_OPEN → CLOSED` y
+  retorno a `OPEN` cuando falla la llamada de prueba.
+- Suite de Empleados correcta dentro de su etapa de compilación, incluidas las pruebas existentes
+  de Resilience4j, fallback `PENDIENTE_VALIDACION` y reconciliación.
+- Prueba integrada: con Departamentos detenido, tres POST fallaron sin reintento y abrieron su
+  circuito; el GET siguiente respondió 503 en 5 ms y la métrica quedó en 2 (`OPEN`). Tras restaurar
+  el backend y esperar 30 segundos, el GET respondió 200 y la métrica volvió a 0 (`CLOSED`).
+- Regresión funcional posterior al cambio: 18/18 escenarios y 137/137 pasos BDD correctos en
+  42,181 segundos contra el stack integrado.
