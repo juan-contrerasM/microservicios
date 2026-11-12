@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"departamentos-service/internal/department"
+	"departamentos-service/internal/observability"
 )
 
 // DepartmentHandler expone los endpoints HTTP de /departamentos. Traduce
@@ -36,6 +37,7 @@ func (h *DepartmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	created, err := h.svc.Register(r.Context(), input)
 	switch {
 	case err == nil:
+		observability.RegistrarCreado()
 		writeJSON(w, http.StatusCreated, created)
 	case errors.Is(err, department.ErrValidation):
 		writeError(w, r, http.StatusBadRequest, "el departamento requiere al menos 'id' y 'nombre'")
@@ -54,6 +56,7 @@ func (h *DepartmentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	found, err := h.svc.Get(r.Context(), id)
 	switch {
 	case err == nil:
+		observability.RegistrarConsulta()
 		writeJSON(w, http.StatusOK, found)
 	case errors.Is(err, department.ErrNotFound):
 		writeError(w, r, http.StatusNotFound, "el departamento con id "+id+" no existe")
@@ -70,6 +73,7 @@ func (h *DepartmentHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeInternalError(w, r, "listando departamentos", err)
 		return
 	}
+	observability.RegistrarConsulta()
 	writeJSON(w, http.StatusOK, all)
 }
 

@@ -29,13 +29,24 @@ var (
 		Name: "http_request_duration_seconds", Help: "Duración HTTP en segundos.",
 		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2, 5, 10},
 	}, []string{"service", "method", "route", "status"})
+	// Fase 11 (E20): métricas de negocio. Sin etiquetas: el id del departamento sería de alta cardinalidad.
+	creados = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "departamentos_creados_total", Help: "Departamentos registrados.",
+	})
+	consultas = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "departamentos_consultas_total", Help: "Consultas de departamentos (por id o listado) respondidas con 200.",
+	})
 )
 
-func init() { prometheus.MustRegister(requests, duration) }
+func init() { prometheus.MustRegister(requests, duration, creados, consultas) }
+
+// RegistrarCreado y RegistrarConsulta cuentan hechos de negocio ya confirmados.
+func RegistrarCreado()   { creados.Inc() }
+func RegistrarConsulta() { consultas.Inc() }
 
 func Setup(ctx context.Context) (func(context.Context) error, error) {
 	service := getenv("OTEL_SERVICE_NAME", "departamentos-service")
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", service))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{ReplaceAttr: contratoC5})).With("service", service))
 	exporter, err := zipkin.New(getenv("OTEL_EXPORTER_ZIPKIN_ENDPOINT", "http://zipkin:9411/api/v2/spans"))
 	if err != nil {
 		return nil, err
@@ -50,6 +61,21 @@ func Setup(ctx context.Context) (func(context.Context) error, error) {
 	otel.SetTracerProvider(provider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	return provider.Shutdown, nil
+}
+
+// contratoC5 renombra las claves estándar de slog (time, msg) a las del contrato de logs C5
+// (timestamp, message), iguales en los siete servicios para consultarlas igual en Loki.
+func contratoC5(grupos []string, a slog.Attr) slog.Attr {
+	if len(grupos) > 0 {
+		return a
+	}
+	switch a.Key {
+	case slog.TimeKey:
+		a.Key = "timestamp"
+	case slog.MessageKey:
+		a.Key = "message"
+	}
+	return a
 }
 
 func Handler(next http.Handler) http.Handler {
