@@ -157,6 +157,15 @@ desde el host se usa `http://localhost:8080/auth` a través del Gateway.
 
 ## Pruebas (Reto 6)
 
+### Fase 8 — cobertura, integración y mutación (proyecto final)
+
+| Aspecto | Valor |
+|---|---|
+| Comando | `pytest` (JUnit `reports/junit.xml`, `reports/coverage.xml`, `--cov-fail-under=70`) |
+| Cobertura | 76 pruebas · 82,79 % (líneas + ramas de `auth_service`) |
+| Integración (E14) | `tests/integracion/`: Alembic upgrade/downgrade/upgrade, ciclo de cuenta por eventos reales de RabbitMQ y API, poison a DLQ (`bash scripts/test-integration.sh auth`) |
+| Mutación (E17) | `seguridad.py`: longitud mínima 8 → 1 hace fallar la política de contraseña (`bash scripts/test-mutation.sh auth`) |
+
 Son pruebas unitarias: no levantan Postgres, RabbitMQ ni Docker. `tests/soporte.py` sustituye
 el repositorio por `Memoria` (diccionarios), el publicador por `PublicadorMemoria` (una lista)
 y la sesión de base por `SesionNula`. Los casos de uso de `casos.py` reciben esos dobles igual

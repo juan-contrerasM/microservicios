@@ -208,6 +208,15 @@ El esquema lo aplica node-pg-migrate al arrancar (`migrations/001_inicial.cjs`).
 
 ## Pruebas (Reto 6)
 
+### Fase 8 — cobertura, integración y mutación (proyecto final)
+
+| Aspecto | Valor |
+|---|---|
+| Comando | `npm test` (JUnit + LCOV en `reports/`, falla bajo 70 %) sobre **todo** `src/` salvo `index.js` y `telemetria.js` (arranque) |
+| Cobertura | 115 pruebas · 82,27 % de líneas |
+| Integración (E14) | `npm run test:integration` (`tests/integracion/`): node-pg-migrate up/down/up, consumidor real, CRUD HTTP, scheduler y eventos leídos de RabbitMQ (`bash scripts/test-integration.sh vacaciones`) |
+| Mutación (E17) | `validar.js`: aceptar `fechaFin < fechaInicio` → `tests/validar.test.js` falla (`bash scripts/test-mutation.sh vacaciones`) |
+
 Todas son unitarias: corren con el runner de Node 22 (`node --test`), sin Docker, sin Postgres
 y sin RabbitMQ. El repositorio, el pool y el publicador se sustituyen por dobles en memoria
 (`crearServicio` y `crearTransiciones` reciben `repo` por parámetro).

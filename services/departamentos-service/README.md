@@ -219,6 +219,15 @@ servicios sin borrar los datos: `docker compose down`.
 
 ## Pruebas y cobertura
 
+### Fase 8 — cobertura, integración y mutación (proyecto final)
+
+| Aspecto | Valor |
+|---|---|
+| Comando | `sh scripts/test.sh` (JUnit `reports/junit.xml`, `coverage.out`, falla bajo 70 %) |
+| Cobertura | 43 pruebas · 74,2 % global, sin excluir paquetes |
+| Integración (E14) | `internal/integration` (build tag `integration`): migraciones up/down/up y CRUD HTTP contra MySQL real (`bash scripts/test-integration.sh departamentos`) |
+| Mutación (E17) | `service.go`: quitar la validación de `nombre` en el alta. El mutante sobrevivió la primera vez y reveló un caso sin prueba; se añadió y ahora falla |
+
 ```bash
 sh scripts/test.sh
 ```

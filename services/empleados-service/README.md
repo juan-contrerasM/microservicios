@@ -590,6 +590,15 @@ curl http://localhost:8080/empleados/circuit-breaker
 
 ### Pruebas (Reto 6)
 
+### Fase 8 — cobertura, integración y mutación (proyecto final)
+
+| Aspecto | Valor |
+|---|---|
+| Comando | `./mvnw verify` (Surefire + Failsafe; JaCoCo combinado en `target/site/jacoco/`, regla `check` ≥ 70 %) |
+| Cobertura | 104 unitarias + integración con PostgreSQL en Testcontainers · 87,95 % de líneas |
+| Integración (E14) | `*IT.java` con PostgreSQL real (Liquibase y restricciones UNIQUE) (`bash scripts/test-integration.sh empleados`) |
+| Mutación (E17) | `EmpleadoService`: permitir retirar dos veces → `segundoRetiroNoPublica` falla (`bash scripts/test-mutation.sh empleados`) |
+
 Las pruebas viven en `src/test/java` y se separan por sufijo, para que «ninguna unitaria
 requiere Docker» se pueda comprobar con un comando:
 

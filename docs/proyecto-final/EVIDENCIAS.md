@@ -210,3 +210,83 @@ Fecha: 2026-11-11. Ejecuciones reproducibles dentro de las imágenes de construc
   100 % y observabilidad en 74 %.
 - Este bloque no cierra la Fase 8: faltan revalidar los otros cuatro servicios, integración con
   dependencias reales, evidencia de mutación y tres regresiones BDD consecutivas.
+
+### Fase 8 — cierre: cobertura, integración, mutación y BDD
+
+Fecha: 2026-11-12. Todo se ejecuta en contenedores con la misma imagen de toolchain del Dockerfile
+de cada servicio; el host solo necesita Docker.
+
+| Servicio | Unitarias | Cobertura medida (umbral automático 70 %) | Integración real (E14) | Mutante (E17) |
+|---|---|---|---|---|
+| Empleados | 104 | 87,95 % de líneas, JaCoCo unitarias + IT (`check` en `verify`) | PostgreSQL en Testcontainers | Permitir un segundo retiro → `segundoRetiroNoPublica` falla |
+| Departamentos | 43 | 74,2 % global, sin exclusiones | MySQL: migraciones up/down/up y CRUD HTTP | Quitar la validación de `nombre` en el alta. **Sobrevivió** la primera vez: faltaba la prueba; se añadió y ahora falla |
+| Auth | 76 | 82,79 % (líneas + ramas) | PostgreSQL + RabbitMQ: Alembic up/down/up, ciclo de cuenta por eventos y API, poison a DLQ | Longitud mínima de contraseña 8 → 1 → fallan pruebas de política |
+| Perfiles | 54 | 88,67 % de líneas, JaCoCo unitarias + IT | PostgreSQL + RabbitMQ (Testcontainers): creado, duplicado, actualizado, retirado, poison, API HTTP | Ignorar `existsById` → `elMismoIdDeEventoNoInsertaDosPerfiles` falla |
+| Vacaciones | 115 | 82,27 % de **todo** `src/` (salvo `index.js` y `telemetria.js`) | PostgreSQL + RabbitMQ: node-pg-migrate up/down/up, consumidor, CRUD, scheduler y 7 eventos publicados | Aceptar `fechaFin < fechaInicio` → `validar.test.js` falla |
+| Notificaciones | 42 | 78,21 % (líneas + ramas) | PostgreSQL + RabbitMQ + SMTP (Mailhog): correo verificado, duplicado sin efecto, poison a DLQ | Desactivar la deduplicación → `test_procesar.py` falla |
+| Gateway | 72 | 97,03 % de líneas | Servidores HTTP reales como backends: JWT, RBAC, proxy, 503 y circuito | USER tratado como ADMIN → `app.test.js` falla |
+
+Comandos de la evidencia:
+
+```bash
+bash scripts/test-integration.sh      # siete suites contra dependencias reales efímeras (red pf-it)
+bash scripts/test-mutation.sh         # siete mutantes; sale 1 si alguno sobrevive
+bash scripts/test-bdd.sh 3            # BDD tres veces seguidas contra el stack
+```
+
+- Hallazgo corregido durante la evidencia: los scripts copiaban `mvnw` a `/tmp` sin `.mvn/`, de
+  modo que Maven fallaba antes de compilar y los mutantes Java «morían» por ese error. Se corrigió
+  y se repitió: ahora fallan las pruebas nombradas arriba.
+- BDD ampliada de 18 a 23 escenarios: CRUD y RBAC de Departamentos, `empleado.creado` duplicado
+  (una notificación y un perfil), mensaje no JSON en las cuatro DLQ con la cola sana y circuito del
+  Gateway `OPEN → CLOSED` deteniendo y arrancando Departamentos por la API de Docker.
+- Tres ejecuciones seguidas antes de la Fase 14: 23/23 escenarios y 179/179 pasos cada una.
+
+### Fase 14 — redes, puertos y orquestación
+
+Fecha: 2026-11-12. Stack `pfola1` reconstruido con el Compose nuevo, conservando volúmenes.
+
+- Publicados en el host únicamente: Gateway `8080`, Jenkins `8090`, Prometheus `9090`, Registry
+  `5001`, Grafana `3000`, Zipkin `9411`, SonarQube `9000`, RabbitMQ UI `15672` y Mailhog `8025`.
+- `8081`–`8086` y AMQP `5672` rechazan la conexión desde el host.
+- Aislamiento: desde el Gateway `database-empleados` y `message-broker` no resuelven y
+  `departamentos-service` sí; Jenkins no resuelve `database-auth` y sí `sonarqube`.
+- Los siete servicios, seis bases, RabbitMQ, Mailhog, Registry, Prometheus, Loki, Promtail, Zipkin,
+  Grafana, SonarQube y Jenkins quedaron arriba; `curl localhost:5001/v2/` → 200.
+- Sin `container_name` fijos: Jenkins y SonarQube se recrearon como `pfola1-*` y `sonar-bootstrap`
+  terminó con código 0.
+- Imágenes de infraestructura fijadas a la versión que ya corría (PostgreSQL 16.15, MySQL 8.4.13,
+  RabbitMQ 3.13.7, Mailhog v1.0.1, Jenkins 2.580.2, Registry 2.8.3) para no degradar volúmenes.
+- `scripts/seed-data.sh` crea dos departamentos y tres empleados vía Gateway; la segunda ejecución
+  no crea nada.
+- Regresión sobre la topología nueva: 23/23 escenarios y 179/179 pasos en tres ejecuciones
+  seguidas (2 min 18 s, 2 min 26 s y 2 min 22 s).
+
+### Fase 11 — observabilidad uniforme
+
+Fecha: 2026-11-12.
+
+- Prometheus raspa los siete servicios (`up = 1`) con las métricas de negocio nuevas: por ejemplo
+  `empleados_creados_total`, `perfiles_creados_total`, `vacaciones_programadas_total`,
+  `logins_total{resultado}`, `cuentas_activadas_total`, `notificaciones_enviadas_total{tipo}` y
+  `eventos_{procesados,duplicados,dlq}_total{tipo}` en los cuatro consumidores.
+- Hallazgo corregido: un contador de DLQ que nace en 1 no lo ve `increase()`, así que la alerta
+  ignoraba el primer mensaje. Los consumidores crean ahora sus series en 0 al arrancar.
+- Logs: los siete servicios escriben `timestamp`, `level`, `service`, `message`, `traceId` y
+  `spanId` (Java renombró `@timestamp`/`trace_id`; Go, `time`/`msg`). El mismo `traceId` aparece en
+  Gateway, Empleados, Departamentos y Perfiles.
+- Zipkin registra los siete servicios y una traza de onboarding contiene spans de los siete.
+- Grafana aprovisionó cinco reglas (servicio caído, 5xx > 10 %, p95 > 2 s, DLQ, memoria > 85 %),
+  el contact point `equipo-microservicios` (Discord + correo) y el dashboard `pf-negocio-eventos`.
+- Alerta real: el escenario BDD de mensaje inválido disparó «Mensajes enviados a una DLQ» para auth,
+  perfiles, notificaciones y vacaciones; los cuatro correos llegaron a Mailhog. Grafana intentó
+  Discord y falló porque `secrets/discord_webhook_url.txt` todavía tiene el marcador.
+- Con Prometheus, Loki, Promtail, Zipkin y Grafana detenidos, la BDD completa pasó 23/23: la caída
+  del stack de observabilidad no afecta el negocio.
+- Pendiente: evidencia de entrega en Discord con el webhook real del equipo.
+
+### Fase 9 — plantilla
+
+- `jenkins/plantillas/Jenkinsfile.plantilla` contiene todas las etapas de E18 para los cuatro
+  stacks. El linter de Jenkins (`/pipeline-model-converter/validate`) respondió
+  «Jenkinsfile successfully validated».

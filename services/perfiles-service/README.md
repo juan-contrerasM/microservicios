@@ -135,6 +135,15 @@ El esquema lo crea Liquibase al arrancar (`001-create-perfiles` y `002-completar
 
 ## Pruebas
 
+### Fase 8 — cobertura, integración y mutación (proyecto final)
+
+| Aspecto | Valor |
+|---|---|
+| Comando | `./mvnw verify` (Surefire + Failsafe; JaCoCo combinado, regla `check` ≥ 70 %) |
+| Cobertura | 54 unitarias + 3 de integración · 88,67 % de líneas |
+| Integración (E14) | `PerfilesIT`: PostgreSQL y RabbitMQ reales (Testcontainers); creado, duplicado, actualizado, retirado, poison a DLQ y API HTTP en puerto real |
+| Mutación (E17) | `PerfilEventoService`: ignorar `existsById` → `elMismoIdDeEventoNoInsertaDosPerfiles` falla (`bash scripts/test-mutation.sh perfiles`) |
+
 ```bash
 ./mvnw test      # unitarias rápidas
 ./mvnw verify    # unitarias + JaCoCo + umbral de cobertura

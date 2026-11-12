@@ -177,6 +177,15 @@ Gateway. Los backends no publican puertos. Usa Compose.
 
 ## Tests del módulo
 
+### Fase 8 — cobertura, integración y mutación (proyecto final)
+
+| Aspecto | Valor |
+|---|---|
+| Comando | `npm test` (JUnit `reports/junit.xml`, LCOV `reports/lcov.info`, falla bajo 70 %) |
+| Cobertura | 72 pruebas · 97,03 % de líneas |
+| Integración (E14) | Servidores HTTP reales hacen de backends: JWT, RBAC, proxy, 503 y circuito (`bash scripts/test-integration.sh gateway`) |
+| Mutación (E17) | `src/auth.js`: USER tratado como ADMIN → `tests/app.test.js` falla (`bash scripts/test-mutation.sh gateway`) |
+
 ```bash
 cd services/api-gateway
 npm ci

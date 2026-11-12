@@ -73,12 +73,12 @@ servicio**; el frente transversal (C o D) define la plantilla/contrato y revisa.
 | Identidad | Auth propio JWT HS256 (opción a). OIDC/JWKS (opción b) como bonificación | Vigente |
 | Bases | Una por servicio con volumen propio; ninguna compartida | Vigente |
 | Observabilidad | Loki/Promtail + Prometheus/Grafana + OTel/Zipkin | Vigente |
-| CI/CD | Jenkins + SonarQube + Registry Docker local (`registry:2`) | Registry por implementar |
+| CI/CD | Jenkins + SonarQube + Registry Docker local (`registry:2`) | Registry en Compose (Fase 14); publicación en Fase 10 |
 | Secretos | Docker Compose Secrets + `*_FILE` generados por `scripts/setup-secrets.*` | Cerrado (Fase 2) |
 | Balanceo | Traefik o Nginx delante de las réplicas; decisión en Fase 12 | Pendiente |
-| Redes | Seis redes del PDF: `frontend`, `backend`, `messaging`, `data`, `observability`, `cicd` | Pendiente (hoy una sola red) |
-| Puertos de host | Los del PDF: Gateway 8080, Jenkins **8090**, Prometheus 9090, Grafana 3000, Zipkin 9411, SonarQube 9000, Registry **5001**, RabbitMQ UI 15672. Ningún servicio de negocio publica puerto | Pendiente (hoy Jenkins 9090, Prometheus 9091 y cuatro servicios publican puerto) |
-| Estructura de entrega | Se conservan `services/` y `observability/` (renombrar rompe Jenkins y el subtree); se documenta la equivalencia con la estructura de referencia del PDF y se añaden las piezas faltantes (`openapi.yaml`, `Jenkinsfile`, `tests/` por servicio, `docs/arquitectura.md`, `docs/eventos.md`, `docs/guias/`, `scripts/seed-data`) | Propuesta; confirmar en Fase 14 |
+| Redes | Seis redes del PDF: `frontend`, `backend`, `messaging`, `data`, `observability`, `cicd` | Implementada (Fase 14) |
+| Puertos de host | Los del PDF: Gateway 8080, Jenkins **8090**, Prometheus 9090, Grafana 3000, Zipkin 9411, SonarQube 9000, Registry **5001**, RabbitMQ UI 15672. Ningún servicio de negocio publica puerto | Implementada (Fase 14) |
+| Estructura de entrega | Se conservan `services/` y `observability/` (renombrar rompe Jenkins y el subtree); se documenta la equivalencia con la estructura de referencia del PDF y se añaden las piezas faltantes (`openapi.yaml`, `Jenkinsfile`, `tests/` por servicio, `docs/arquitectura.md`, `docs/eventos.md`, `docs/guias/`, `scripts/seed-data`) | Vigente; equivalencia en `docs/estructura-entrega.md` (Fase 14) |
 | Lenguajes | Java (Empleados, Perfiles), Go (Departamentos), Node.js (Gateway, Vacaciones), Python (Auth, Notificaciones) | Vigente |
 
 ## Contratos compartidos (se acuerdan antes de implementar)
@@ -271,7 +271,7 @@ capas.
 
 **Cierre:** siete imágenes multi-stage no root; tamaño de cada imagen registrado en la matriz.
 
-### Fase 8 — Pruebas, cobertura y aceptación funcional (Ola 2)
+### Fase 8 — Pruebas, cobertura y aceptación funcional (Ola 2, cerrada)
 
 **Frentes:** A y B sobre sus servicios; D integra la BDD. **Estándar:** E13–E17.
 
@@ -317,7 +317,7 @@ capas.
 
 **Cierre:** un pipeline verde publica y despliega una imagen identificable (commit → imagen → contenedor).
 
-### Fase 11 — Observabilidad uniforme en los siete servicios (Ola 2)
+### Fase 11 — Observabilidad uniforme en los siete servicios (Ola 2; falta evidencia Discord)
 
 **Frente:** D define contratos y dashboards; A y B instrumentan. **Estándar:** E20, E21, E22.
 
@@ -379,7 +379,7 @@ alerta real recibida en Discord.
 
 **Cierre:** pruebas de seguridad en verde y cero hallazgos críticos.
 
-### Fase 14 — Orquestación, redes, puertos y estructura de entrega (Ola 2)
+### Fase 14 — Orquestación, redes, puertos y estructura de entrega (Ola 2, cerrada)
 
 **Frente:** C. **Estándar:** E03, E04, E06.
 
@@ -438,7 +438,7 @@ alerta real recibida en Discord.
 
 ```text
 Ola 1:        F4 (A+B, cerrada)    F5 (A+B, cerrada)   F7 (C, cerrada)
-Ola 2:        F6 (A+B)   F8 (A+B)   F11 (D + A/B)   F14 (C)   F9 plantilla (C)
+Ola 2:        F6 (cerrada)   F8 (cerrada)   F11 (falta evidencia Discord)   F14 (cerrada)   F9 plantilla (validada)
 Ola 3:        F9 completa (C)   F10 (C)   F12 (C + A/B)   F13 (D)
 Ola 4:        F15 (D + A/B)   F16 (todos)
 ```

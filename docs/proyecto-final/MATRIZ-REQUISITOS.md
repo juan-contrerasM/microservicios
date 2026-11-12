@@ -11,34 +11,34 @@ integrada con Docker (compose + BDD) para pasar a ✅
 
 Cada práctica de los retos aplica a los siete servicios (ver «Principio rector» y la definición de
 E01–E25 en [`PLAN-PROYECTO-FINAL.md`](PLAN-PROYECTO-FINAL.md)). Estado inicial tomado de una auditoría
-del código de la rama `proyecto-final` el 2026-11-11 y actualizado al integrar la Ola 1 (Fases 4, 5 y 7); 🟡 significa que existe algo, pero falta
+del código de la rama `proyecto-final` el 2026-11-11 y actualizado al cerrar las Olas 1 y 2 (Fases 4–8, 11 y 14); 🟡 significa que existe algo, pero falta
 revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 en sus filas.**
 
 | ID | Requisito | Empleados | Departamentos | Auth | Perfiles | Vacaciones | Notificaciones | Gateway | Fase |
 |---|---|---|---|---|---|---|---|---|---|
 | E01 | Dockerfile multi-stage, base fijada, `.dockerignore` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 7 |
 | E02 | Usuario no root, `curl`/`wget` | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | ✅ UID 10001 | 7 |
-| E03 | Configuración y secretos por env/`*_FILE` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 2 |
-| E04 | Sin `ports:` (solo `expose:`) | ✅ | ❌ 8081 | ✅ | ❌ 8083 | ❌ 8085 | ❌ 8084 | N/A borde | 14 |
+| E03 | Configuración y secretos por env/`*_FILE` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 2 ✅ / 14 ✅ |
+| E04 | Sin `ports:` (solo `expose:`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A borde (8080) | 14 |
 | E05 | BD propia, migraciones con rollback, `UNIQUE` | ✅ rollback y UNIQUE probados offline | ✅ `.down.sql` probado offline | ✅ downgrade `--sql` | ✅ | ✅ `pgm` simulado | ✅ downgrade `--sql` | N/A sin BD | 5 |
-| E06 | Healthcheck Compose → `/health` + `service_healthy` | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 14 |
+| E06 | Healthcheck Compose → `/health` + `service_healthy` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `service_started` hacia backends, excepción documentada | 14 |
 | E07 | `/health` C2 con 200/503 real | ✅ timeout 2 s por check | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ propio | 5 |
 | E08 | OpenAPI completo + Swagger UI + `openapi.yaml` + `bearerAuth` | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ `/swagger` con 7 contratos | 5 |
 | E09 | Error HTTP C3 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 5 |
 | E10 | Timeout + retry backoff + circuit breaker en clientes HTTP | ✅ Resilience4j → Departamentos | N/A | N/A | N/A | N/A | N/A | ✅ circuito por backend, timeout por servicio y retry solo GET | 6 |
 | E11 | Productor: envelope, post-commit, traceparent | ✅ `afterCommit` | N/A | ✅ | N/A | ✅ incluido scheduler | N/A | N/A | 4 |
 | E12 | Consumidor: dedup atómica, retry, DLQ, poison | N/A | N/A | ✅ | ✅ | ✅ | ✅ correo tras commit | N/A | 4 |
-| E13 | Unitarias con dobles | 🟡 | ✅ servicio, repositorio y HTTP | ✅ | ✅ servicio, eventos y HTTP | ✅ | ✅ | ✅ JWT, RBAC, proxy y CB | 8 |
-| E14 | Integración con BD/broker reales | 🟡 | ❌ | 🟡 | ❌ | 🟡 | 🟡 | ❌ | 8 |
-| E15 | Cobertura ≥70 % de la lógica de negocio | 🟡 sin medir | ✅ 74,3 % global | ✅ 72 % | ✅ 80,78 % | 🟡 100 % solo módulos seleccionados | ✅ 73 % | ✅ 97,03 % | 8 |
-| E16 | Un comando, JUnit + cobertura en ruta documentada | 🟡 | ✅ `scripts/test.sh` | ✅ | ✅ `mvn verify` | ✅ | 🟡 | ✅ `npm test` | 8 |
-| E17 | Evidencia de mutación | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 8 |
-| E18 | Jenkinsfile con todas las etapas | 🟡 existe | ❌ | ❌ | ❌ | 🟡 existe | ❌ | ❌ | 9 |
+| E13 | Unitarias con dobles | ✅ 104 | ✅ 43 | ✅ 76 | ✅ 54 | ✅ 115 | ✅ 42 | ✅ 72 | 8 |
+| E14 | Integración con BD/broker reales | ✅ PostgreSQL (Testcontainers) | ✅ MySQL | ✅ PostgreSQL + RabbitMQ | ✅ PostgreSQL + RabbitMQ (Testcontainers) | ✅ PostgreSQL + RabbitMQ | ✅ PostgreSQL + RabbitMQ + SMTP | ✅ backends HTTP reales simulados | 8 |
+| E15 | Cobertura ≥70 % de la lógica de negocio | ✅ 87,95 % | ✅ 74,2 % | ✅ 82,79 % | ✅ 88,67 % | ✅ 82,27 % todo `src/` | ✅ 78,21 % | ✅ 97,03 % | 8 |
+| E16 | Un comando, JUnit + cobertura en ruta documentada | ✅ `mvnw verify` + `check` | ✅ `scripts/test.sh` | ✅ `pytest` | ✅ `mvnw verify` + `check` | ✅ `npm test` | ✅ `pytest` | ✅ `npm test` | 8 |
+| E17 | Evidencia de mutación | ✅ | ✅ (reveló un caso sin prueba) | ✅ | ✅ | ✅ | ✅ | ✅ | 8 |
+| E18 | Jenkinsfile con todas las etapas | 🟡 existe; plantilla 9.TPL | 🟡 plantilla 9.TPL | 🟡 plantilla 9.TPL | 🟡 plantilla 9.TPL | 🟡 existe; plantilla 9.TPL | 🟡 plantilla 9.TPL | 🟡 plantilla 9.TPL | 9 |
 | E19 | Proyecto SonarQube propio | 🟡 Maven | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | 9 |
-| E20 | Métricas C4 + negocio | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 11 |
-| E21 | Logs C5 en Loki | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 11 |
-| E22 | OpenTelemetry W3C + Zipkin | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 11 |
-| E23 | Stateless, escala con `--scale=2` | 🟡 | ❌ puerto fijo | 🟡 | ❌ puerto fijo | ❌ puerto fijo + scheduler sin lock | ❌ puerto fijo | ❌ puerto host fijo sin balanceador | 12 |
+| E20 | Métricas C4 + negocio | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 11 |
+| E21 | Logs C5 en Loki | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 11 |
+| E22 | OpenTelemetry W3C + Zipkin | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 11 |
+| E23 | Stateless, escala con `--scale=2` | 🟡 | 🟡 sin puerto fijo; falta prueba `--scale` | 🟡 | 🟡 sin puerto fijo; falta prueba `--scale` | ❌ scheduler sin lock | 🟡 sin puerto fijo; falta prueba `--scale` | ❌ puerto host fijo sin balanceador | 12 |
 | E24 | Seguridad de entrada, RBAC/propiedad | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 13 |
 | E25 | README con plantilla C6 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 15 |
 
@@ -79,7 +79,7 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | Envelope común completo | 🟡 | Implementaciones existentes; falta auditoría por productor |
 | Catálogo normativo | 🟡 | Eventos principales existen; falta documento final consolidado |
 | Deduplicación persistente | 🟡 | Auth, Perfiles y Notificaciones tienen mecanismos; auditar Vacaciones y atomicidad |
-| Reintentos/DLQ/poison messages | ❌ | No existe política final documentada y verificada |
+| Reintentos/DLQ/poison messages | ✅ | Política común (retry 5 s ×3, DLQ por cola) verificada con RabbitMQ real en Fase 4 y por la integración de Fase 8; métrica `eventos_dlq_total` y alerta |
 | Headers W3C en AMQP | ✅ | Implementados y evidenciados en el Reto 8 |
 | REST permitido y resiliencia | 🟡 | Gateway→servicios y Empleados→Departamentos; revalidar contra restricción final |
 
@@ -88,9 +88,9 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | Requisito | Estado inicial | Evidencia actual / brecha |
 |---|---|---|
 | OpenAPI/Swagger en siete servicios | 🟡 | Existe documentación en los siete; falta auditoría de completitud |
-| Unitarias por servicio | 🟡 | Todas las suites actuales pasan; Departamentos y Perfiles requieren ampliación importante |
-| Integración por servicio | ❌ | No todos tienen integración con base/broker real |
-| Cobertura ≥70 % por servicio | 🟡 | Auth 72 %, Notificaciones 73 % y Vacaciones 100 % de módulos seleccionados; faltan mediciones comparables de los demás |
+| Unitarias por servicio | ✅ | Siete suites con dobles y umbral automático (Fase 8) |
+| Integración por servicio | ✅ | `scripts/test-integration.sh`: PostgreSQL, MySQL, RabbitMQ y SMTP reales; Testcontainers en Java (Fase 8) |
+| Cobertura ≥70 % por servicio | ✅ | Siete servicios entre 74,2 % y 97,03 %, con exclusiones documentadas en cada README (Fase 8) |
 | Health 200/503 y dependencias | ❌ | Empleados retorna 200 en UP, pero al detener PostgreSQL no respondió dentro de 15 s en vez de entregar 503 |
 | Dockerfile por servicio | ✅ | Los siete servicios tienen Dockerfile |
 | Imágenes optimizadas/no-root | ❌ | Gateway, Vacaciones, Auth y Notificaciones tienen una sola etapa; solo los dos servicios Node usan un usuario distinto de root (ver E01/E02) |
@@ -112,9 +112,9 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | Deploy automatizado | ❌ | No hay etapa final con smoke/rollback |
 | Trigger por webhook | 🟡 | Hay polling/hook local; falta webhook final verificable |
 | `docker compose up --build` completo | ✅ | Siete servicios construyen, BDD pasa y Jenkins arranca tras normalizar el entrypoint |
-| Seis redes del PDF | ❌ | Hoy existe una sola red `microservices-network` |
-| Puertos del PDF sin colisión | ❌ | Jenkins en 9090 (PDF: 8090) y Prometheus en 9091 (PDF: 9090); Registry inexistente (PDF: 5001) |
-| Solo el Gateway publica puerto de negocio | ❌ | Departamentos 8081, Perfiles 8083, Notificaciones 8084 y Vacaciones 8085 publicados por el commit `b28c220` |
+| Seis redes del PDF | ✅ | `frontend`, `backend`, `messaging`, `data`, `observability`, `cicd`; el Gateway no resuelve bases ni broker y Jenkins no ve las bases (Fase 14) |
+| Puertos del PDF sin colisión | ✅ | Jenkins 8090, Prometheus 9090, Registry 5001, Grafana 3000, Zipkin 9411, SonarQube 9000, RabbitMQ UI 15672, Mailhog 8025 (Fase 14) |
+| Solo el Gateway publica puerto de negocio | ✅ | 8081–8086 y AMQP 5672 rechazan la conexión desde el host (Fase 14) |
 | Etapa E2E serializada en pipelines | ❌ | Necesaria al tener siete pipelines compartiendo el stack |
 | Escaneo de dependencias e imágenes | ❌ | Ningún pipeline ejecuta SCA ni Trivy |
 
@@ -124,9 +124,9 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 |---|---|---|
 | Logs JSON centralizados | ✅ | Loki/Promtail y correlación evidenciados en Reto 8 |
 | Prometheus/Grafana | ✅ | Siete targets y dashboard versionado en el último estado de Reto 8 |
-| Métricas técnicas y de negocio | 🟡 | Revalidar que todas las métricas de negocio exigidas están visibles |
-| Dashboards | ✅ | Dashboard aprovisionado; falta regresión en stack final |
-| Alertas externas | 🟡 | Reglas/contact point existen; falta webhook local y evidencia de entrega final |
+| Métricas técnicas y de negocio | ✅ | Contadores de negocio en los siete servicios y de eventos en los cuatro consumidores (Fase 11) |
+| Dashboards | ✅ | `reto8-observabilidad` + `pf-negocio-eventos` (negocio, eventos/DLQ, circuit breakers), aprovisionados desde Git |
+| Alertas externas | 🟡 | Cinco reglas; contact point Discord + correo. Alerta de DLQ real entregada por correo; falta la entrega con el webhook real de Discord |
 | OTel/Zipkin W3C | ✅ | Trazas HTTP/AMQP de onboarding y vacaciones evidenciadas |
 | Correlación log ↔ traza | ✅ | `traceId` y enlace Loki→Zipkin existentes |
 
@@ -164,9 +164,9 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | Arquitectura final | 🟡 | Diagramas parciales; falta documento final |
 | `docs/eventos.md` | ❌ | Falta catálogo implementado en formato final |
 | Guías de terceros | 🟡 | Hay guías parciales; falta conjunto final |
-| Scripts/seed idempotente | ❌ | Falta estructura final requerida |
+| Scripts/seed idempotente | ✅ | `scripts/seed-data.sh` vía Gateway; segunda ejecución no crea nada (Fase 14) |
 | README por servicio con plantilla común | 🟡 | Existen siete README de distinta profundidad; falta la plantilla C6 |
-| Equivalencia con la estructura de referencia del PDF | ❌ | Documentar `services/`↔`microservicios/` y `observability/`↔`observabilidad/` |
+| Equivalencia con la estructura de referencia del PDF | ✅ | [`docs/estructura-entrega.md`](../estructura-entrega.md) (Fase 14) |
 | Paquete `.zip`/`.tar.gz` limpio | ❌ | Se genera únicamente en Fase 14 |
 
 ## Condiciones detectadas del entorno de baseline

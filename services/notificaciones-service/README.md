@@ -156,6 +156,15 @@ Para verlo: abre la bandeja y haz un `POST /empleados` de un id que todavía no 
 
 ## Pruebas
 
+### Fase 8 — cobertura, integración y mutación (proyecto final)
+
+| Aspecto | Valor |
+|---|---|
+| Comando | `pytest` (JUnit `reports/junit.xml`, `reports/coverage.xml`, `--cov-fail-under=70`) |
+| Cobertura | 42 pruebas · 78,21 % (líneas + ramas de `notificaciones`) |
+| Integración (E14) | `tests/integracion/`: Alembic up/down/up, eventos reales de RabbitMQ, correo verificado en Mailhog, duplicado sin efecto y poison a DLQ (`bash scripts/test-integration.sh notificaciones`) |
+| Mutación (E17) | `procesar.py`: desactivar la deduplicación por id → `tests/test_procesar.py` falla (`bash scripts/test-mutation.sh notificaciones`) |
+
 ```bash
 cd services/notificaciones-service
 python -m venv .venv
