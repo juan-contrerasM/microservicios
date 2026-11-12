@@ -1,4 +1,4 @@
-FROM rabbitmq:3-management
+FROM rabbitmq:3.13.7-management
 COPY entrypoint.sh /rabbit-ci.sh
 RUN chmod 755 /rabbit-ci.sh
 USER root

@@ -6,6 +6,12 @@
 set -eu
 home=/tmp/rabbit-home
 mkdir -p "$home/mnesia" "$home/log" /etc/rabbitmq/conf.d
+# Fase 9: la contraseña llega como secreto (RABBITMQ_DEFAULT_PASS_FILE), igual que en el compose
+# principal; sin esto los consumidores fallaban con ACCESS_REFUSED y quedaban unhealthy.
+if [ -z "${RABBITMQ_DEFAULT_PASS:-}" ] && [ -n "${RABBITMQ_DEFAULT_PASS_FILE:-}" ]; then
+  RABBITMQ_DEFAULT_PASS="$(tr -d '\r\n' < "$RABBITMQ_DEFAULT_PASS_FILE")"
+  unset RABBITMQ_DEFAULT_PASS_FILE
+fi
 if [ -n "${RABBITMQ_DEFAULT_USER:-}" ] && [ -n "${RABBITMQ_DEFAULT_PASS:-}" ]; then
   printf 'default_user = %s\ndefault_pass = %s\n' \
     "$RABBITMQ_DEFAULT_USER" "$RABBITMQ_DEFAULT_PASS" \

@@ -56,3 +56,6 @@ coverage.out
 
 # --- Claude Code (worktrees locales de agentes) ---
 .claude/worktrees/
+
+# Fase 10: historial local de despliegues (scripts/deploy.sh)
+.deploy/

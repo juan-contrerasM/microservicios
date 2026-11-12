@@ -8,7 +8,8 @@
 //
 // Etapas (E18): Checkout → Build → Lint → Unit → Integración → Reportes (junit + recordCoverage)
 // → SonarQube → Quality Gate (abortPipeline) → Seguridad (dependencias + secretos) → Package
-// (tag inmutable + escaneo de imagen) → Push Registry → Deploy + E2E (BDD, serializada con lock).
+// (tag inmutable + escaneo de imagen) → Push Registry → E2E (despliegue de prueba + BDD) → Deploy
+// (entorno en ejecución, smoke test y rollback automático). E2E y Deploy se serializan con un lock.
 // Un fallo en cualquier etapa detiene las siguientes: nada rojo se empaqueta ni se publica.
 //
 // El parámetro SIMULAR_FALLO (9.FAIL) inyecta, SOLO en el workspace del build, un fallo de prueba
@@ -234,7 +235,7 @@ pipeline {
               sh 'echo "RUN echo fallo simulado 9.FAIL && exit 1" >> Dockerfile'
             }
           }
-          sh 'docker build -t "$REGISTRY/$NOMBRE_IMAGEN:$TAG" -t "$REGISTRY/$NOMBRE_IMAGEN:latest" .'
+          sh 'docker build --label org.opencontainers.image.revision="$(git rev-parse HEAD)" --label org.opencontainers.image.version="$TAG" -t "$REGISTRY/$NOMBRE_IMAGEN:$TAG" -t "$REGISTRY/$NOMBRE_IMAGEN:latest" .'
         }
         script {
           // Una vulnerabilidad CRITICAL corregible en la imagen detiene el pipeline.
@@ -256,7 +257,7 @@ pipeline {
       }
     }
 
-    stage('Deploy + E2E') {
+    stage('E2E') {
       options { lock(resource: 'ecosistema-e2e') }
       steps {
         // Despliegue de prueba aislado (proyecto micro-ci) y BDD completa contra él.
@@ -326,6 +327,22 @@ Característica: Fallo simulado (9.FAIL)
           publishHTML target: [reportDir: 'e2e-tests/reports', reportFiles: 'cucumber.html',
             reportName: 'Reporte BDD', keepAll: true, alwaysLinkToLastBuild: true, allowMissing: true]
         }
+      }
+    }
+
+    stage('Deploy') {
+      options { lock(resource: 'ecosistema-e2e') }
+      steps {
+        // Fase 10: la imagen recién publicada (tag inmutable) reemplaza al servicio en el entorno
+        // en ejecución (el proyecto Compose de este Jenkins). scripts/deploy.sh hace el smoke test y,
+        // si falla, revierte solo al tag anterior. Historial en .deploy/<servicio>.log del host.
+        sh '''
+          set -eu
+          export HOST_REPO="$(sh jenkins/host-repo.sh)"
+          export COMPOSE_PROJECT="$(docker inspect "$(hostname)" --format '{{index .Config.Labels "com.docker.compose.project"}}')"
+          export ENV_FILE=/workspace/.env DEPLOY_HISTORIAL=/workspace/.deploy
+          bash scripts/deploy.sh "$NOMBRE_IMAGEN" "$TAG"
+        '''
       }
     }
   }

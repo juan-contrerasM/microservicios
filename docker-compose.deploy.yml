@@ -3,9 +3,9 @@
 #   docker compose -f docker-compose.yml -f docker-compose.deploy.yml up -d --no-build --no-deps <servicio>
 #
 # Lo usa scripts/deploy.sh (despliegue, smoke test y rollback). Cada servicio toma su imagen de
-# REGISTRY/<servicio>:<TAG>; el tag por defecto es `latest`, pero el despliegue real fija el tag
-# inmutable <commit>-<build> que publicó Jenkins. Las rutas de los bind mounts admiten HOST_REPO para
-# que Jenkins (que corre en un contenedor) pueda desplegar con las rutas que ve el daemon del host.
+# REGISTRY/<servicio>:<TAG>; por defecto `latest`, pero el despliegue fija el tag inmutable
+# <commit>-<build> que publicó Jenkins. Las rutas de los bind mounts admiten HOST_REPO para que
+# Jenkins (que corre en un contenedor) despliegue con las rutas que ve el daemon del host.
 services:
   empleados-service:
     image: ${REGISTRY:-localhost:5001}/empleados-service:${EMPLEADOS_TAG:-latest}
@@ -25,12 +25,11 @@ services:
   notificaciones-service:
     image: ${REGISTRY:-localhost:5001}/notificaciones-service:${NOTIFICACIONES_TAG:-latest}
     pull_policy: always
+    volumes: !override
+      - ${HOST_REPO:-.}/services/notificaciones-service/config/templates.json:/app/config/templates.json:ro
   api-gateway:
     image: ${REGISTRY:-localhost:5001}/api-gateway:${API_GATEWAY_TAG:-latest}
     pull_policy: always
-  notificaciones-service:
-    volumes: !override
-      - ${HOST_REPO:-.}/services/notificaciones-service/config/templates.json:/app/config/templates.json:ro
 
 secrets:
   empleados_db_password:
