@@ -173,16 +173,18 @@ pipeline {
 
     stage('SonarQube') {
       steps {
+        // El scanner (Maven y CLI) lee SONAR_HOST_URL y SONAR_TOKEN del entorno: se pasan con -e al
+        // contenedor para no escribir el token en la línea de comandos ni en el log.
         script {
           env.SONAR_TOKEN = readFile('/run/sonar-bootstrap/token').trim()
           withSonarQubeEnv('sonarqube') {
             if (CFG == STACKS.java) {
-              docker.image(CFG.imagen).inside(AGENTE) {
-                dir(DIR) { sh 'mvn -B -q sonar:sonar -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.token="$SONAR_TOKEN"' }
+              docker.image(CFG.imagen).inside(AGENTE + " -e SONAR_HOST_URL -e SONAR_TOKEN") {
+                dir(DIR) { sh 'mvn -B -q sonar:sonar' }
               }
             } else {
-              docker.image('sonarsource/sonar-scanner-cli:11.4').inside(AGENTE) {
-                dir(DIR) { sh 'sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.token="$SONAR_TOKEN"' }
+              docker.image('sonarsource/sonar-scanner-cli:11.4').inside(AGENTE + " -e SONAR_HOST_URL -e SONAR_TOKEN") {
+                dir(DIR) { sh 'sonar-scanner' }
               }
             }
           }
