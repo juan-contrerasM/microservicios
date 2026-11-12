@@ -92,7 +92,9 @@ done
 
 auth -X POST "${SONAR_URL}/api/qualitygates/set_as_default" --data-urlencode "name=Reto7" >/dev/null
 
-for project in empleados-service vacaciones-service; do
+# Fase 9 (E19): un proyecto por servicio, todos con el gate de cobertura ≥ 70 %.
+for project in empleados-service perfiles-service departamentos-service auth-service \
+  notificaciones-service vacaciones-service api-gateway; do
   found="$(auth "${SONAR_URL}/api/projects/search?projects=${project}" || true)"
   if ! printf '%s' "$found" | grep -q "\"key\":\"${project}\""; then
     auth -X POST "${SONAR_URL}/api/projects/create" \
@@ -133,4 +135,4 @@ if [ "$need_token" -eq 1 ]; then
   echo "Token nuevo escrito en ${TOKEN_FILE}"
 fi
 
-echo "SonarQube listo: gate Reto7, proyectos empleados-service y vacaciones-service, webhook ${WEBHOOK_URL}"
+echo "SonarQube listo: gate Reto7, siete proyectos, webhook ${WEBHOOK_URL}"

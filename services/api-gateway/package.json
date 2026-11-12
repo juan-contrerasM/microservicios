@@ -12,7 +12,7 @@
     "start": "node --import ./src/telemetria.js src/index.js",
     "openapi:export": "node scripts/exportar-openapi.js",
     "pretest": "node -e \"require('node:fs').mkdirSync('reports',{recursive:true})\"",
-    "test": "node --test --experimental-test-coverage --test-coverage-include=src/app.js --test-coverage-include=src/auth.js --test-coverage-include=src/circuit-breaker.js --test-coverage-include=src/config.js --test-coverage-include=src/errors.js --test-coverage-include=src/logger.js --test-coverage-include=src/metricas.js --test-coverage-include=src/proxy.js --test-coverage-include=src/swagger.js --test-coverage-lines=70 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
+    "test": "node --test --experimental-test-coverage --test-coverage-include=src/app.js --test-coverage-include=src/auth.js --test-coverage-include=src/circuit-breaker.js --test-coverage-include=src/config.js --test-coverage-include=src/errors.js --test-coverage-include=src/logger.js --test-coverage-include=src/metricas.js --test-coverage-include=src/proxy.js --test-coverage-include=src/swagger.js --test-coverage-lines=${COBERTURA_MINIMA:-70} --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

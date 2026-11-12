@@ -1,5 +1,5 @@
 jenkins:
-  systemMessage: "Reto 7. Los jobs salen de este archivo; no se crean en la interfaz."
+  systemMessage: "Proyecto final. Los jobs salen de este archivo; no se crean en la interfaz."
   numExecutors: 2
   securityRealm:
     local:
@@ -73,37 +73,25 @@ jobs:
           }
         }
       }
+  # Fase 9 (9.JOBS): un job por servicio, sin pasos manuales. Cada Jenkinsfile se genera desde
+  # jenkins/plantillas/. La rama sale de JOBS_BRANCH (docker-compose.yml); por defecto proyecto-final.
   - script: |
-      pipelineJob('empleados-service') {
-        description('CI de empleados-service. El Jenkinsfile vive en el servicio.')
-        definition {
-          cpsScm {
-            scm {
-              git {
-                remote {
-                  url('file:///workspace')
+      ['empleados-service', 'perfiles-service', 'departamentos-service', 'auth-service',
+       'notificaciones-service', 'vacaciones-service', 'api-gateway'].each { servicio ->
+        pipelineJob(servicio) {
+          description('CI/CD de ' + servicio + ' (Fase 9). Jenkinsfile generado desde jenkins/plantillas.')
+          definition {
+            cpsScm {
+              scm {
+                git {
+                  remote {
+                    url('file:///workspace')
+                  }
+                  branches('*/${JOBS_BRANCH:-proyecto-final}')
                 }
-                branches('*/main')
               }
+              scriptPath('services/' + servicio + '/Jenkinsfile')
             }
-            scriptPath('services/empleados-service/Jenkinsfile')
-          }
-        }
-      }
-  - script: |
-      pipelineJob('vacaciones-service') {
-        description('CI de vacaciones-service. El Jenkinsfile vive en el servicio.')
-        definition {
-          cpsScm {
-            scm {
-              git {
-                remote {
-                  url('file:///workspace')
-                }
-                branches('*/main')
-              }
-            }
-            scriptPath('services/vacaciones-service/Jenkinsfile')
           }
         }
       }

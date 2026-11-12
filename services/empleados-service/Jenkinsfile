@@ -1,62 +1,171 @@
-// CI de empleados-service. El workspace del job es la raíz del monorepo.
-// Decisiones: docs/reto7/PLAN-RETO7.md
+// GENERADO desde jenkins/plantillas/Jenkinsfile.plantilla (bash jenkins/plantillas/generar.sh).
+// No editar a mano: los cambios van en la plantilla.
+// Pipeline común del proyecto final (Fase 9, estándar E18/E19).
+//
+// Los siete services/<servicio>/Jenkinsfile se GENERAN desde jenkins/plantillas/Jenkinsfile.plantilla
+// con `bash jenkins/plantillas/generar.sh`: no se editan a mano. Lo único que cambia entre ellos es
+// SERVICIO; el stack y los comandos salen de las tablas de abajo.
+//
+// Etapas (E18): Checkout → Build → Lint → Unit → Integración → Reportes (junit + recordCoverage)
+// → SonarQube → Quality Gate (abortPipeline) → Seguridad (dependencias + secretos) → Package
+// (tag inmutable + escaneo de imagen) → Push Registry → Deploy + E2E (BDD, serializada con lock).
+// Un fallo en cualquier etapa detiene las siguientes: nada rojo se empaqueta ni se publica.
+//
+// El parámetro SIMULAR_FALLO (9.FAIL) inyecta, SOLO en el workspace del build, un fallo de prueba
+// unitaria, de cobertura, de Dockerfile o de BDD para demostrar que el pipeline se detiene.
+
+def SERVICIO = 'empleados-service'
+
+def SERVICIOS = [
+  'empleados-service':      [stack: 'java',   it: 'empleados'],
+  'perfiles-service':       [stack: 'java',   it: 'perfiles'],
+  'departamentos-service':  [stack: 'go',     it: 'departamentos'],
+  'auth-service':           [stack: 'python', it: 'auth'],
+  'notificaciones-service': [stack: 'python', it: 'notificaciones'],
+  'vacaciones-service':     [stack: 'node',   it: 'vacaciones'],
+  'api-gateway':            [stack: 'node',   it: 'gateway'],
+]
+
+// Imagen de toolchain = la del Dockerfile del servicio. Cachés en volúmenes con nombre fijo.
+def STACKS = [
+  java: [
+    imagen: 'maven:3.9.11-eclipse-temurin-21',
+    cache: '-v jenkins_m2:/root/.m2 -v /var/run/docker.sock:/var/run/docker.sock',
+    build: 'mvn -B -q -DskipTests package',
+    lint: 'mvn -B -q -DskipTests compile -Dmaven.compiler.showWarnings=true',
+    unit: 'mvn -B test',
+    // Failsafe + Testcontainers; la regla `check` de JaCoCo exige cobertura.minima.
+    integracion: 'mvn -B verify -Dcobertura.minima=$(awk "BEGIN{print $COBERTURA_MINIMA/100}")',
+    junit: 'target/surefire-reports/*.xml, target/failsafe-reports/*.xml',
+    cobertura: [parser: 'JACOCO', pattern: 'target/site/jacoco/jacoco.xml'],
+    necesitaDeps: false,
+    falloUnit: ['src/test/java/FalloSimuladoTest.java',
+      'class FalloSimuladoTest { @org.junit.jupiter.api.Test void falla() { org.junit.jupiter.api.Assertions.fail("fallo simulado (9.FAIL)"); } }'],
+  ],
+  go: [
+    imagen: 'golang:1.25.11-alpine',
+    cache: '-v jenkins_gomod:/go/pkg/mod -v jenkins_gocache:/root/.cache/go-build',
+    build: 'go build ./...',
+    lint: 'go vet ./...',
+    // coverage.out se convierte a Cobertura XML para el plugin de cobertura de Jenkins.
+    unit: 'sh scripts/test.sh && go run github.com/boumenot/gocover-cobertura@v1.2.0 < coverage.out > reports/coverage.xml',
+    junit: 'reports/junit*.xml',
+    cobertura: [parser: 'COBERTURA', pattern: 'reports/coverage.xml'],
+    necesitaDeps: true,
+    falloUnit: ['internal/department/fallo_simulado_test.go',
+      'package department\nimport "testing"\nfunc TestFalloSimulado(t *testing.T) { t.Fatal("fallo simulado (9.FAIL)") }'],
+  ],
+  node: [
+    imagen: 'node:22.21.1-alpine3.22',
+    cache: '-v jenkins_npm:/root/.npm',
+    build: 'npm ci --no-audit --no-fund',
+    lint: 'for f in $(find src tests -name "*.js"); do node --check "$f" || exit 1; done',
+    unit: 'npm test',
+    junit: 'reports/junit*.xml',
+    cobertura: [parser: 'LCOV', pattern: 'reports/lcov.info'],
+    necesitaDeps: true,
+    falloUnit: ['tests/fallo-simulado.test.js',
+      'import test from "node:test";\nimport assert from "node:assert/strict";\ntest("fallo simulado (9.FAIL)", () => assert.fail("fallo simulado"));'],
+  ],
+  python: [
+    imagen: 'python:3.12.12-slim-bookworm',
+    cache: '-v jenkins_pip:/root/.cache/pip',
+    build: 'pip install -q --root-user-action=ignore -r requirements-dev.txt',
+    lint: 'pip install -q --root-user-action=ignore ruff==0.14.5 && ruff check src tests',
+    unit: 'python -m pytest -p no:cacheprovider --cov-fail-under=$COBERTURA_MINIMA',
+    junit: 'reports/junit*.xml',
+    cobertura: [parser: 'COBERTURA', pattern: 'reports/coverage.xml'],
+    necesitaDeps: true,
+    falloUnit: ['tests/test_fallo_simulado.py',
+      'def test_fallo_simulado():\n    raise AssertionError("fallo simulado (9.FAIL)")'],
+  ],
+]
+
+def CFG = STACKS[SERVICIOS[SERVICIO].stack]
+def IT = SERVICIOS[SERVICIO].it
+def DIR = "services/${SERVICIO}"
+def AGENTE = "-u root --network ${env.DOCKER_NETWORK} --add-host=host.docker.internal:host-gateway ${CFG.cache}"
+// Servicios de negocio que levanta el despliegue de prueba (proyecto micro-ci).
+def NEGOCIO = 'api-gateway empleados-service departamentos-service notificaciones-service perfiles-service ' +
+  'vacaciones-service auth-service mailhog message-broker'
+
 pipeline {
   agent any
   options {
     skipStagesAfterUnstable()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    disableConcurrentBuilds()
   }
-  // Jenkins solo permite cron por minuto; el mínimo es * * * * * (~60 s). Disparo inmediato: hook post-commit.
+  parameters {
+    choice(name: 'SIMULAR_FALLO', choices: ['ninguno', 'unitaria', 'cobertura', 'dockerfile', 'bdd'],
+      description: '9.FAIL: inyecta un fallo solo en el workspace de este build')
+  }
   triggers {
-    pollSCM('* * * * *')
+    pollSCM('H/2 * * * *')
   }
   environment {
+    NOMBRE_IMAGEN = "${SERVICIO}"
+    REGISTRY = 'localhost:5001'
+    COBERTURA_MINIMA = "${params.SIMULAR_FALLO == 'cobertura' ? '99' : '70'}"
     TESTCONTAINERS_RYUK_DISABLED = 'true'
     TESTCONTAINERS_HOST_OVERRIDE = 'host.docker.internal'
-    SONAR_HOST_URL = "${env.SONAR_HOST_URL}"
+    IT_ENV = "${env.WORKSPACE}@tmp/it.env"
   }
   stages {
     stage('Checkout') {
       steps {
-        sh 'git rev-parse HEAD'
+        checkout scm
+        script {
+          // Tag inmutable: commit corto + número de build. `latest` es solo un alias.
+          env.TAG = "${sh(script: 'git rev-parse --short=8 HEAD', returnStdout: true).trim()}-${env.BUILD_NUMBER}"
+        }
+        echo "Imagen: ${env.REGISTRY}/${SERVICIO}:${env.TAG} · fallo simulado: ${params.SIMULAR_FALLO}"
       }
     }
 
-    stage('Build') {
-      agent {
-        docker {
-          image 'maven:3.9-eclipse-temurin-21'
-          reuseNode true
-          args "-u root --network ${env.DOCKER_NETWORK} --add-host=host.docker.internal:host-gateway -v /var/run/docker.sock:/var/run/docker.sock -v jenkins_m2:/var/maven/.m2"
-        }
-      }
+    stage('Dependencias de integración') {
+      when { expression { CFG.necesitaDeps && IT != 'gateway' } }
       steps {
-        dir('services/empleados-service') {
-          sh 'mvn -Dmaven.repo.local=/var/maven/.m2 clean compile -DskipTests'
-          sh 'chown -R "$(stat -c %u .):$(stat -c %g .)" .'
-        }
+        // PostgreSQL, MySQL, RabbitMQ y Mailhog efímeros en la red cicd del agente.
+        sh 'bash scripts/it-deps.sh up "it-${BUILD_TAG}" "$DOCKER_NETWORK" "$IT_ENV"'
       }
     }
 
-    stage('Test') {
-      agent {
-        docker {
-          image 'maven:3.9-eclipse-temurin-21'
-          reuseNode true
-          args "-u root --network ${env.DOCKER_NETWORK} --add-host=host.docker.internal:host-gateway -v /var/run/docker.sock:/var/run/docker.sock -v jenkins_m2:/var/maven/.m2"
+    stage('Build y pruebas') {
+      agent { docker { image CFG.imagen; reuseNode true; args AGENTE } }
+      stages {
+        stage('Build') { steps { dir(DIR) { sh CFG.build } } }
+        stage('Lint') { steps { dir(DIR) { sh CFG.lint } } }
+        stage('Unit') {
+          steps {
+            dir(DIR) {
+              script {
+                if (params.SIMULAR_FALLO == 'unitaria') {
+                  writeFile file: CFG.falloUnit[0], text: CFG.falloUnit[1] + '\n'
+                }
+              }
+              sh CFG.unit
+            }
+          }
         }
-      }
-      steps {
-        dir('services/empleados-service') {
-          sh 'mvn -Dmaven.repo.local=/var/maven/.m2 verify -Dmaven.test.failure.ignore=true'
-          sh 'chown -R "$(stat -c %u .):$(stat -c %g .)" .'
+        stage('Integración') {
+          steps {
+            dir(DIR) {
+              sh """
+                if [ -f "\$IT_ENV" ]; then set -a; . "\$IT_ENV"; set +a; fi
+                ${CFG.integracion ?: "sh ../../scripts/it-run.sh ${IT}"}
+              """
+            }
+          }
         }
       }
       post {
         always {
-          dir('services/empleados-service') {
-            junit 'target/surefire-reports/*.xml, target/failsafe-reports/*.xml'
-            recordCoverage tools: [[parser: 'JACOCO', pattern: 'target/site/jacoco/jacoco.xml']],
-              sourceCodeRetention: 'EVERY_BUILD'
+          dir(DIR) {
+            junit testResults: CFG.junit, allowEmptyResults: true
+            recordCoverage tools: [CFG.cobertura], sourceCodeRetention: 'EVERY_BUILD'
+            // El agente corre como root: se devuelve el workspace al usuario de Jenkins.
+            sh 'chown -R "$(stat -c %u ../..):$(stat -c %g ../..)" . || true'
           }
         }
       }
@@ -66,17 +175,14 @@ pipeline {
       steps {
         script {
           env.SONAR_TOKEN = readFile('/run/sonar-bootstrap/token').trim()
-        }
-        withSonarQubeEnv('sonarqube') {
-          script {
-            docker.image('maven:3.9-eclipse-temurin-21').inside("-u root --network ${env.DOCKER_NETWORK} --add-host=host.docker.internal:host-gateway -v /var/run/docker.sock:/var/run/docker.sock -v jenkins_m2:/var/maven/.m2") {
-              dir('services/empleados-service') {
-                sh '''
-                  set +x
-                  set -eu
-                  mvn -Dmaven.repo.local=/var/maven/.m2 sonar:sonar -Dsonar.host.url="${SONAR_HOST_URL}"
-                  chown -R "$(stat -c %u .):$(stat -c %g .)" .
-                '''
+          withSonarQubeEnv('sonarqube') {
+            if (CFG == STACKS.java) {
+              docker.image(CFG.imagen).inside(AGENTE) {
+                dir(DIR) { sh 'mvn -B -q sonar:sonar -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.token="$SONAR_TOKEN"' }
+              }
+            } else {
+              docker.image('sonarsource/sonar-scanner-cli:11.4').inside(AGENTE) {
+                dir(DIR) { sh 'sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.token="$SONAR_TOKEN"' }
               }
             }
           }
@@ -86,82 +192,115 @@ pipeline {
 
     stage('Quality Gate') {
       steps {
-        timeout(time: 5, unit: 'MINUTES') {
+        // Gate del proyecto: cobertura ≥ 70 %. Si no se cumple, el pipeline se detiene aquí.
+        timeout(time: 10, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    stage('Seguridad') {
+      parallel {
+        stage('Dependencias') {
+          steps {
+            script {
+              docker.image('aquasec/trivy:0.67.2').inside('--entrypoint= -u root -v jenkins_trivy:/root/.cache/trivy') {
+                sh "trivy fs --quiet --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 --skip-dirs node_modules --skip-dirs target ${DIR}"
+              }
+            }
+          }
+        }
+        stage('Secretos') {
+          steps {
+            script {
+              docker.image('ghcr.io/gitleaks/gitleaks:v8.24.3').inside('--entrypoint=') {
+                sh 'gitleaks detect --source . --config .gitleaks.toml --redact --no-banner'
+              }
+            }
+          }
         }
       }
     }
 
     stage('Package') {
       steps {
-        dir('services/empleados-service') {
-          sh '''
-            set -eu
-            docker build -t "micro/empleados-service:${BUILD_NUMBER}" -t micro/empleados-service:latest .
-            docker image inspect "micro/empleados-service:${BUILD_NUMBER}"
-          '''
+        dir(DIR) {
+          script {
+            if (params.SIMULAR_FALLO == 'dockerfile') {
+              sh 'echo "RUN echo fallo simulado 9.FAIL && exit 1" >> Dockerfile'
+            }
+          }
+          sh 'docker build -t "$REGISTRY/$NOMBRE_IMAGEN:$TAG" -t "$REGISTRY/$NOMBRE_IMAGEN:latest" .'
+        }
+        script {
+          // Una vulnerabilidad CRITICAL corregible en la imagen detiene el pipeline.
+          docker.image('aquasec/trivy:0.67.2').inside('--entrypoint= -u root -v jenkins_trivy:/root/.cache/trivy -v /var/run/docker.sock:/var/run/docker.sock') {
+            sh 'trivy image --quiet --severity CRITICAL --ignore-unfixed --exit-code 1 "$REGISTRY/$NOMBRE_IMAGEN:$TAG"'
+          }
         }
       }
     }
 
-    stage('E2E Tests') {
-      options {
-        lock(resource: 'ecosistema-e2e')
-      }
+    stage('Push Registry') {
       steps {
+        sh '''
+          docker push "$REGISTRY/$NOMBRE_IMAGEN:$TAG"
+          docker push "$REGISTRY/$NOMBRE_IMAGEN:latest"
+          docker image inspect --format '{{index .RepoDigests 0}}' "$REGISTRY/$NOMBRE_IMAGEN:$TAG" | tee digest.txt
+        '''
+        archiveArtifacts artifacts: 'digest.txt'
+      }
+    }
+
+    stage('Deploy + E2E') {
+      options { lock(resource: 'ecosistema-e2e') }
+      steps {
+        // Despliegue de prueba aislado (proyecto micro-ci) y BDD completa contra él.
+        sh """
+          set -eu
+          export HOST_REPO="\$(docker inspect "\$(hostname)" --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')"
+          export GATEWAY_PORT=18080 RABBITMQ_MANAGEMENT_PORT=15673 MAILHOG_UI_PORT=18025
+          docker compose --env-file /workspace/.env -f docker-compose.yml -f jenkins/docker-compose.ci.yml \\
+            -p micro-ci up -d --build ${NEGOCIO}
+          sh jenkins/wait-for-healthy.sh
+        """
+        // Los contenedores de docker.inside() no heredan las globales de JCasC: se copian a un
+        // archivo 0600 que la BDD carga y que se borra al terminar (sin imprimir valores).
         sh '''
           set +x
           set -eu
-          rm -rf e2e-tests/reports
-          export GATEWAY_PORT=18080
-          export RABBITMQ_PORT=5673
-          export RABBITMQ_MANAGEMENT_PORT=15673
-          export MAILHOG_UI_PORT=18025
-          # El contenedor de Node no hereda las globales de JCasC. Se copian aquí,
-          # sin imprimirlas, para que la BDD las lea.
-          if [ -z "${ADMIN_USUARIO:-}" ] || [ -z "${ADMIN_PASSWORD:-}" ] || [ -z "${USER_PASSWORD:-}" ]; then
+          if [ -z "${ADMIN_PASSWORD:-}" ] || [ -z "${USER_PASSWORD:-}" ]; then
             pid=$(ps -eo pid,args | awk '/jenkins[.]war/ && !/awk/ { print $1; exit }')
-            while IFS= read -r -d '' item; do
-              case "$item" in
-                ADMIN_USUARIO=*|ADMIN_PASSWORD=*|USER_PASSWORD=*) export "$item" ;;
-              esac
-            done < "/proc/${pid}/environ"
-          fi
-          if [ -z "${ADMIN_USUARIO:-}" ] || [ -z "${ADMIN_PASSWORD:-}" ] || [ -z "${USER_PASSWORD:-}" ]; then
-            echo "Faltan ADMIN_USUARIO, ADMIN_PASSWORD o USER_PASSWORD en Jenkins" >&2
-            exit 1
+            eval "$(tr '\\0' '\\n' < "/proc/${pid}/environ" \
+              | grep -E '^(ADMIN_USUARIO|ADMIN_PASSWORD|USER_PASSWORD)=' | sed 's/^/export /')"
           fi
           umask 077
-          cat > e2e-tests/.ci-env <<EOF
-ADMIN_USUARIO=${ADMIN_USUARIO}
-ADMIN_PASSWORD=${ADMIN_PASSWORD}
-USER_PASSWORD=${USER_PASSWORD}
-BASE_URL=http://host.docker.internal:18080
-EOF
-          # Jenkins y Sonar ya ocupan sus container_name y sus puertos.
-          # Este proyecto solo levanta el sistema de negocio.
-          docker compose --env-file /workspace/.env \
-            -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
-            -p micro-ci up -d --build \
-            api-gateway empleados-service departamentos-service \
-            notificaciones-service perfiles-service vacaciones-service \
-            auth-service mailhog message-broker
-          chmod +x jenkins/wait-for-healthy.sh
-          jenkins/wait-for-healthy.sh
+          printf 'ADMIN_USUARIO=%s\nADMIN_PASSWORD=%s\nUSER_PASSWORD=%s\n' \
+            "${ADMIN_USUARIO:-admin}" "${ADMIN_PASSWORD:?falta ADMIN_PASSWORD}" "${USER_PASSWORD:?falta USER_PASSWORD}" \
+            > e2e-tests/.ci-env
         '''
         script {
-          docker.image('node:22').inside('-u root --add-host=host.docker.internal:host-gateway -v jenkins_npm:/root/.npm') {
+          if (params.SIMULAR_FALLO == 'bdd') {
+            writeFile file: 'e2e-tests/features/99-fallo-simulado.feature', text: '''# language: es
+Característica: Fallo simulado (9.FAIL)
+  Escenario: El pipeline se detiene cuando la BDD falla
+    Dado que el sistema está desplegado y operativo
+    Entonces la respuesta debe tener código 418
+'''
+          }
+          docker.image('node:22.21.1-alpine3.22').inside('-u root --add-host=host.docker.internal:host-gateway -v jenkins_npm:/root/.npm -v /var/run/docker.sock:/var/run/docker.sock') {
             dir('e2e-tests') {
               sh '''
                 set +x
                 set -eu
-                npm ci
-                set -a
-                . ./.ci-env
-                set +a
-                npm test || true
+                set -a; . ./.ci-env; set +a
                 rm -f .ci-env
-                chown -R "$(stat -c %u .):$(stat -c %g .)" .
+                export BASE_URL=http://host.docker.internal:18080
+                export RABBITMQ_MGMT_URL=http://host.docker.internal:15673
+                export RABBITMQ_PASSWORD_FILE=/workspace/secrets/rabbitmq_password.txt
+                export COMPOSE_PROJECT=micro-ci
+                npm ci --no-audit --no-fund -q
+                npm test
               '''
             }
           }
@@ -171,27 +310,24 @@ EOF
         always {
           sh '''
             rm -f e2e-tests/.ci-env
-            docker compose --env-file /workspace/.env \
-              -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
-              -p micro-ci logs --no-color > docker-logs.txt || true
-            docker compose --env-file /workspace/.env \
-              -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
+            export HOST_REPO="$(docker inspect "$(hostname)" --format '{{range .Mounts}}{{if eq .Destination "/workspace"}}{{.Source}}{{end}}{{end}}')"
+            docker compose --env-file /workspace/.env -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
+              -p micro-ci logs --no-color > docker-logs.txt 2>&1 || true
+            docker compose --env-file /workspace/.env -f docker-compose.yml -f jenkins/docker-compose.ci.yml \
               -p micro-ci down -v || true
+            chown -R "$(stat -c %u .):$(stat -c %g .)" e2e-tests || true
           '''
           archiveArtifacts artifacts: 'docker-logs.txt', allowEmptyArchive: true
-          junit testResults: 'e2e-tests/reports/junit.xml', allowEmptyResults: false
-          cucumber jsonReportDirectory: 'e2e-tests/reports',
-            fileIncludePattern: '**/cucumber.json',
-            buildStatus: 'UNSTABLE'
-          publishHTML target: [
-            reportDir: 'e2e-tests/reports',
-            reportFiles: 'cucumber.html',
-            reportName: 'Reporte BDD',
-            keepAll: true,
-            alwaysLinkToLastBuild: true
-          ]
+          junit testResults: 'e2e-tests/reports/junit.xml', allowEmptyResults: true
+          publishHTML target: [reportDir: 'e2e-tests/reports', reportFiles: 'cucumber.html',
+            reportName: 'Reporte BDD', keepAll: true, alwaysLinkToLastBuild: true, allowMissing: true]
         }
       }
+    }
+  }
+  post {
+    always {
+      sh 'bash scripts/it-deps.sh down "it-${BUILD_TAG}" || true'
     }
   }
 }

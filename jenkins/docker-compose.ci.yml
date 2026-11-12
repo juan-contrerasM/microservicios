@@ -66,6 +66,9 @@ services:
     healthcheck:
       start_period: 60s
       retries: 20
+    # Plantillas desde la ruta del host (ver la nota de `secrets` al final).
+    volumes: !override
+      - ${HOST_REPO:?defina HOST_REPO}/services/notificaciones-service/config/templates.json:/app/config/templates.json:ro
   perfiles-service:
     healthcheck:
       start_period: 150s
@@ -94,3 +97,41 @@ volumes:
   sonar_bootstrap:
     name: sonar_bootstrap
     external: true
+
+# Fase 9: Jenkins corre en un contenedor y Compose le pasa al daemon del HOST las rutas de los
+# bind mounts. Las rutas relativas (./secrets, ./services/...) apuntarían al workspace de Jenkins,
+# que el daemon no ve. HOST_REPO (el Source del montaje /workspace; lo calcula el Jenkinsfile) es
+# la ruta real del repositorio en el host. Si falta, Compose falla en vez de montar algo vacío.
+secrets:
+  empleados_db_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/empleados_db_password.txt
+  departamentos_db_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/departamentos_db_password.txt
+  departamentos_db_root_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/departamentos_db_root_password.txt
+  rabbitmq_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/rabbitmq_password.txt
+  notificaciones_db_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/notificaciones_db_password.txt
+  perfiles_db_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/perfiles_db_password.txt
+  vacaciones_db_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/vacaciones_db_password.txt
+  auth_db_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/auth_db_password.txt
+  jwt_secret:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/jwt_secret.txt
+  auth_admin_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/auth_admin_password.txt
+  jenkins_admin_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/jenkins_admin_password.txt
+  sonar_admin_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/sonar_admin_password.txt
+  sonar_jdbc_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/sonar_jdbc_password.txt
+  e2e_user_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/e2e_user_password.txt
+  grafana_admin_password:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/grafana_admin_password.txt
+  discord_webhook_url:
+    file: ${HOST_REPO:?defina HOST_REPO}/secrets/discord_webhook_url.txt

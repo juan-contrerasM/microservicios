@@ -22,6 +22,17 @@ if [ ! -S "$SOCK" ]; then
   exit 1
 fi
 
+# Fase 9: la red cicd se llama <proyecto>_cicd-network y el proyecto cambia con `-p`. Con
+# DOCKER_NETWORK=auto se toma la red cicd a la que Compose conectó este contenedor.
+if [ "${DOCKER_NETWORK:-auto}" = auto ]; then
+  DOCKER_NETWORK="$(docker inspect "$(hostname)" \
+    --format '{{range $red, $_ := .NetworkSettings.Networks}}{{$red}} {{end}}' \
+    | tr ' ' '\n' | grep -- 'cicd-network$' | head -n1)"
+  [ -n "$DOCKER_NETWORK" ] || { echo "No se encontró la red cicd del contenedor" >&2; exit 1; }
+  export DOCKER_NETWORK
+  echo "DOCKER_NETWORK=${DOCKER_NETWORK}"
+fi
+
 DOCKER_GID="$(stat -c '%g' "$SOCK")"
 export DOCKER_GID
 if ! getent group "${DOCKER_GID}" >/dev/null; then

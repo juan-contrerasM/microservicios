@@ -67,7 +67,7 @@ class PublicadorMemoria:
 
 def settings_de_prueba() -> Settings:
     return Settings(
-        jwt_secret="secreto-de-prueba",
+        jwt_secret="secreto-de-prueba-con-al-menos-32-bytes",
         jwt_access_minutes=60,
         reset_token_minutes=60,
         auth_admin_usuario="admin",

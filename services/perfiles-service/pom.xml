@@ -16,6 +16,15 @@
 	<properties>
 		<java.version>21</java.version>
 		<jacoco.version>0.8.14</jacoco.version>
+		<!-- Fase 9 (E16/E19): umbral de JaCoCo parametrizable (el pipeline lo sube para simular un
+		     fallo de cobertura) y proyecto SonarQube propio con el reporte combinado. -->
+		<cobertura.minima>0.70</cobertura.minima>
+		<sonar.maven.plugin.version>5.8.0.7211</sonar.maven.plugin.version>
+		<sonar.projectKey>perfiles-service</sonar.projectKey>
+		<sonar.projectName>perfiles-service</sonar.projectName>
+		<sonar.java.binaries>target/classes</sonar.java.binaries>
+		<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<sonar.coverage.exclusions>**/PerfilesApplication.java,**/dto/**,**/model/**,**/repository/**,**/config/BrokerConfig.java,**/config/BrokerProperties.java,**/config/OpenApiConfig.java</sonar.coverage.exclusions>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -86,6 +95,12 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+			<!-- Fase 9 (E19): solo la etapa SonarQube del Jenkinsfile invoca el goal. -->
+			<plugin>
+				<groupId>org.sonarsource.scanner.maven</groupId>
+				<artifactId>sonar-maven-plugin</artifactId>
+				<version>${sonar.maven.plugin.version}</version>
 			</plugin>
 			<!-- *Test = unitarias (Surefire). *IT = integración (Failsafe, mvn verify, Testcontainers). -->
 			<plugin>
@@ -161,7 +176,7 @@
 										<limit>
 											<counter>LINE</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.70</minimum>
+											<minimum>${cobertura.minima}</minimum>
 										</limit>
 									</limits>
 								</rule>

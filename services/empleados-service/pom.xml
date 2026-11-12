@@ -16,6 +16,8 @@
 	<properties>
 		<java.version>21</java.version>
 		<jacoco.version>0.8.14</jacoco.version>
+		<!-- Fase 9: umbral de JaCoCo parametrizable (el pipeline lo sube para simular un fallo). -->
+		<cobertura.minima>0.70</cobertura.minima>
 		<sonar.maven.plugin.version>5.8.0.7211</sonar.maven.plugin.version>
 		<sonar.projectKey>empleados-service</sonar.projectKey>
 		<sonar.projectName>empleados-service</sonar.projectName>
@@ -194,7 +196,7 @@
 										<limit>
 											<counter>LINE</counter>
 											<value>COVEREDRATIO</value>
-											<minimum>0.70</minimum>
+											<minimum>${cobertura.minima}</minimum>
 										</limit>
 									</limits>
 								</rule>

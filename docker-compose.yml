@@ -655,7 +655,9 @@ services:
       CASC_JENKINS_CONFIG: /var/jenkins_home/casc_configs
       JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
       JENKINS_ADMIN_PASSWORD_FILE: /run/secrets/jenkins_admin_password
-      DOCKER_NETWORK: microservicios_cicd-network
+      # Fase 9: auto = la red cicd del proyecto (docker-entrypoint.sh); los agentes se unen a ella.
+      DOCKER_NETWORK: auto
+      JOBS_BRANCH: ${JOBS_BRANCH:-proyecto-final}
       SONAR_HOST_URL: ${SONAR_HOST_URL:-http://sonarqube:9000}
       ADMIN_USUARIO: ${AUTH_ADMIN_USUARIO:-admin}
       ADMIN_PASSWORD_FILE: /run/secrets/auth_admin_password

@@ -11,3 +11,9 @@ addopts = [
 
 [tool.coverage.run]
 branch = true
+
+# Fase 9 (E18, etapa Lint): ruff con sus reglas por defecto (E4, E7, E9, F).
+[tool.ruff.lint.per-file-ignores]
+# main.py llama a telemetria.configurar() ANTES de importar FastAPI a propósito: la
+# instrumentación OTel tiene que estar activa cuando se cargan los módulos instrumentados.
+"src/*/main.py" = ["E402"]
