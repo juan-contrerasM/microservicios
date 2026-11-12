@@ -53,7 +53,11 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 - Seguridad del borde, 0 CVE CRITICAL/HIGH y secretos limpios en árbol e historial.
 - Documentación final (README, arquitectura, guías y fichas C6) y paquete reproducible (`scripts/empaquetar.sh`).
 
-Pendiente opcional: bonificaciones del plan (IdP OIDC/JWKS, `/empleados/{id}/completo`, `/health/services`).
+Bonificación 3 implementada: `GET /health/services` en el Gateway (salud agregada de los seis
+servicios, separada de `/health`; evidencia en `EVIDENCIAS.md`).
+
+Pendiente opcional: bonificaciones del plan (IdP OIDC/JWKS, `/empleados/{id}/completo`, probes
+`/health/live|ready|startup`, carga 1 vs 2 réplicas).
 
 ## Decisiones
 
@@ -71,7 +75,7 @@ Pendiente opcional: bonificaciones del plan (IdP OIDC/JWKS, `/empleados/{id}/com
 | Puertos de host | Gateway 8080; Jenkins 8090, Prometheus 9090, Registry 5001, Grafana 3000, Zipkin 9411, SonarQube 9000, RabbitMQ UI 15672, Mailhog 8025 | Implementada (Fase 14) |
 | Estructura de entrega | Conservar `services/` y `observability/`; equivalencia en `docs/estructura-entrega.md` | Vigente (Fase 14) |
 | Pruebas por servicio | Unitarias con umbral 70 % + `scripts/test-integration.sh` + `scripts/test-mutation.sh` + `scripts/test-bdd.sh` | Vigente (Fase 8) |
-| Health global | `/health/services` separado | Opcional |
+| Health global | `/health/services` separado de `/health`; consulta directa a cada servicio (no por el balanceador) para conservar el check que falló | Implementado (bonificación 3) |
 
 ## Reglas de actualización
 

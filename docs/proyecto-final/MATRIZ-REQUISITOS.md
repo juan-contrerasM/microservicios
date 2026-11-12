@@ -22,7 +22,7 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | E04 | Sin `ports:` (solo `expose:`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A borde (8080) | 14 |
 | E05 | BD propia, migraciones con rollback, `UNIQUE` | ✅ rollback y UNIQUE probados offline | ✅ `.down.sql` probado offline | ✅ downgrade `--sql` | ✅ | ✅ `pgm` simulado | ✅ downgrade `--sql` | N/A sin BD | 5 |
 | E06 | Healthcheck Compose → `/health` + `service_healthy` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `service_started` hacia backends, excepción documentada | 14 |
-| E07 | `/health` C2 con 200/503 real | ✅ timeout 2 s por check | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ propio | 5 |
+| E07 | `/health` C2 con 200/503 real | ✅ timeout 2 s por check | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ propio + agregado en `/health/services` | 5 |
 | E08 | OpenAPI completo + Swagger UI + `openapi.yaml` + `bearerAuth` | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ drift test | ✅ `/swagger` con 7 contratos | 5 |
 | E09 | Error HTTP C3 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 5 |
 | E10 | Timeout + retry backoff + circuit breaker en clientes HTTP | ✅ Resilience4j → Departamentos | N/A | N/A | N/A | N/A | N/A | ✅ circuito por backend, timeout por servicio y retry solo GET | 6 |

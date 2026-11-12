@@ -28,6 +28,21 @@ const VARIABLES_OPENAPI = {
 	'notificaciones-service': 'NOTIFICACIONES_OPENAPI_PATH',
 };
 
+const VARIABLES_HEALTH = {
+	'auth-service': 'AUTH_HEALTH_URL',
+	'empleados-service': 'EMPLEADOS_HEALTH_URL',
+	'departamentos-service': 'DEPARTAMENTOS_HEALTH_URL',
+	'perfiles-service': 'PERFILES_HEALTH_URL',
+	'vacaciones-service': 'VACACIONES_HEALTH_URL',
+	'notificaciones-service': 'NOTIFICACIONES_HEALTH_URL',
+};
+
+function healthUrls(env) {
+	return Object.fromEntries(Object.entries(VARIABLES_HEALTH)
+		.filter(([, variable]) => env[variable]?.trim())
+		.map(([servicio, variable]) => [servicio, requiredUrl(env, variable)]));
+}
+
 function rutasOpenapi(env) {
 	return Object.fromEntries(Object.entries(VARIABLES_OPENAPI)
 		.filter(([, variable]) => env[variable]?.trim())
@@ -70,6 +85,12 @@ export function loadConfig(env = process.env) {
 		// que traiga variable; las demás usan RUTAS_OPENAPI_POR_DEFECTO (src/swagger.js).
 		rutasOpenapi: rutasOpenapi(env),
 		swaggerTimeoutMs: Number(env.SWAGGER_SPEC_TIMEOUT_MS || 3_000),
+		// GET /health/services: URL directa del servicio (sin balanceador, que oculta el cuerpo del
+		// 503 al sacar la réplica de rotación); sin ella se usa la URL del proxy. Timeout por backend
+		// (en paralelo, < 3 s en total) y reutilización.
+		healthUrls: healthUrls(env),
+		healthServicesTimeoutMs: Number(env.HEALTH_SERVICES_TIMEOUT_MS || 2_500),
+		healthServicesCacheMs: Number(env.HEALTH_SERVICES_CACHE_MS || 2_000),
 		// Fase 13: orígenes CORS permitidos (lista separada por comas; vacía = sin CORS), tamaño
 		// máximo de cuerpo y límite de intentos por IP y minuto en login/recuperación/reset.
 		corsOrigins: String(env.CORS_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),

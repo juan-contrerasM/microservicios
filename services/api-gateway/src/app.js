@@ -7,6 +7,7 @@ import { manejarError, rutaNoEncontrada } from './errors.js';
 import { backendProxy } from './proxy.js';
 import { metricsHandler, metricsMiddleware } from './metricas.js';
 import { cabecerasSeguras, cors, limiteCuerpo, limiteDePeticiones } from './seguridad.js';
+import { saludRouter } from './salud.js';
 import { swaggerRouter } from './swagger.js';
 
 const dir = dirname(fileURLToPath(import.meta.url));
@@ -28,6 +29,9 @@ export function createApp({
 	circuitOpenMs = 30_000,
 	rutasOpenapi = {},
 	swaggerTimeoutMs = 3_000,
+	healthUrls = {},
+	healthServicesTimeoutMs = 2_500,
+	healthServicesCacheMs = 2_000,
 	corsOrigins = [],
 	maxBodyBytes = 1_048_576,
 	rateLimitMax = 20,
@@ -72,6 +76,24 @@ export function createApp({
 		res.status(200).json({ status: 'UP', service: 'api-gateway', version: VERSION, checks: { process: 'UP' } });
 	});
 
+	const backends = {
+		'auth-service': authUrl,
+		'empleados-service': empleadosUrl,
+		'departamentos-service': departamentosUrl,
+		'perfiles-service': perfilesUrl,
+		'vacaciones-service': vacacionesUrl,
+		'notificaciones-service': notificacionesUrl,
+	};
+
+	// Health agregado de los seis backends, aparte del propio: 503 si alguno cae, /health sigue UP.
+	app.use(saludRouter({
+		backends: Object.fromEntries(Object.entries(backends).map(([servicio, url]) => [servicio, url && (healthUrls[servicio] ?? url)])),
+		version: VERSION,
+		timeoutMs: healthServicesTimeoutMs,
+		cacheMs: healthServicesCacheMs,
+		fetchImpl,
+	}));
+
 	app.get('/openapi.json', (_req, res) => {
 		res.type('application/json').send(openapi);
 	});
@@ -79,14 +101,7 @@ export function createApp({
 	// Swagger UI agregada de los siete contratos; pública como /health y /metrics.
 	app.use(swaggerRouter({
 		propio: openapi,
-		backends: {
-			'auth-service': authUrl,
-			'empleados-service': empleadosUrl,
-			'departamentos-service': departamentosUrl,
-			'perfiles-service': perfilesUrl,
-			'vacaciones-service': vacacionesUrl,
-			'notificaciones-service': notificacionesUrl,
-		},
+		backends,
 		rutasOpenapi,
 		timeoutMs: swaggerTimeoutMs,
 		fetchImpl,

@@ -130,7 +130,8 @@ Todas las rutas pasan por `http://localhost:8080`. Salvo login, recuperación y 
 | `GET /perfiles` · `GET/PUT /perfiles/{empleadoId}` | `PUT` solo el dueño o ADMIN | Perfil del empleado |
 | `GET/POST /vacaciones` · `GET/PUT/DELETE /vacaciones/{id}` | lectura USER · escritura ADMIN | Períodos de vacaciones |
 | `GET /notificaciones` · `GET /notificaciones/{empleadoId}` | USER/ADMIN | Historial de correos |
-| `GET /health` · `GET /metrics` · `GET /swagger` | público | Salud, métricas y documentación |
+| `GET /health` · `GET /metrics` · `GET /swagger` | público | Salud del propio Gateway, métricas y documentación |
+| `GET /health/services` | público | Salud de los seis servicios: 200 `UP`, o 503 `DEGRADED`/`DOWN` con el check que falló en cada uno |
 
 Ejemplo de onboarding completo con `curl`:
 

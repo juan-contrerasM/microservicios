@@ -225,7 +225,7 @@ describe('OpenAPI propio del Gateway (E08)', () => {
 		assert.equal(spec.components.securitySchemes.BearerAuth.scheme, 'bearer');
 		assert.deepEqual(spec.security, [{ BearerAuth: [] }]);
 		const publicas = new Set([
-			'get /health', 'get /swagger', 'get /swagger/specs/{servicio}', 'get /openapi.json',
+			'get /health', 'get /health/services', 'get /swagger', 'get /swagger/specs/{servicio}', 'get /openapi.json',
 			'post /auth/login', 'post /auth/recover-password', 'post /auth/reset-password',
 		]);
 		for (const [ruta, operaciones] of Object.entries(spec.paths)) {

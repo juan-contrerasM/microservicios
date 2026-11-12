@@ -39,6 +39,55 @@ paths:
                 version: 1.0.0
                 checks:
                   process: UP
+  /health/services:
+    get:
+      tags:
+        - Salud
+      summary: Salud agregada de los seis servicios de negocio
+      operationId: healthServicios
+      description: "Consulta en paralelo el /health de cada backend (directo, por <SERVICIO>_HEALTH_URL), con timeout por servicio (HEALTH_SERVICES_TIMEOUT_MS, 2,5 s) y resultado reutilizado HEALTH_SERVICES_CACHE_MS (2 s). Separado de /health: un servicio caído deja este endpoint en 503 DEGRADED, pero /health del Gateway sigue 200 y el resto de rutas sigue funcionando."
+      security: []
+      responses:
+        "200":
+          description: Los seis servicios UP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthServicios"
+        "503":
+          description: DEGRADED (alguno DOWN) o DOWN (todos DOWN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthServicios"
+              example:
+                status: DEGRADED
+                service: api-gateway
+                version: 1.0.0
+                checks:
+                  gateway: UP
+                  auth-service: UP
+                  empleados-service: DOWN
+                  departamentos-service: UP
+                  perfiles-service: UP
+                  vacaciones-service: UP
+                  notificaciones-service: UP
+                services:
+                  empleados-service:
+                    status: DOWN
+                    httpStatus: 503
+                    latencyMs: 41
+                    checks:
+                      database: DOWN
+                      messageBroker: UP
+                  perfiles-service:
+                    status: UP
+                    httpStatus: 200
+                    latencyMs: 12
+                    checks:
+                      database: UP
+                      messageBroker: UP
+                timestamp: 2026-11-12T18:00:00.000Z
   /swagger:
     get:
       tags:
@@ -1297,6 +1346,73 @@ components:
             process:
               type: string
               example: UP
+    HealthServicios:
+      type: object
+      required:
+        - status
+        - service
+        - version
+        - checks
+        - services
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+            - DEGRADED
+            - DOWN
+        service:
+          type: string
+          example: api-gateway
+        version:
+          type: string
+          example: 1.0.0
+        checks:
+          type: object
+          description: "Resumen: gateway y cada servicio configurado, UP o DOWN."
+          additionalProperties:
+            type: string
+            enum:
+              - UP
+              - DOWN
+        services:
+          type: object
+          description: Detalle por servicio, en el orden auth, empleados, departamentos, perfiles, vacaciones, notificaciones. Los servicios sin URL configurada no aparecen.
+          additionalProperties:
+            $ref: "#/components/schemas/HealthServicio"
+        timestamp:
+          type: string
+          format: date-time
+    HealthServicio:
+      type: object
+      required:
+        - status
+        - httpStatus
+        - latencyMs
+        - checks
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+            - DOWN
+        httpStatus:
+          type: integer
+          nullable: true
+          description: Código del /health del servicio; null si no hubo respuesta.
+        latencyMs:
+          type: integer
+        checks:
+          type: object
+          nullable: true
+          description: Checks del /health del servicio (solo valores de texto).
+          additionalProperties:
+            type: string
+        detail:
+          type: string
+          description: "Solo si el servicio no dio un health válido: «sin conexión», «sin respuesta en N ms» o «respondió HTTP N sin health válido»."
+          example: sin conexión
     Login:
       type: object
       required:

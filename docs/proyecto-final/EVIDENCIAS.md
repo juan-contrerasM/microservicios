@@ -461,3 +461,26 @@ estado real; este apartado reemplaza lo que el cierre anterior daba por hecho.
 2. Último build de los otros seis jobs en ese mismo Jenkins: api-gateway #3, departamentos-service
    #14, auth-service #10, perfiles-service #3, vacaciones-service #3 y notificaciones-service #3,
    todos SUCCESS. Los siete pipelines quedan en verde.
+
+### Bonificación 3 — salud agregada `GET /health/services`
+
+Fecha: 2026-11-12. Gateway reconstruido en el stack `pfcheck`; `/health` del Gateway sin cambios.
+
+- Pruebas del Gateway: 91/91, cobertura 97,65 % (`src/salud.js` 100 % de líneas). `tests/salud.test.js`
+  cubre los seis UP, servicio detenido, servicio con su base en 503, servicio colgado (timeout),
+  502 HTML del balanceador, filtrado de checks, todos caídos, servicio sin URL, caché compartida y
+  configuración.
+- Escenarios reales (`curl http://localhost:8080/health/services`):
+
+| Escenario | HTTP | `status` | Detalle del afectado | `/health` del Gateway | Otras rutas |
+|---|---|---|---|---|---|
+| Todo arriba | 200 | `UP` | — | 200 | — |
+| `database-empleados` detenida | 503 | `DEGRADED` | empleados `DOWN`, HTTP 503, `{"database":"DOWN","messageBroker":"UP"}` (2,13 s) | 200 | `GET /departamentos` 200, `GET /empleados` 503 C3 |
+| `perfiles-service` detenido | 503 | `DEGRADED` | perfiles `DOWN`, `checks: null`, «sin respuesta en …» | 200 | `GET /empleados` 200, `GET /perfiles/E001` 503 C3 |
+| `message-broker` detenido | 503 | `DEGRADED` | auth, empleados, perfiles, vacaciones y notificaciones `DOWN` con `{"database":"UP","messageBroker":"DOWN"}`; departamentos `UP` (no usa broker) (2,12 s) | 200 | — |
+| Recuperado | 200 | `UP` | — | 200 | — |
+
+- Primera versión consultaba por el balanceador (`*-lb`): con la base de Empleados caída, Traefik
+  sacaba la réplica de rotación y devolvía su propio 503 sin cuerpo, así que se veía `DOWN` sin el
+  check. Se cambió a consulta directa (`<SERVICIO>_HEALTH_URL`). También se subió el timeout por
+  servicio de 2 s a 2,5 s: el `/health` de Empleados con PostgreSQL caído tarda ~2,1 s.

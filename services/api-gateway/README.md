@@ -8,20 +8,22 @@
    Spring Cloud Gateway para no repetir Java/Spring Boot.
 3. **Endpoints** (contrato: [`openapi.yaml`](openapi.yaml); UI agregada en `/swagger`): todas las
    rutas de negocio de los seis servicios (`/auth/*`, `/empleados*`, `/departamentos*`, `/perfiles*`,
-   `/vacaciones*`, `/notificaciones*`) más `GET /health`, `GET /metrics`, `GET /openapi.json` y
-   `GET /swagger/specs/{servicio}`. Tabla completa en el [README raíz](../../README.md#5-endpoints-principales-del-api-gateway).
+   `/vacaciones*`, `/notificaciones*`) más `GET /health`, `GET /health/services` (salud agregada de
+   los seis), `GET /metrics`, `GET /openapi.json` y `GET /swagger/specs/{servicio}`. Tabla completa en el [README raíz](../../README.md#5-endpoints-principales-del-api-gateway).
 4. **Eventos:** no publica ni consume (`N/A`).
 5. **Configuración:** `PORT`, `*_URL` de cada servicio (vía el balanceador: `http://<servicio>-lb:8000`),
-   `JWT_SECRET_FILE` (≥ 32 bytes), `PROXY_TIMEOUT_MS` y `*_PROXY_TIMEOUT_MS`,
+   `*_HEALTH_URL` (directa, para `/health/services`), `HEALTH_SERVICES_TIMEOUT_MS`,
+   `HEALTH_SERVICES_CACHE_MS`, `JWT_SECRET_FILE` (≥ 32 bytes), `PROXY_TIMEOUT_MS` y `*_PROXY_TIMEOUT_MS`,
    `PROXY_RETRY_DELAYS_MS`, `CB_FAILURE_THRESHOLD`, `CB_OPEN_DURATION_MS`, `CORS_ORIGINS`,
    `MAX_BODY_BYTES`, `AUTH_RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_WINDOW_MS`, `OTEL_*`.
 6. **Migraciones:** `N/A` (sin base de datos).
-7. **Pruebas:** `npm test`: JUnit y LCOV en `reports/`, umbral 70 %. 80 pruebas, cobertura 97,29 %.
+7. **Pruebas:** `npm test`: JUnit y LCOV en `reports/`, umbral 70 %. 91 pruebas, cobertura 97,65 %.
    La integración levanta servidores HTTP reales como backends (JWT, RBAC, proxy, 503 y circuito).
 8. **Observabilidad:** prom-client (`/metrics`), logs JSON C5, OpenTelemetry. Negocio/resiliencia:
    `gateway_upstream_errors_total{servicio,causa}` y `gateway_circuit_breaker_state{servicio}`.
 9. **Resiliencia:** circuito independiente por backend, timeout por servicio, reintento 1–2–4 s solo
-   en `GET`, fallback 503 C3; `/health` propio sin consultar backends (el borde sigue UP).
+   en `GET`, fallback 503 C3; `/health` propio sin consultar backends (el borde sigue UP) y
+   `/health/services` aparte para ver el estado de los seis.
 10. **Seguridad y decisiones:** cabeceras seguras (CSP, `X-Frame-Options`, `nosniff`), CORS por lista
     blanca, límite de tamaño de cuerpo (413) y rate limiting por IP en login (fallos), reset (fallos)
     y recuperación (todas): 429 con `Retry-After`. El límite vive en memoria de cada réplica: con N
@@ -46,6 +48,7 @@ Todos los errores propios siguen el contrato C3 (Fase 5).
 | Ruta externa (cliente → Gateway) | Destino interno | Notas |
 |---|---|---|
 | `GET /health` | el propio Gateway | Público. `{"status":"UP","service":"api-gateway","version":"1.0.0","checks":{"process":"UP"}}`. No hace ping a los backends ni exige JWT. |
+| `GET /health/services` | `/health` directo de los seis servicios | Público. Salud agregada: 200 `UP` o 503 `DEGRADED`/`DOWN` con el estado y los checks de cada servicio. Ver [Salud agregada](#salud-agregada-get-healthservices). |
 | `GET /openapi.json` | el propio Gateway | Público. Contrato del borde (copia exportada en [`openapi.yaml`](openapi.yaml)). |
 | `GET /swagger` (también `/swagger/` y `/swagger/index.html`) | el propio Gateway | Público. Swagger UI con selector de los siete contratos. |
 | `GET /swagger/specs/{servicio}` | `{<SERVICIO>_URL}{ruta del OpenAPI}` | Público. Contrato de cada servicio leído por HTTP; 503 C3 si ese backend no responde. |
@@ -158,6 +161,9 @@ Nunca se hardcodean hosts. En Compose las inyecta el `docker-compose.yml` raíz 
 | `AUTH_URL` | *(obligatoria)* | `http://auth-service:8086`, nombre interno del contenedor de autenticación |
 | `JWT_SECRET` | *(obligatoria)* | Secreto HS256 compartido con `auth-service`. No se loguea. |
 | `SWAGGER_SPEC_TIMEOUT_MS` | `3000` | Timeout de cada lectura de contrato en `/swagger/specs/*` |
+| `<SERVICIO>_HEALTH_URL` | la `*_URL` del servicio | Origen directo que consulta `/health/services` (en Compose `http://<servicio>:<puerto>`, sin pasar por `-lb`) |
+| `HEALTH_SERVICES_TIMEOUT_MS` | `2500` | Timeout por servicio en `/health/services`; se consultan en paralelo |
+| `HEALTH_SERVICES_CACHE_MS` | `2000` | Tiempo durante el que se reutiliza el último resultado de `/health/services` |
 | `<SERVICIO>_OPENAPI_PATH` | ver tabla de Swagger | Ruta del OpenAPI dentro de cada backend; opcional |
 | `PROXY_TIMEOUT_MS` | `35000` | Timeout general; se conserva como fallback para compatibilidad. |
 | `<SERVICIO>_PROXY_TIMEOUT_MS` | `5000` (`35000` Empleados) | Timeout individual de Auth, Empleados, Departamentos, Notificaciones, Perfiles o Vacaciones. |
@@ -176,6 +182,47 @@ Los `GET`, por ser idempotentes, permiten el intento inicial y tres reintentos c
 una sola vez para evitar duplicados. Prometheus expone
 `gateway_circuit_breaker_state{servicio}` (0 cerrado, 1 semiabierto, 2 abierto) y
 `gateway_upstream_errors_total{servicio,causa}`.
+
+## Salud agregada (`GET /health/services`)
+
+Dos endpoints con propósitos distintos:
+
+| Endpoint | Qué mide | Lo usan |
+|---|---|---|
+| `GET /health` | Solo el proceso del Gateway; siempre 200 si el proceso atiende | Healthcheck de Docker y Traefik |
+| `GET /health/services` | El `/health` C2 de los seis servicios de negocio | Personas, monitoreo, la demo |
+
+`/health` no consulta a los backends a propósito: si lo hiciera, la caída de un solo servicio
+pondría al Gateway `unhealthy`, Traefik lo sacaría de rotación y se caería todo el sistema, también
+las rutas de los servicios sanos.
+
+**Qué pasa cuando falla uno de los seis** (verificado en Docker, ver `EVIDENCIAS.md`):
+
+- `/health/services` responde **503 `DEGRADED`**: el servicio caído en `DOWN` y los demás en `UP`.
+  Si caen todos, 503 `DOWN`. Con los seis arriba, 200 `UP`.
+- `/health` del Gateway sigue **200** y las rutas de los otros servicios siguen respondiendo.
+- Las rutas del servicio caído responden 503 C3 y su circuito se abre (ver Resiliencia síncrona).
+- El detalle dice por qué está caído: con su base o el broker caídos, el servicio responde su propio
+  503 y se reenvían sus checks (p. ej. `{"database":"DOWN","messageBroker":"UP"}`); si el contenedor
+  no responde, `checks: null` y `detail` («sin conexión», «sin respuesta en 2500 ms»).
+
+Decisiones:
+
+- **Consulta directa, no por el balanceador.** Cuando el `/health` de un servicio da 503, Traefik saca
+  la réplica de rotación y responde su propio 503 sin cuerpo: se perdería qué check falló. Por eso
+  Compose fija `<SERVICIO>_HEALTH_URL=http://<servicio>:<puerto>`. Con varias réplicas, el DNS de
+  Compose elige una; el estado por réplica está en Prometheus/Traefik.
+- **En paralelo con timeout por servicio (2,5 s)**, sin circuit breaker ni reintentos: un servicio
+  colgado no retrasa a los demás y la respuesta llega en menos de 3 s (Empleados tarda ~2,1 s en
+  responder 503 con PostgreSQL caído, por eso no 2 s).
+- **Público como `/health`**, pero solo se reenvían `status` y checks con valor texto: ninguna URL,
+  host ni mensaje interno. Para que no sirva de amplificador (una petición → seis), las peticiones
+  simultáneas comparten una consulta y el resultado se reutiliza 2 s (`Cache-Control: no-store`
+  hacia el cliente).
+
+```bash
+curl -s http://localhost:8080/health/services
+```
 
 ## Cómo correrlo
 
