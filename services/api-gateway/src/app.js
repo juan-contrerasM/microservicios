@@ -21,6 +21,10 @@ export function createApp({
 	authUrl,
 	jwtSecret,
 	proxyTimeoutMs = 35_000,
+	proxyTimeouts = {},
+	retryDelaysMs = [1_000, 2_000, 4_000],
+	circuitFailureThreshold = 3,
+	circuitOpenMs = 30_000,
 	rutasOpenapi = {},
 	swaggerTimeoutMs = 3_000,
 	fetchImpl = fetch,
@@ -33,6 +37,12 @@ export function createApp({
 	}
 
 	const app = express();
+	const proxyOptions = (servicio) => ({
+		timeoutMs: proxyTimeouts[servicio] ?? proxyTimeoutMs,
+		retryDelaysMs,
+		circuitFailureThreshold,
+		circuitOpenMs,
+	});
 	app.disable('x-powered-by');
 	app.use(metricsMiddleware);
 	app.get('/metrics', metricsHandler);
@@ -68,21 +78,21 @@ export function createApp({
 		target: authUrl,
 		servicio: 'auth-service',
 		pathPrefix: '/auth',
-		timeoutMs: proxyTimeoutMs,
+		...proxyOptions('auth-service'),
 	}));
 
 	app.use(backendProxy({
 		target: empleadosUrl,
 		servicio: 'empleados-service',
 		pathPrefix: '/empleados',
-		timeoutMs: proxyTimeoutMs,
+		...proxyOptions('empleados-service'),
 	}));
 
 	app.use(backendProxy({
 		target: departamentosUrl,
 		servicio: 'departamentos-service',
 		pathPrefix: '/departamentos',
-		timeoutMs: proxyTimeoutMs,
+		...proxyOptions('departamentos-service'),
 	}));
 
 	if (notificacionesUrl) {
@@ -90,7 +100,7 @@ export function createApp({
 			target: notificacionesUrl,
 			servicio: 'notificaciones-service',
 			pathPrefix: '/notificaciones',
-			timeoutMs: proxyTimeoutMs,
+			...proxyOptions('notificaciones-service'),
 		}));
 	}
 
@@ -99,7 +109,7 @@ export function createApp({
 			target: perfilesUrl,
 			servicio: 'perfiles-service',
 			pathPrefix: '/perfiles',
-			timeoutMs: proxyTimeoutMs,
+			...proxyOptions('perfiles-service'),
 		}));
 	}
 
@@ -108,7 +118,7 @@ export function createApp({
 			target: vacacionesUrl,
 			servicio: 'vacaciones-service',
 			pathPrefix: '/vacaciones',
-			timeoutMs: proxyTimeoutMs,
+			...proxyOptions('vacaciones-service'),
 		}));
 	}
 

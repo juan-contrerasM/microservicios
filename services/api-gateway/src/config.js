@@ -38,6 +38,7 @@ function rutasOpenapi(env) {
 }
 
 export function loadConfig(env = process.env) {
+	const proxyTimeoutMs = Number(env.PROXY_TIMEOUT_MS || 35_000);
 	return {
 		port: Number(env.PORT || 8080),
 		empleadosUrl: requiredUrl(env, 'EMPLEADOS_URL'),
@@ -53,7 +54,18 @@ export function loadConfig(env = process.env) {
 			: undefined,
 		authUrl: requiredUrl(env, 'AUTH_URL'),
 		jwtSecret: required(env, 'JWT_SECRET'),
-		proxyTimeoutMs: Number(env.PROXY_TIMEOUT_MS || 35_000),
+		proxyTimeoutMs,
+		proxyTimeouts: {
+			'auth-service': Number(env.AUTH_PROXY_TIMEOUT_MS || proxyTimeoutMs),
+			'empleados-service': Number(env.EMPLEADOS_PROXY_TIMEOUT_MS || proxyTimeoutMs),
+			'departamentos-service': Number(env.DEPARTAMENTOS_PROXY_TIMEOUT_MS || proxyTimeoutMs),
+			'notificaciones-service': Number(env.NOTIFICACIONES_PROXY_TIMEOUT_MS || proxyTimeoutMs),
+			'perfiles-service': Number(env.PERFILES_PROXY_TIMEOUT_MS || proxyTimeoutMs),
+			'vacaciones-service': Number(env.VACACIONES_PROXY_TIMEOUT_MS || proxyTimeoutMs),
+		},
+		retryDelaysMs: String(env.PROXY_RETRY_DELAYS_MS || '1000,2000,4000').split(',').map(Number),
+		circuitFailureThreshold: Number(env.CB_FAILURE_THRESHOLD || 3),
+		circuitOpenMs: Number(env.CB_OPEN_DURATION_MS || 30_000),
 		// Ruta del OpenAPI en cada backend para GET /swagger/specs/<servicio>. Solo se sobrescribe la
 		// que traiga variable; las demás usan RUTAS_OPENAPI_POR_DEFECTO (src/swagger.js).
 		rutasOpenapi: rutasOpenapi(env),

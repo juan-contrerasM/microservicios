@@ -131,7 +131,23 @@ Nunca se hardcodean hosts. En Compose las inyecta el `docker-compose.yml` raíz 
 | `JWT_SECRET` | *(obligatoria)* | Secreto HS256 compartido con `auth-service`. No se loguea. |
 | `SWAGGER_SPEC_TIMEOUT_MS` | `3000` | Timeout de cada lectura de contrato en `/swagger/specs/*` |
 | `<SERVICIO>_OPENAPI_PATH` | ver tabla de Swagger | Ruta del OpenAPI dentro de cada backend; opcional |
-| `PROXY_TIMEOUT_MS` | `35000` | Timeout del proxy hacia cada backend. Supera el peor caso de empleados (4×5s + backoff 1s→2s→4s ≈ 27s) para no cortar el fallback antes de tiempo. |
+| `PROXY_TIMEOUT_MS` | `35000` | Timeout general; se conserva como fallback para compatibilidad. |
+| `<SERVICIO>_PROXY_TIMEOUT_MS` | `5000` (`35000` Empleados) | Timeout individual de Auth, Empleados, Departamentos, Notificaciones, Perfiles o Vacaciones. |
+| `PROXY_RETRY_DELAYS_MS` | `1000,2000,4000` | Backoff antes de los tres reintentos; se aplica exclusivamente a `GET`. |
+| `CB_FAILURE_THRESHOLD` | `3` | Fallos definitivos consecutivos que abren el circuito independiente del backend. |
+| `CB_OPEN_DURATION_MS` | `30000` | Tiempo en `OPEN` antes de admitir una única prueba `HALF_OPEN`. |
+
+## Resiliencia síncrona
+
+Cada backend tiene un circuito aislado con estados `CLOSED`, `OPEN` y `HALF_OPEN`. Los errores de
+red, timeouts y respuestas 5xx cuentan como fallo; al abrirse el circuito el Gateway responde el
+contrato C3 con 503 sin esperar al backend. Una recuperación en `HALF_OPEN` cierra el circuito.
+
+Los `GET`, por ser idempotentes, permiten el intento inicial y tres reintentos con backoff
+1 s, 2 s y 4 s. Las operaciones que cambian estado (`POST`, `PUT`, `PATCH`, `DELETE`) se intentan
+una sola vez para evitar duplicados. Prometheus expone
+`gateway_circuit_breaker_state{servicio}` (0 cerrado, 1 semiabierto, 2 abierto) y
+`gateway_upstream_errors_total{servicio,causa}`.
 
 ## Cómo correrlo
 
@@ -209,7 +225,7 @@ docker build -t api-gateway ./services/api-gateway
 
 Scaffold del tercer microservicio, en un lenguaje distinto a Java y Go:
 
-- Express + `http-proxy-middleware` (Gateway de aplicación, no Traefik).
+- Express + proxy HTTP resiliente del Gateway de aplicación (no Traefik).
 - Rutas `/empleados/*` y `/departamentos/*` sin strip de path.
 - Propagación fiel de método, cuerpo, query, cabeceras y código de estado.
 - `503` JSON descriptivo si el destino no responde.

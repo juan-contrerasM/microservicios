@@ -70,13 +70,16 @@ describe('loadConfig', () => {
 	});
 
 	it('recorta la barra final de las URLs', () => {
-		const config = loadConfig(baseEnv({ PORT: '9090' }));
+		const config = loadConfig(baseEnv({ PORT: '9090', AUTH_PROXY_TIMEOUT_MS: '4000', PROXY_RETRY_DELAYS_MS: '10,20' }));
 		assert.equal(config.empleadosUrl, 'http://empleados-service:8080');
 		assert.equal(config.departamentosUrl, 'http://departamentos-service:8081');
 		assert.equal(config.authUrl, 'http://auth-service:8086');
 		assert.equal(config.jwtSecret, SECRET);
 		assert.equal(config.port, 9090);
 		assert.equal(config.proxyTimeoutMs, 35_000);
+		assert.equal(config.proxyTimeouts['auth-service'], 4_000);
+		assert.equal(config.proxyTimeouts['empleados-service'], 35_000);
+		assert.deepEqual(config.retryDelaysMs, [10, 20]);
 	});
 });
 

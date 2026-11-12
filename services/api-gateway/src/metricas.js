@@ -18,6 +18,26 @@ const duration = new client.Histogram({
 	buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
 	registers: [registry],
 });
+const circuitState = new client.Gauge({
+	name: 'gateway_circuit_breaker_state',
+	help: 'Estado del circuit breaker (0 CLOSED, 1 HALF_OPEN, 2 OPEN)',
+	labelNames: ['servicio'],
+	registers: [registry],
+});
+const upstreamErrors = new client.Counter({
+	name: 'gateway_upstream_errors_total',
+	help: 'Fallos definitivos al invocar un backend',
+	labelNames: ['servicio', 'causa'],
+	registers: [registry],
+});
+
+export function recordCircuitState(servicio, state) {
+	circuitState.set({ servicio }, { CLOSED: 0, HALF_OPEN: 1, OPEN: 2 }[state]);
+}
+
+export function recordUpstreamError(servicio, causa) {
+	upstreamErrors.inc({ servicio, causa });
+}
 
 function routeLabel(req) {
 	if (req.route?.path) return `${req.baseUrl || ''}${req.route.path}`;
