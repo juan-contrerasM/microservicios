@@ -23,6 +23,11 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/departamentos-serv
 # Alpine (y no distroless) porque el healthcheck de Compose ejecuta curl.
 FROM alpine:3.22.2 AS runtime
 
+# Fase 9 (seguridad de imagen): la base está fijada por versión, pero sus paquetes reciben
+# parches después de publicada. Se aplican los de seguridad para que Trivy no encuentre
+# vulnerabilidades CRITICAL ya corregidas (OpenSSL, GnuTLS...).
+RUN apk upgrade --no-cache
+
 LABEL org.opencontainers.image.title="departamentos-service" \
       org.opencontainers.image.description="Departamentos (Go + chi + MySQL)" \
       org.opencontainers.image.source="https://github.com/juan-contrerasM/reto1-microservicios"

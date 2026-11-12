@@ -11,6 +11,11 @@ RUN npm ci --omit=dev
 # Etapa 2: runtime. Solo node, curl, node_modules de producción, migraciones y src/.
 FROM node:22.21.1-alpine3.22 AS runtime
 
+# Fase 9 (seguridad de imagen): la base está fijada por versión, pero sus paquetes reciben
+# parches después de publicada. Se aplican los de seguridad para que Trivy no encuentre
+# vulnerabilidades CRITICAL ya corregidas (OpenSSL, GnuTLS...).
+RUN apk upgrade --no-cache
+
 LABEL org.opencontainers.image.title="vacaciones-service" \
       org.opencontainers.image.description="Períodos de vacaciones (Node.js 22 + Express + PostgreSQL)" \
       org.opencontainers.image.source="https://github.com/juan-contrerasM/reto1-microservicios"

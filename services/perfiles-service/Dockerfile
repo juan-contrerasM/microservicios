@@ -19,6 +19,11 @@ RUN ./mvnw -q -B -DskipTests package
 # Etapa 2: runtime con JRE (sin compilador ni Maven).
 FROM eclipse-temurin:21.0.9_10-jre-alpine AS runtime
 
+# Fase 9 (seguridad de imagen): la base está fijada por versión, pero sus paquetes reciben
+# parches después de publicada. Se aplican los de seguridad para que Trivy no encuentre
+# vulnerabilidades CRITICAL ya corregidas (OpenSSL, GnuTLS...).
+RUN apk upgrade --no-cache
+
 LABEL org.opencontainers.image.title="perfiles-service" \
       org.opencontainers.image.description="Perfiles de empleado (Java 21 + Spring Boot + PostgreSQL)" \
       org.opencontainers.image.source="https://github.com/juan-contrerasM/reto1-microservicios"

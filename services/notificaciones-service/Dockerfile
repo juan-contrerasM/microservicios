@@ -17,6 +17,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Etapa 2: runtime slim. Solo el venv, curl y el código.
 FROM python:3.12.12-slim-bookworm AS runtime
 
+# Fase 9 (seguridad de imagen): la base está fijada por versión, pero Debian publica parches de
+# seguridad después (OpenSSL, GnuTLS, Perl). Se aplican para que Trivy no encuentre CRITICAL
+# ya corregidas.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
 LABEL org.opencontainers.image.title="notificaciones-service" \
       org.opencontainers.image.description="Notificaciones por correo (Python 3.12 + FastAPI + PostgreSQL)" \
       org.opencontainers.image.source="https://github.com/juan-contrerasM/reto1-microservicios"
