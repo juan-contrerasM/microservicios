@@ -2,6 +2,13 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# Git Bash (Windows): docker.exe necesita la ruta nativa (C:/...) para el bind mount, y sin
+# MSYS_NO_PATHCONV Git Bash reescribe /repo como C:/Program Files/Git/repo. En Linux y macOS
+# `pwd -W` no existe y ninguna de las dos cosas cambia el comportamiento.
+if ROOT_WIN=$(cd "$ROOT_DIR" && pwd -W 2>/dev/null); then
+  ROOT_DIR="$ROOT_WIN"
+  export MSYS_NO_PATHCONV=1
+fi
 MODE='árbol actual'
 GIT_OPTION='--no-git'
 if [ "${1:-}" = '--history' ]; then

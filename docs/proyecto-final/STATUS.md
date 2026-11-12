@@ -35,7 +35,7 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 | 9 | 3 | Jenkinsfile y SonarQube en los siete servicios (E18, E19) | C | ✅ | Siete pipelines generados desde la plantilla, todos SUCCESS con 14 etapas; siete proyectos Sonar con gate ≥70 %; los cuatro fallos simulados se detienen en su etapa. |
 | 10 | 3 | Registry, artefactos, despliegue y rollback | C | ✅ | Tag `<commit>-<build>` + digest en `:5001`; etapa Deploy con smoke test y rollback automático (`scripts/deploy.sh`); commit → imagen → contenedor trazable. |
 | 11 | 2 | Observabilidad uniforme: métricas, logs y trazas (E20–E22) | D + A + B | ✅ | Métricas de negocio y de eventos en los siete, logs C5 uniformes, traza de onboarding por los siete servicios, cinco alertas y dashboard nuevo. Alerta real de DLQ entregada en Discord y por correo. |
-| 12 | 3 | Escalabilidad, balanceo y alta disponibilidad (E23) | C + A + B | ✅ | Traefik con health checks activos; 2 réplicas, reparto 30/30 y 0 errores al caer una; lock del scheduler; los siete escalan. |
+| 12 | 3 | Escalabilidad, balanceo y alta disponibilidad (E23) | C + A + B | ✅ | Traefik con health checks activos; demo automatizada de los **siete** servicios: 2 réplicas sanas cada uno, cinco colas con 2 consumidores, 210/210 2xx con reparto a la mitad y 210/210 al caer una réplica de cada uno; lock del scheduler. |
 | 13 | 3 | Seguridad integral (E24) | D | ✅ | Cabeceras, CORS, 413, rate limiting, JWT ≥32 bytes, logs sin secretos probado; 0 CVE CRITICAL/HIGH; Gitleaks árbol + historial limpio. |
 | 14 | 2 | Orquestación, redes, puertos y estructura (E03, E04, E06) | C | ✅ | Seis redes con aislamiento verificado; solo Gateway y UIs publican puerto (8080, 8090, 9090, 5001…); Registry en el `up` principal; imágenes fijadas; semilla idempotente. |
 | 15 | 4 | Documentación final y README por servicio (E25) | D + A + B | ✅ | README raíz con las 7 secciones del PDF, `docs/arquitectura.md`, ocho guías y ficha C6 en los siete README. |
@@ -45,8 +45,11 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 
 **Proyecto completo: las cuatro olas (Fases 0–16) están cerradas y validadas con Docker.**
 
-- Siete pipelines de Jenkins en verde con 14 etapas, despliegue desde el Registry y rollback.
-- Balanceador Traefik, siete servicios escalables y demostración de continuidad ante la caída de una réplica.
+- Siete pipelines de Jenkins en verde con 14 etapas, despliegue desde el Registry y rollback
+  (empleados-service #8 tras corregir el 401 del Quality Gate; ver «Correcciones tras la revisión
+  externa» en `EVIDENCIAS.md`).
+- Balanceador Traefik y demo automatizada de escalado de los siete servicios, con continuidad ante la
+  caída de una réplica de cada uno.
 - Seguridad del borde, 0 CVE CRITICAL/HIGH y secretos limpios en árbol e historial.
 - Documentación final (README, arquitectura, guías y fichas C6) y paquete reproducible (`scripts/empaquetar.sh`).
 

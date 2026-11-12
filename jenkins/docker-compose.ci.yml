@@ -94,9 +94,6 @@ volumes:
   jenkins_npm:
     name: jenkins_npm
     external: true
-  sonar_bootstrap:
-    name: sonar_bootstrap
-    external: true
 
 # Fase 9: Jenkins corre en un contenedor y Compose le pasa al daemon del HOST las rutas de los
 # bind mounts. Las rutas relativas (./secrets, ./services/...) apuntarían al workspace de Jenkins,

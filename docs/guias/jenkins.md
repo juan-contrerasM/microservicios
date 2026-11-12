@@ -43,6 +43,9 @@ curl -u admin:<clave> -X POST -F "jenkinsfile=<services/auth-service/Jenkinsfile
 - **Bind mounts desde Jenkins:** el daemon no ve el workspace del job; las rutas se traducen con
   `jenkins/host-repo.sh` (ver `jenkins/docker-compose.ci.yml`).
 - **Jobs que no aparecen tras recrear Jenkins:** «Manage Jenkins → Configuration as Code → Reload».
-- **Quality Gate con `HttpException: Error 401`:** `sonar-bootstrap` regeneró el token de SonarQube
-  (p. ej. al levantar otro proyecto Compose, que comparte el volumen `sonar_bootstrap`) y Jenkins
-  conserva el anterior en su credencial. Se corrige con `docker compose restart jenkins`.
+- **Quality Gate con `HttpException: Error 401`:** la credencial `sonar-token` de Jenkins no vale en
+  el SonarQube de su proyecto. JCasC la lee de `/run/sonar-bootstrap/token` solo al arrancar; por
+  eso el volumen `sonar_bootstrap` es por proyecto y Jenkins espera a que `sonar-bootstrap` termine.
+  Si aun así aparece (p. ej. tras `docker compose up -d sonar-bootstrap` suelto, que puede rotar el
+  token), `docker compose restart jenkins`. En stacks creados antes de este cambio:
+  `docker compose up -d --force-recreate sonar-bootstrap jenkins`.

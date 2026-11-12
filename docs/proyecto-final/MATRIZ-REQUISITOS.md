@@ -38,7 +38,7 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | E20 | Métricas C4 + negocio | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 11 |
 | E21 | Logs C5 en Loki | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 11 |
 | E22 | OpenTelemetry W3C + Zipkin | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 11 |
-| E23 | Stateless, escala con `--scale=2` | ✅ demo 2 réplicas | ✅ demo 2 réplicas, reparto 30/30 | ✅ 2 réplicas, consumidores compitiendo | ✅ 2 réplicas, 2 consumidores en `q.perfiles` | ✅ 2 réplicas + advisory lock del scheduler | ✅ 2 réplicas | ✅ 2 réplicas detrás de Traefik | 12 |
+| E23 | Stateless, escala con `--scale=2` | ✅ demo: reparto 15/30, 2 consumidores en `q.empleados` | ✅ demo: reparto 30/60 | ✅ demo: reparto 15/30 en login, 2 consumidores en `q.auth` | ✅ demo: reparto 15/30, 2 consumidores en `q.perfiles` | ✅ demo: reparto 15/30 + advisory lock del scheduler | ✅ demo: reparto 15/30, 2 consumidores en `q.notificaciones` | ✅ demo: reparto 30/60 detrás de Traefik | 12 |
 | E24 | Seguridad de entrada, RBAC/propiedad | ✅ validación + RBAC en Gateway | ✅ | ✅ JWT ≥32 B, BCrypt, logs sin secretos probado | ✅ propiedad del perfil en Gateway | ✅ | ✅ | ✅ cabeceras, CORS, 413, rate limiting | 13 |
 | E25 | README con plantilla C6 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 15 |
 
@@ -152,9 +152,9 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | Publicación de eventos post-commit | ✅ | Empleados, Auth y Vacaciones publican después del commit |
 | Servicios stateless | ✅ | Los siete escalan a 2 réplicas; el único estado en memoria (rate limit) está documentado |
 | Load balancer | ✅ | Traefik 3.6 |
-| Réplicas horizontales | ✅ | `scripts/demo-escalado.sh` |
+| Réplicas horizontales | ✅ | `scripts/demo-escalado.sh`: los siete con 2 réplicas sanas y cinco colas con 2 consumidores |
 | Health-aware routing | ✅ | Health checks activos cada 5 s a `/health` |
-| Continuidad al caer una instancia | ✅ | 120/120 respuestas 2xx con una réplica detenida |
+| Continuidad al caer una instancia | ✅ | 210/210 respuestas 2xx (30 por servicio) con una réplica de cada servicio detenida |
 
 ## Documentación y entrega
 

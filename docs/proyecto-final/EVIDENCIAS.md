@@ -335,11 +335,10 @@ Fecha: 2026-11-12. Jenkins del Compose (`http://localhost:8090`), jobs creados p
 - Traefik 3.6 como único puerto de negocio (:8080), con health checks activos a `/health`,
   reintento entre réplicas y ruta de respaldo 502 cuando un servicio no tiene réplicas.
   Traefik 3.5 no funcionaba con Docker Engine 29 (400 del daemon).
-- `scripts/demo-escalado.sh`: con 2 réplicas de Gateway, Empleados, Departamentos y Vacaciones,
-  120 peticiones → 120 respuestas 2xx, reparto 30/30 en Departamentos y 30/30 en Vacaciones;
-  tras detener una réplica de cada servicio sin avisar, otras 120 → 120 respuestas 2xx, 0 errores.
-- Auth, Perfiles y Notificaciones con 2 réplicas: healthy, `q.perfiles` con 2 consumidores y BDD
-  sin caos 22/22 (el evento duplicado sigue dejando una notificación y un perfil).
+- `scripts/demo-escalado.sh` cubre los **siete** servicios (la primera versión solo escalaba Gateway,
+  Empleados, Departamentos y Vacaciones; resultado actual en «Correcciones tras la revisión externa»).
+- BDD sin caos 22/22 con Auth, Perfiles y Notificaciones en 2 réplicas (el evento duplicado sigue
+  dejando una notificación y un perfil).
 - Scheduler de Vacaciones con `pg_try_advisory_lock`: prueba de integración con dos pools reales
   a la vez, solo uno ejecuta el ciclo.
 - Prometheus descubre cada réplica por DNS; la alerta «Servicio caído» usa `absent()` para no
@@ -357,7 +356,8 @@ Fecha: 2026-11-12. Jenkins del Compose (`http://localhost:8090`), jobs creados p
   activación o recuperación ni access JWT en ningún log.
 - Dependencias: 0 CRITICAL y 0 HIGH en los siete servicios (Trivy), tras subir OpenTelemetry
   (0.217) y forzar `protobufjs`, `glob` y `propagator-jaeger` corregidos en los dos servicios Node.
-- Gitleaks: árbol y historial completo (163 commits) sin hallazgos.
+- Gitleaks: árbol e historial completo sin hallazgos (en la verificación final: 168 commits
+  alcanzables, 161 analizados por Gitleaks, que omite los merges sin contenido propio).
 
 ### Fase 16 — caos
 
@@ -413,3 +413,51 @@ Parámetro `SIMULAR_FALLO` del pipeline de departamentos-service, con el workspa
   `docker compose restart jenkins` se recargó; documentado en `docs/guias/jenkins.md`. El gate real
   estaba en verde (cobertura 85,5 %, código nuevo 91,2 %).
 - BDD final sobre el stack con el balanceador: 23/23 escenarios y 181/181 pasos, tres veces seguidas.
+
+### Correcciones tras la revisión externa
+
+Fecha: 2026-11-12. Una verificación independiente encontró seis diferencias entre el informe y el
+estado real; este apartado reemplaza lo que el cierre anterior daba por hecho.
+
+1. **empleados-service #6 FAILURE.** Lo disparó `pollSCM` y se cortó en Deploy porque Jenkins se
+   reinició a mitad del build («Resuming build after Jenkins restart», el agente dejó de escribir el
+   log): no fue un fallo del pipeline. Al relanzarlo en el stack `pfcheck`, el **#7** se detuvo en el
+   Quality Gate con `HttpException: Error 401`, el mismo síntoma del #4. Causa raíz: el volumen del
+   token tenía nombre global (`sonar_bootstrap`) mientras SonarQube es por proyecto, y Jenkins no
+   esperaba a `sonar-bootstrap`; en `pfcheck` Jenkins arrancó a las 17:08:59 y leyó el token que
+   había dejado otro proyecto antes de que el bootstrap escribiera el suyo. Corrección en
+   `docker-compose.yml`: volumen `sonar_bootstrap` por proyecto y Jenkins con
+   `depends_on: sonar-bootstrap: service_completed_successfully` (JCasC lee el token solo al
+   arrancar). Resultado del build siguiente: ver punto 1 de «Estado tras las correcciones».
+2. **Escalado de los siete servicios.** `scripts/demo-escalado.sh` reescrito y ejecutado en `pfcheck`:
+   - Traefik con 2 réplicas sanas de cada servicio; `q.auth`, `q.perfiles`, `q.notificaciones`,
+     `q.vacaciones` y `q.empleados` con 2 consumidores cada una.
+   - 30 peticiones por servicio a través de `:8080`: 210/210 respuestas 2xx.
+   - Peticiones atendidas por la réplica nueva (contador HTTP del propio contenedor): Gateway 30,
+     Empleados 15, Departamentos 30, Auth 15 (`POST /auth/login`), Perfiles 15, Vacaciones 15,
+     Notificaciones 15. Es la mitad de cada ráfaga; Gateway y Departamentos reciben 60 porque la
+     ráfaga del Gateway (`/departamentos`) también llega a Departamentos.
+   - Una réplica de cada servicio detenida sin avisar: otras 210/210 respuestas 2xx, 0 errores.
+3. **`scripts/scan-secrets.sh` en Git Bash.** MSYS convertía `/repo` en una ruta de Windows dentro
+   del contenedor. El script usa ahora la ruta Windows del repo (`pwd -W`) y `MSYS_NO_PATHCONV=1`
+   cuando existe; en Linux/macOS no cambia nada. Probado en Git Bash: árbol y `--history` sin
+   hallazgos.
+4. **Número de commits.** El informe decía 163. En la verificación: `git rev-list --all --count`
+   = 168 commits alcanzables; Gitleaks informa 161 analizados (no cuenta los merges sin contenido
+   propio). Ninguno con hallazgos.
+5. **Commits publicados.** `HEAD` y `origin/proyecto-final` apuntaban ambos a `14c558f`: los commits
+   ya estaban en el remoto, no solo en local.
+6. **Volúmenes viejos con secretos nuevos.** PostgreSQL, MySQL y RabbitMQ leen la contraseña solo al
+   crear el volumen; con secretos regenerados y volúmenes antiguos el Compose por defecto no arranca.
+   Documentado en el README (tabla de comandos) y en `SEGURIDAD-SECRETOS.md` (rotación, paso 4):
+   `docker compose down -v` o un nombre de proyecto nuevo.
+
+#### Estado tras las correcciones
+
+1. empleados-service **#8 SUCCESS** (Jenkins recreado con el compose corregido): Quality Gate, Seguridad,
+   Package, Push Registry, E2E y Deploy en verde, 5 min 9 s. El contenedor desplegado en `pfcheck`
+   corre `localhost:5001/empleados-service:14c558f2-8` con
+   `revision=14c558f2616f170646f97199df3d21924e28873b` y está `healthy`.
+2. Último build de los otros seis jobs en ese mismo Jenkins: api-gateway #3, departamentos-service
+   #14, auth-service #10, perfiles-service #3, vacaciones-service #3 y notificaciones-service #3,
+   todos SUCCESS. Los siete pipelines quedan en verde.

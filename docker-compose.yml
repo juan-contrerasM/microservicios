@@ -792,6 +792,10 @@ services:
       - e2e_user_password
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # JCasC lee el token de Sonar solo al arrancar: Jenkins espera a que sonar-bootstrap lo escriba.
+    depends_on:
+      sonar-bootstrap:
+        condition: service_completed_successfully
     networks:
       - cicd-network
 
@@ -921,8 +925,8 @@ volumes:
     name: jenkins_m2
   jenkins_npm:
     name: jenkins_npm
+  # Por proyecto, como sonarqube_data: el token solo vale en el SonarQube del mismo proyecto.
   sonar_bootstrap:
-    name: sonar_bootstrap
   sonarqube_data:
   sonarqube_logs:
   sonarqube_extensions:

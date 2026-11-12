@@ -82,6 +82,14 @@ Operación diaria:
 | `docker compose ps` | Estado y salud de todos los contenedores |
 | `docker compose down` | Apaga conservando los datos (volúmenes) |
 | `docker compose down -v` | Apaga y **borra** todos los datos (reinicio total) |
+
+> **Secretos nuevos con volúmenes viejos.** PostgreSQL, MySQL y RabbitMQ fijan la contraseña al
+> crear su volumen. Si se regeneran los secretos (`setup-secrets.sh --force`, otra copia del proyecto
+> o un clon nuevo en la misma máquina) y los volúmenes ya existen, los servicios fallan al autenticarse
+> y quedan `unhealthy`. Solución: `docker compose down -v` antes del primer `up` (borra los datos), o
+> levantar con un nombre de proyecto nuevo (`docker compose -p <nombre> up --build`), que crea
+> volúmenes propios. Los volúmenes de Jenkins y del token de SonarQube tienen nombre fijo y se
+> comparten entre proyectos; si el Quality Gate de Jenkins responde 401, `docker compose restart jenkins`.
 | `docker compose up -d --scale empleados-service=2` | Escala un servicio; el balanceador reparte solo |
 
 ## 4. Tecnologías utilizadas

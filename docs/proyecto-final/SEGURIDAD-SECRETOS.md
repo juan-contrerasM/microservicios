@@ -55,7 +55,10 @@ se ejecuta con `--redact`; no copie un valor detectado en una incidencia.
 1. Detener consumidores y productores que usen el secreto afectado.
 2. Respaldar únicamente datos, nunca el archivo `.env` dentro del repositorio.
 3. Ejecutar el generador con `-Force` o `--force`. Esto rota todos los valores locales.
-4. Recrear bases/volúmenes en desarrollo cuando cambien sus credenciales iniciales.
+4. Recrear bases/volúmenes en desarrollo cuando cambien sus credenciales iniciales: PostgreSQL,
+   MySQL y RabbitMQ solo leen la contraseña al crear el volumen. `docker compose down -v` (borra los
+   datos) o un nombre de proyecto nuevo (`docker compose -p <nombre> up --build`). Sin esto los
+   servicios no autentican contra su base o el broker y quedan `unhealthy`.
 5. Levantar el stack, comprobar health, login, publicación y consumo AMQP.
 6. Revocar el valor anterior en Discord, Registry o proveedor externo cuando corresponda.
 7. Ejecutar ambos modos del escáner antes de publicar cambios.

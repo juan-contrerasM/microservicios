@@ -23,6 +23,7 @@ pasivos) y descubrimiento automático de réplicas sin recargar configuración.
 COMPOSE_PROJECT=microservicios bash scripts/demo-escalado.sh
 ```
 
-Escala Gateway, Empleados, Departamentos y Vacaciones a 2 réplicas, envía 120 peticiones, muestra
-cuántas atendió cada réplica, detiene una réplica de cada servicio y comprueba que no hay errores.
-Cualquier servicio escala igual: `docker compose up -d --scale perfiles-service=2`.
+Escala los **siete** servicios a 2 réplicas, comprueba que Traefik ve 2 réplicas sanas de cada uno y
+que las cinco colas de consumidores tienen 2 consumidores, envía 30 peticiones por servicio, muestra
+cuántas atendió cada réplica (contador HTTP de cada contenedor), detiene una réplica de cada servicio
+sin avisar y comprueba que no hay errores; al final vuelve a 1 réplica.
