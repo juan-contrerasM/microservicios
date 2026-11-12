@@ -402,3 +402,14 @@ Parámetro `SIMULAR_FALLO` del pipeline de departamentos-service, con el workspa
   siete servicios y el balanceador; Swagger agregada 200; Registry vacío (instalación limpia).
 - `bash scripts/seed-data.sh` creó los datos de prueba y la BDD completa pasó 23/23 sobre bases
   nuevas. Después `docker compose -p pfvalidacion down -v`.
+
+### Cierre — verificación del código final
+
+- Commit `7ca9818` (estado `EN_VACACIONES`): pipeline empleados-service #5 **SUCCESS** con las 14
+  etapas; el contenedor desplegado corre `localhost:5001/empleados-service:7ca98180-5` con
+  `revision=7ca9818053cfeb2f08a88a5d7323a105625e7762`.
+- El build #4 se detuvo en el Quality Gate por un 401: la validación desde el paquete regeneró el
+  token de SonarQube (volumen compartido `sonar_bootstrap`) y Jenkins conservaba el anterior. Con
+  `docker compose restart jenkins` se recargó; documentado en `docs/guias/jenkins.md`. El gate real
+  estaba en verde (cobertura 85,5 %, código nuevo 91,2 %).
+- BDD final sobre el stack con el balanceador: 23/23 escenarios y 181/181 pasos, tres veces seguidas.
