@@ -1,2 +1,14 @@
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+# Fase 8 (E16): `pytest` produce JUnit y cobertura en reports/ y falla bajo 70 %.
+# La integración (tests/integracion) se omite sin dependencias reales; ver scripts/test-integration.sh.
+addopts = [
+    "--junitxml=reports/junit.xml",
+    "--cov=notificaciones",
+    "--cov-report=xml:reports/coverage.xml",
+    "--cov-report=term-missing",
+    "--cov-fail-under=70",
+]
+
+[tool.coverage.run]
+branch = true

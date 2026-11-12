@@ -97,6 +97,16 @@ cumplen C1, que el inválido y el poison no, y cómo arma `republicar` la public
 - `02-onboarding.feature`: el alta publica, eventualmente, una `SEGURIDAD` con token; `reset-password` responde 200 `Contraseña actualizada`; el login queda en 200 con `role` `USER`.
 - `03-vacaciones.feature`: programación futura (201 y aviso `VACACIONES`), rango invertido (400), solapamiento (400) y ciclo completo `PROGRAMADA → EN_CURSO → FINALIZADA`. Los endpoints `forzar-inicio` y `forzar-fin` controlan el tiempo sin esperar al cron; el login se bloquea y se recupera mediante polling sobre hechos observables.
 - `04-offboarding.feature`: retiro lógico, aviso `CUENTA`, login bloqueado, auditoría por `estado=RETIRADO` y recuperación que conserva la respuesta genérica pero rechaza el reset de una cuenta desactivada permanentemente.
+- `05-departamentos.feature` (Fase 8): CRUD completo de un `ADMIN` (201, 409 duplicado, 200 PUT, 204 DELETE, 404 tras borrar) y `USER` que lista (200) pero no crea (403).
+- `06-eventos.feature` (`@broker`, Fase 8): el mismo `empleado.creado` publicado dos veces deja **una** notificación `SEGURIDAD` y **un** perfil; un mensaje que no es JSON llega a las DLQ de auth, perfiles, notificaciones y vacaciones y la cola sigue procesando un alta nueva. Publica por la API de administración de RabbitMQ (`RABBITMQ_MGMT_URL`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD[_FILE]`); sin credenciales del broker el escenario queda **omitido**, nunca verde.
+- `07-resiliencia.feature` (`@caos`, Fase 8): detiene `departamentos-service` por la API de Docker (socket montado), comprueba 503 C3 y circuito `OPEN` en `/metrics` del Gateway, lo vuelve a arrancar y espera 200 con circuito `CLOSED`. Un `After` reinicia el servicio pase lo que pase. Sin socket de Docker queda omitido.
+
+### Ejecutar dentro de Docker (proyecto final)
+
+`bash scripts/test-bdd.sh [N]` (desde la raíz) corre la suite en un contenedor Node unido a las
+redes del Gateway y de RabbitMQ, con las credenciales leídas de `secrets/` y el socket de Docker
+para `@caos`. Con `N` repite la suite N veces seguidas y guarda `reports/junit-ejecucion-<i>.xml`.
+`CUCUMBER_TAGS="not @caos"` excluye el escenario de caos.
 
 Antes de activar, el login con la clave que todavía no se fijó responde **401 `Credenciales inválidas`**. La cuenta nace con `password_hash` nulo y auth rechaza la clave antes de mirar el estado, para no revelar si el correo existe. `La cuenta no está activa` aparece cuando la clave sí coincide y la cuenta no está `ACTIVA` (vacaciones y offboarding). La notificación `SEGURIDAD` es la prueba de que la cuenta se creó y quedó pendiente.
 

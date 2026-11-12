@@ -5,6 +5,8 @@ addopts = [
     "--cov=auth_service",
     "--cov-report=xml:reports/coverage.xml",
     "--cov-report=term-missing",
+    # Fase 8 (E16): la suite falla si la cobertura baja del 70 %.
+    "--cov-fail-under=70",
 ]
 
 [tool.coverage.run]

@@ -10,8 +10,10 @@
   "scripts": {
     "start": "node --import ./src/telemetria.js src/index.js",
     "openapi:export": "node scripts/exportar-openapi.js",
+    "pretest:integration": "node -e \"require('node:fs').mkdirSync('reports',{recursive:true})\"",
     "pretest": "node -e \"require('node:fs').mkdirSync('reports',{recursive:true})\"",
-    "test": "node --test --experimental-test-coverage --test-coverage-include=src/validar.js --test-coverage-include=src/fechas.js --test-coverage-include=src/transiciones.js --test-coverage-include=src/servicio.js --test-coverage-include=src/consumidor.js --test-coverage-include=src/publicar.js --test-coverage-include=src/errores.js --test-coverage-include=src/salud.js --test-coverage-lines=70 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
+    "test:integration": "node --test --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit-integracion.xml \"tests/integracion/*.test.js\"",
+    "test": "node --test --experimental-test-coverage --test-coverage-include=src/**/*.js --test-coverage-exclude=src/index.js --test-coverage-exclude=src/telemetria.js --test-coverage-lines=70 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=reports/junit.xml --test-reporter=lcov --test-reporter-destination=reports/lcov.info \"tests/*.test.js\""
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",

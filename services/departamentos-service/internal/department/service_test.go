@@ -83,6 +83,10 @@ func TestRegisterGetAndList(t *testing.T) {
 	if _, err := svc.Register(context.Background(), Department{ID: " ", Nombre: "x"}); !errors.Is(err, ErrValidation) {
 		t.Fatalf("se esperaba ErrValidation, llegó %v", err)
 	}
+	// Hallazgo de la prueba de mutación (E17): faltaba cubrir el nombre en blanco al registrar.
+	if _, err := svc.Register(context.Background(), Department{ID: "RH", Nombre: "   "}); !errors.Is(err, ErrValidation) {
+		t.Fatalf("un nombre en blanco debe dar ErrValidation, llegó %v", err)
+	}
 	if _, err := svc.Register(context.Background(), Department{ID: "IT", Nombre: "Duplicado"}); !errors.Is(err, ErrAlreadyExists) {
 		t.Fatalf("se esperaba ErrAlreadyExists, llegó %v", err)
 	}
