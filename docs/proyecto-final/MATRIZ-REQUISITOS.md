@@ -28,10 +28,10 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | E10 | Timeout + retry backoff + circuit breaker en clientes HTTP | ✅ Resilience4j → Departamentos | N/A | N/A | N/A | N/A | N/A | ✅ circuito por backend, timeout por servicio y retry solo GET | 6 |
 | E11 | Productor: envelope, post-commit, traceparent | ✅ `afterCommit` | N/A | ✅ | N/A | ✅ incluido scheduler | N/A | N/A | 4 |
 | E12 | Consumidor: dedup atómica, retry, DLQ, poison | N/A | N/A | ✅ | ✅ | ✅ | ✅ correo tras commit | N/A | 4 |
-| E13 | Unitarias con dobles | 🟡 | 🟡 | ✅ | ❌ 1 archivo | ✅ | ✅ | ❌ 1 archivo | 8 |
+| E13 | Unitarias con dobles | 🟡 | ✅ servicio, repositorio y HTTP | ✅ | ✅ servicio, eventos y HTTP | ✅ | ✅ | ✅ JWT, RBAC, proxy y CB | 8 |
 | E14 | Integración con BD/broker reales | 🟡 | ❌ | 🟡 | ❌ | 🟡 | 🟡 | ❌ | 8 |
-| E15 | Cobertura ≥70 % de la lógica de negocio | 🟡 sin medir | 🟡 sin medir | ✅ 72 % | 🟡 sin medir | 🟡 100 % solo módulos seleccionados | ✅ 73 % | 🟡 sin medir | 8 |
-| E16 | Un comando, JUnit + cobertura en ruta documentada | 🟡 | 🟡 | ✅ | 🟡 | ✅ | 🟡 | 🟡 | 8 |
+| E15 | Cobertura ≥70 % de la lógica de negocio | 🟡 sin medir | ✅ 74,3 % global | ✅ 72 % | ✅ 80,78 % | 🟡 100 % solo módulos seleccionados | ✅ 73 % | ✅ 97,03 % | 8 |
+| E16 | Un comando, JUnit + cobertura en ruta documentada | 🟡 | ✅ `scripts/test.sh` | ✅ | ✅ `mvn verify` | ✅ | 🟡 | ✅ `npm test` | 8 |
 | E17 | Evidencia de mutación | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 8 |
 | E18 | Jenkinsfile con todas las etapas | 🟡 existe | ❌ | ❌ | ❌ | 🟡 existe | ❌ | ❌ | 9 |
 | E19 | Proyecto SonarQube propio | 🟡 Maven | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | 9 |

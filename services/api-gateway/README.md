@@ -193,6 +193,12 @@ simulados, matriz RBAC, formato C3 de 401/403/404/500/503, drift y validez de `o
 `/swagger` + `/swagger/specs/*` con backends simulados (JSON, YAML, uno colgado, uno con 500, uno
 sin URL): solo la entrada caída responde 503.
 
+El mismo `npm test` falla si la cobertura de líneas baja de 70 % y genera JUnit en
+`reports/junit.xml` y LCOV en `reports/lcov.info`. Se miden los nueve módulos con lógica
+ejecutable; `index.js`, el bootstrap de telemetría y el contrato JSON se excluyen porque solo
+conectan infraestructura o contienen datos estáticos. Medición del 2026-11-11: 97,03 % de líneas
+y 83,33 % de ramas.
+
 ## Docker
 
 La imagen se construye desde el compose raíz (`build: ./services/api-gateway`). A mano:

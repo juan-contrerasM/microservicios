@@ -31,7 +31,7 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 | 5 | 1 | Contrato HTTP: OpenAPI, errores, health, migraciones (E05, E07–E09) | A + B | ✅ | Siete health 200; Empleados 503 en 2,13 s con PostgreSQL caído; siete contratos Swagger 200 y BDD 18/18. |
 | 6 | 2 | Resiliencia síncrona: CB, timeout y retry (E10) | A + B | ✅ | Gateway con circuito por backend, timeout por servicio, retry GET 1–2–4 s y métricas; Empleados→Departamentos revalidado. |
 | 7 | 1 | Contenerización multi-stage y no root (E01, E02) | C + A + B | ✅ | Construcción limpia correcta; siete aplicaciones healthy como UID/GID `10001:10001`. |
-| 8 | 2 | Pruebas, cobertura ≥70 % por servicio y BDD (E13–E17) | A + B + D | ⬜ | Gateway, Perfiles y Departamentos con pocas pruebas |
+| 8 | 2 | Pruebas, cobertura ≥70 % por servicio y BDD (E13–E17) | A + B + D | 🟡 | Gateway 97,03 %, Perfiles 80,78 % y Departamentos 74,3 % con reportes y umbral; faltan cuatro servicios, integración y mutación. |
 | 9 | 2–3 | Jenkinsfile y SonarQube en los siete servicios (E18, E19) | C | ⬜ | Hoy solo Empleados y Vacaciones |
 | 10 | 3 | Registry, artefactos, despliegue y rollback | C | ⬜ | Registry en `:5001` |
 | 11 | 2 | Observabilidad uniforme: métricas, logs y trazas (E20–E22) | D + A + B | ⬜ | Métricas de negocio por servicio, alertas Discord |

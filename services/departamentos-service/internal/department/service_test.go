@@ -65,3 +65,32 @@ func TestDeleteReportsNotFound(t *testing.T) {
 		t.Fatalf("se esperaba ErrNotFound, llegó %v", err)
 	}
 }
+
+func TestRegisterGetAndList(t *testing.T) {
+	repo := &memoryRepository{items: map[string]Department{}}
+	svc := NewService(repo)
+	creado, err := svc.Register(context.Background(), Department{ID: " IT ", Nombre: " Tecnologia "})
+	if err != nil || creado.ID != "IT" || creado.Nombre != "Tecnologia" {
+		t.Fatalf("Register inesperado: %#v, %v", creado, err)
+	}
+	consultado, err := svc.Get(context.Background(), "IT")
+	if err != nil || consultado.ID != "IT" {
+		t.Fatalf("Get inesperado: %#v, %v", consultado, err)
+	}
+	if _, err := svc.List(context.Background()); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if _, err := svc.Register(context.Background(), Department{ID: " ", Nombre: "x"}); !errors.Is(err, ErrValidation) {
+		t.Fatalf("se esperaba ErrValidation, llegó %v", err)
+	}
+	if _, err := svc.Register(context.Background(), Department{ID: "IT", Nombre: "Duplicado"}); !errors.Is(err, ErrAlreadyExists) {
+		t.Fatalf("se esperaba ErrAlreadyExists, llegó %v", err)
+	}
+}
+
+func TestDeleteValidatesEmptyID(t *testing.T) {
+	svc := NewService(&memoryRepository{items: map[string]Department{}})
+	if err := svc.Delete(context.Background(), "  "); !errors.Is(err, ErrValidation) {
+		t.Fatalf("se esperaba ErrValidation, llegó %v", err)
+	}
+}

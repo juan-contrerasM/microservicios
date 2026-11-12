@@ -136,7 +136,8 @@ El esquema lo crea Liquibase al arrancar (`001-create-perfiles` y `002-completar
 ## Pruebas
 
 ```bash
-./mvnw test    # sin Docker
+./mvnw test      # unitarias rápidas
+./mvnw verify    # unitarias + JaCoCo + umbral de cobertura
 ```
 
 | Clase | Qué prueba |
@@ -147,6 +148,11 @@ El esquema lo crea Liquibase al arrancar (`001-create-perfiles` y `002-completar
 | `contrato/OpenApiContratoTest` | Drift de `openapi.yaml`, rutas documentadas, `bearerAuth` y códigos de error |
 | `contrato/MigracionesTest` | `<rollback>` en cada changeset y restricciones de unicidad |
 | `exception/GlobalExceptionHandlerTest` | Formato C3, `traceId` desde el MDC y ausencia de detalles internos |
+
+`verify` falla si la cobertura de líneas de la lógica ejecutable baja de 70 %. Genera JUnit XML
+en `target/surefire-reports/` y JaCoCo XML/HTML en `target/site/jacoco/`. Se excluyen la clase de
+arranque, DTO, entidades JPA, interfaces de repositorio y configuración declarativa; no contienen
+reglas de negocio. Medición del 2026-11-11: 54 pruebas, 80,78 % de líneas y 57,99 % de ramas.
 
 ## Imagen Docker
 

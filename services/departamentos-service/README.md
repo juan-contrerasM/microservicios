@@ -217,6 +217,17 @@ docker compose up --build -d
 La API pública queda disponible en `http://localhost:8080/departamentos`. Para detener los
 servicios sin borrar los datos: `docker compose down`.
 
+## Pruebas y cobertura
+
+```bash
+sh scripts/test.sh
+```
+
+El script ejecuta todos los paquetes, genera `coverage.out` y `reports/junit.xml`, y termina con
+error si la cobertura global baja de 70 %. No se excluyen paquetes. Medición del 2026-11-11:
+74,3 % global; configuración 100 %, dominio/repositorio 86,9 %, HTTP 85,6 % y observabilidad 74 %.
+La integración real contra MySQL se completa mediante la regresión BDD del stack.
+
 ## Build de la imagen
 
 ```bash

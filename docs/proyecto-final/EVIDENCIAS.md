@@ -196,3 +196,17 @@ Fecha: 2026-11-11. Stack integrado: `pfola1`.
   el backend y esperar 30 segundos, el GET respondió 200 y la métrica volvió a 0 (`CLOSED`).
 - Regresión funcional posterior al cambio: 18/18 escenarios y 137/137 pasos BDD correctos en
   42,181 segundos contra el stack integrado.
+
+### Fase 8 — primer bloque de cobertura
+
+Fecha: 2026-11-11. Ejecuciones reproducibles dentro de las imágenes de construcción.
+
+- Gateway: `npm test`, 72 pruebas, 97,03 % de líneas y 83,33 % de ramas. Genera JUnit y LCOV y
+  falla automáticamente bajo 70 %.
+- Perfiles: `mvn verify`, 54 pruebas, 80,78 % de líneas y 57,99 % de ramas. JaCoCo genera XML/HTML
+  y aplica un mínimo de 70 % sobre la lógica ejecutable.
+- Departamentos: `sh scripts/test.sh`, 41 pruebas y 74,3 % global sin excluir paquetes. Genera
+  `coverage.out` y JUnit; dominio/repositorio quedó en 86,9 %, HTTP en 85,6 %, configuración en
+  100 % y observabilidad en 74 %.
+- Este bloque no cierra la Fase 8: faltan revalidar los otros cuatro servicios, integración con
+  dependencias reales, evidencia de mutación y tres regresiones BDD consecutivas.
