@@ -126,7 +126,7 @@ revalidarlo contra el estándar. **Ninguna fase se cierra con celdas ❌ o 🟡 
 | Prometheus/Grafana | ✅ | Siete targets y dashboard versionado en el último estado de Reto 8 |
 | Métricas técnicas y de negocio | ✅ | Contadores de negocio en los siete servicios y de eventos en los cuatro consumidores (Fase 11) |
 | Dashboards | ✅ | `reto8-observabilidad` + `pf-negocio-eventos` (negocio, eventos/DLQ, circuit breakers), aprovisionados desde Git |
-| Alertas externas | 🟡 | Cinco reglas; contact point Discord + correo. Alerta de DLQ real entregada por correo; falta la entrega con el webhook real de Discord |
+| Alertas externas | ✅ | Cinco reglas; contact point Discord + correo. Alerta de DLQ real entregada en Discord y en Mailhog (Fase 11) |
 | OTel/Zipkin W3C | ✅ | Trazas HTTP/AMQP de onboarding y vacaciones evidenciadas |
 | Correlación log ↔ traza | ✅ | `traceId` y enlace Loki→Zipkin existentes |
 

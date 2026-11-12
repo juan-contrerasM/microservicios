@@ -317,7 +317,7 @@ capas.
 
 **Cierre:** un pipeline verde publica y despliega una imagen identificable (commit → imagen → contenedor).
 
-### Fase 11 — Observabilidad uniforme en los siete servicios (Ola 2; falta evidencia Discord)
+### Fase 11 — Observabilidad uniforme en los siete servicios (Ola 2, cerrada)
 
 **Frente:** D define contratos y dashboards; A y B instrumentan. **Estándar:** E20, E21, E22.
 
@@ -438,7 +438,7 @@ alerta real recibida en Discord.
 
 ```text
 Ola 1:        F4 (A+B, cerrada)    F5 (A+B, cerrada)   F7 (C, cerrada)
-Ola 2:        F6 (cerrada)   F8 (cerrada)   F11 (falta evidencia Discord)   F14 (cerrada)   F9 plantilla (validada)
+Ola 2:        F6 (cerrada)   F8 (cerrada)   F11 (cerrada)   F14 (cerrada)   F9 plantilla (validada)
 Ola 3:        F9 completa (C)   F10 (C)   F12 (C + A/B)   F13 (D)
 Ola 4:        F15 (D + A/B)   F16 (todos)
 ```

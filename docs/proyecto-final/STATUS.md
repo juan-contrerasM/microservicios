@@ -34,7 +34,7 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 | 8 | 2 | Pruebas, cobertura ≥70 % por servicio y BDD (E13–E17) | A + B + D | ✅ | Siete servicios ≥70 % con umbral automático; integración real en los siete (`scripts/test-integration.sh`); un mutante eliminado por servicio; BDD 23/23 tres veces seguidas. |
 | 9 | 2–3 | Jenkinsfile y SonarQube en los siete servicios (E18, E19) | C | 🟡 | Plantilla 9.TPL validada por el linter de Jenkins (`jenkins/plantillas/`); los siete Jenkinsfile y proyectos Sonar quedan para la Ola 3. |
 | 10 | 3 | Registry, artefactos, despliegue y rollback | C | ⬜ | Registry en `:5001` |
-| 11 | 2 | Observabilidad uniforme: métricas, logs y trazas (E20–E22) | D + A + B | 🟡 | Métricas de negocio y de eventos en los siete, logs C5 uniformes, traza de onboarding por los siete servicios, cinco alertas y dashboard nuevo. Alerta real entregada por correo; **falta solo la evidencia en Discord**, que requiere el webhook del equipo. |
+| 11 | 2 | Observabilidad uniforme: métricas, logs y trazas (E20–E22) | D + A + B | ✅ | Métricas de negocio y de eventos en los siete, logs C5 uniformes, traza de onboarding por los siete servicios, cinco alertas y dashboard nuevo. Alerta real de DLQ entregada en Discord y por correo. |
 | 12 | 3 | Escalabilidad, balanceo y alta disponibilidad (E23) | C + A + B | ⬜ | Balanceador, réplicas, lock del scheduler |
 | 13 | 3 | Seguridad integral (E24) | D | ⬜ | RBAC, rate limiting, cabeceras, escaneos |
 | 14 | 2 | Orquestación, redes, puertos y estructura (E03, E04, E06) | C | ✅ | Seis redes con aislamiento verificado; solo Gateway y UIs publican puerto (8080, 8090, 9090, 5001…); Registry en el `up` principal; imágenes fijadas; semilla idempotente. |
@@ -44,14 +44,8 @@ Con dos personas: Persona 1 = A + C, Persona 2 = B + D.
 ## Punto actual
 
 **Ola 1 cerrada y validada con Docker**: Fases 4, 5 y 7, stack completo, RabbitMQ real y BDD 18/18.
-**Ola 2 cerrada salvo una evidencia externa:** Fases 6, 8 y 14 cerradas; plantilla de la Fase 9
-validada; Fase 11 implementada y verificada en los siete servicios.
-
-**Bloqueo único de la Ola 2** — causa: la evidencia «alerta real recibida en Discord» necesita la
-URL del webhook del canal del equipo, que no puede generarse. Responsable: Frente D. Acción: crear
-el webhook en Discord, escribirlo en `secrets/discord_webhook_url.txt`, recrear `grafana` y
-provocar una alerta (p. ej. publicar un mensaje inválido; ver `observability/README.md`). La entrega
-por correo del mismo contact point ya está demostrada.
+**Ola 2 cerrada y validada con Docker:** Fases 6, 8, 11 y 14 cerradas y plantilla de la Fase 9
+validada. Alerta real entregada en el canal de Discord del equipo (2026-11-12).
 
 **Siguiente:** Ola 3 — Fase 9 completa (siete Jenkinsfile desde la plantilla), Fase 10 (Registry,
 tags inmutables, despliegue y rollback), Fase 12 (balanceo y réplicas) y Fase 13 (seguridad).
@@ -67,7 +61,7 @@ tags inmutables, despliegue y rollback), Fase 12 (balanceo y réplicas) y Fase 1
 | Load balancer | Traefik o Nginx | Pendiente de selección (Fase 12) |
 | Auth obligatoria | JWT HS256 propio, endurecido | Vigente |
 | IdP OIDC/JWKS | Bonificación posterior | Opcional |
-| Canal de alertas | Discord con webhook como secreto (`$__file`) + correo a Mailhog como respaldo local | Implementado; falta la evidencia con el webhook real (Fase 11) |
+| Canal de alertas | Discord con webhook como secreto (`$__file`) + correo a Mailhog como respaldo local | Implementado y evidenciado (Fase 11) |
 | Redes | Seis redes del PDF, cada contenedor solo en las que usa | Implementada (Fase 14) |
 | Puertos de host | Gateway 8080; Jenkins 8090, Prometheus 9090, Registry 5001, Grafana 3000, Zipkin 9411, SonarQube 9000, RabbitMQ UI 15672, Mailhog 8025 | Implementada (Fase 14) |
 | Estructura de entrega | Conservar `services/` y `observability/`; equivalencia en `docs/estructura-entrega.md` | Vigente (Fase 14) |

@@ -283,7 +283,12 @@ Fecha: 2026-11-12.
   Discord y falló porque `secrets/discord_webhook_url.txt` todavía tiene el marcador.
 - Con Prometheus, Loki, Promtail, Zipkin y Grafana detenidos, la BDD completa pasó 23/23: la caída
   del stack de observabilidad no afecta el negocio.
-- Pendiente: evidencia de entrega en Discord con el webhook real del equipo.
+- Discord (2026-11-12): con el webhook real en `secrets/discord_webhook_url.txt` y Grafana recreado,
+  un primer intento devolvió 404 «Unknown Webhook» porque el Alertmanager aún usaba el marcador
+  (aplicó la configuración nueva 11 s después). Una prueba directa al webhook respondió 204 y un
+  segundo mensaje inválido (`empleado.retirado`) disparó la alerta de DLQ en los cuatro
+  consumidores: las notificaciones `FIRING` y `RESOLVED` salieron sin ningún error de Discord en el
+  log de Grafana y llegaron también por correo a Mailhog. La URL no está en Git (Gitleaks limpio).
 
 ### Fase 9 — plantilla
 
